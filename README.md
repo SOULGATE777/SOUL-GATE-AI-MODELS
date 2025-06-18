@@ -1,4 +1,4 @@
-# IA-MODELS - SG Production Pipeline
+
 
 Complete production-ready AI models pipeline for image analysis.
 
