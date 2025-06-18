@@ -1,117 +1,227 @@
+# SG - Facial Recognition Production Pipeline
 
-
-Complete production-ready AI models pipeline for image analysis.
+Complete production-ready facial recognition system with morphological analysis capabilities.
 
 ## Project Structure
 
 ```
-SG_prod/
-├── frontal_prod/           # Facial recognition API
-│   ├── app/               # FastAPI application
-│   ├── models/            # Trained model files (.pth)
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── requirements.txt
-└── [future components]     # profile_prod, whole_body_prod
+SG/
+├── frontal_prod/                   # Frontal facial analysis module
+│   └── morfologico/               # Morphological facial analysis
+│       ├── app/                   # FastAPI application
+│       │   ├── main.py           # API endpoints and startup
+│       │   ├── models/           # Model implementations
+│       │   │   ├── facial_analysis_pipeline.py
+│       │   │   └── anthropometric_detection.py
+│       │   └── utils/            # Utility functions
+│       │       ├── visualization.py
+│       │       └── image_processing.py
+│       ├── models/               # Trained model weights
+│       │   ├── facial_landmarks_detection_model.pth    (158MB)
+│       │   ├── facial_points_detection_model.pth       (158MB)
+│       │   └── best_facial_landmark_classifier.pth     (3.6MB)
+│       ├── Dockerfile            # Container configuration
+│       ├── docker-compose.yml    # Service orchestration
+│       ├── requirements.txt      # Python dependencies
+│       └── results/              # Generated visualizations
+├── .gitattributes               # Git LFS configuration
+├── .gitignore                   # Git ignore rules
+└── README.md                    # This file
 ```
 
-## Current Components
+## Features
 
-### Frontal Facial Recognition API
+### Morphological Facial Analysis
+- **3-Model Ensemble Architecture**:
+  - Facial landmark detection (Faster R-CNN)
+  - Characteristic classification (CNN)
+  - Anthropometric point detection
+- **GPU Acceleration**: Full CUDA support
+- **Beautiful Visualizations**: Modern, clean annotations
+- **Production Ready**: Docker containerization
+- **RESTful API**: FastAPI with automatic documentation
 
-**Location:** `frontal_prod/`
-
-**Features:**
-- 3-Model ensemble (landmark detection + classification + anthropometric points)
-- GPU acceleration (CUDA support)
-- Beautiful visualizations with modern styling
-- RESTful API with automatic documentation
-- Production-ready Docker containerization
-
-**Quick Start:**
-```bash
-cd frontal_prod
-docker compose up --build
-```
-
-**API Endpoints:**
-- Complete Analysis: `POST /analyze-face`
-- Facial Landmarks: `POST /detect-landmarks`
-- Anthropometric Points: `POST /detect-points`
-- Documentation: http://localhost:8000/docs
-
-## Model Files
-
-**IMPORTANT:** Model files (.pth) are not included due to size constraints.
-
-Required models for frontal_prod:
-- `facial_landmarks_detection_model.pth`
-- `best_facial_landmark_classifier.pth`
-- `facial_points_detection_model.pth`
-
-Place these files in `frontal_prod/models/` directory before deployment.
-
-## Production Deployment
+## Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
-- NVIDIA GPU with drivers
-- NVIDIA Container Toolkit
+- NVIDIA GPU with drivers (recommended)
+- NVIDIA Container Toolkit (for GPU support)
 
-### Deploy Frontal Recognition API
+### Deployment
+
 ```bash
-cd frontal_prod
+# Clone the repository
+git clone https://github.com/quantileMX/SG.git
+cd SG
+
+# Navigate to morphological analysis
+cd frontal_prod/morfologico
+
+# Deploy with GPU acceleration
 docker compose up --build -d
-```
 
-### Health Check
-```bash
+# Check health
 curl http://localhost:8000/health
 ```
 
-## Future Components
+### API Documentation
+Once deployed, access the interactive API documentation at:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
-- **profile_prod**: Profile facial analysis
-- **whole_body_prod**: Full body analysis
-- **Master orchestration**: Multi-service deployment
+## API Endpoints
 
-## GPU Configuration
-
-**Production (GPU enabled):**
-```yaml
-environment:
-  - CUDA_VISIBLE_DEVICES=0
-```
-
-**CPU fallback:**
-```yaml
-environment:
-  - CUDA_VISIBLE_DEVICES=-1
-```
-
-## Testing
-
-### Test Frontal API
+### Complete Facial Analysis
 ```bash
-# Test with image file
 curl -X POST "http://localhost:8000/analyze-face" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@your_image.jpg" \
+  -F "file=@image.jpg" \
   -F "confidence_threshold=0.5" \
   -F "include_visualization=true"
 ```
 
-### View Results
-Access visualization at: `http://localhost:8000/visualization/[generated_filename].jpg`
+### Individual Components
+- **Facial Landmarks**: `POST /detect-landmarks`
+- **Anthropometric Points**: `POST /detect-points`
+- **Health Check**: `GET /health`
 
-## Architecture
+### Response Format
+```json
+{
+  "facial_landmarks": {
+    "count": 16,
+    "detections": [...]
+  },
+  "anthropometric_points": {
+    "count": 20,
+    "detections": [...]
+  },
+  "summary": {
+    "total_detections": 36,
+    "confidence_threshold": 0.5
+  },
+  "visualization_path": "/app/results/analysis_xxx.jpg"
+}
+```
 
-Each component runs as an independent microservice:
-- **Scalable**: Individual scaling per service type
-- **Maintainable**: Independent model updates
-- **Resource efficient**: Shared GPU resources
-- **Production ready**: Complete Docker orchestration
+## Model Information
+
+### Included Models
+1. **Facial Landmarks Detection** (158MB)
+   - Architecture: Faster R-CNN ResNet50 FPN
+   - Classes: 18 facial regions (eyes, nose, mouth, etc.)
+
+2. **Facial Points Detection** (158MB)
+   - Architecture: Faster R-CNN ResNet50 FPN
+   - Classes: 13 anthropometric measurement points
+
+3. **Characteristic Classification** (3.6MB)
+   - Architecture: Custom CNN
+   - Classes: 50 facial characteristics and features
+
+### Model Storage
+Large model files (>100MB) are stored using Git LFS for efficient repository management.
+
+## Configuration
+
+### GPU Production Setup
+```yaml
+# docker-compose.yml
+environment:
+  - CUDA_VISIBLE_DEVICES=0
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+### CPU Fallback
+```yaml
+# docker-compose.yml
+environment:
+  - CUDA_VISIBLE_DEVICES=-1
+# Remove deploy section
+```
+
+## Development
+
+### Local Development
+```bash
+cd frontal_prod/morfologico
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run locally
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Testing
+```bash
+# Test with sample image
+curl -X POST "http://localhost:8000/analyze-face" \
+  -F "file=@test_image.jpg" \
+  -F "confidence_threshold=0.5"
+
+# View generated visualization
+# Check results/ directory or access via API
+```
+
+## Production Deployment
+
+### System Requirements
+- **GPU**: NVIDIA GPU with 4GB+ VRAM (recommended)
+- **RAM**: 8GB+ system memory
+- **Storage**: 2GB+ for models and containers
+- **CPU**: Multi-core processor for preprocessing
+
+### Scaling
+For high-throughput production:
+- Deploy multiple container instances
+- Use load balancer for request distribution
+- Configure GPU memory optimization
+- Implement request queuing for batch processing
+
+### Monitoring
+```bash
+# Container health
+docker compose ps
+
+# GPU utilization
+nvidia-smi
+
+# API metrics
+curl http://localhost:8000/health
+```
+
+## Architecture Roadmap
+
+### Current: Frontal Analysis
+- ✅ `frontal_prod/morfologico/` - Morphological facial analysis
+
+### Planned Extensions
+- 🔄 `frontal_prod/[other_analysis]/` - Additional frontal analysis types
+- 🔄 `profile_prod/` - Profile facial analysis
+- 🔄 `whole_body_prod/` - Full body analysis
+- 🔄 Master orchestration for multi-service deployment
 
 ## Support
 
-For deployment assistance or model file access, contact the development team.
+### Issues & Questions
+- Repository: https://github.com/quantileMX/SG
+- Documentation: See `/docs` endpoint when API is running
+
+### Model Access
+All trained model weights are included in this repository via Git LFS. No additional downloads required.
+
+## License
+
+[Add appropriate license information]
+
+---
+
+**quantileMX** - Advanced AI Solutions
