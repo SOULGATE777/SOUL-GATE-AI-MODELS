@@ -1,0 +1,41 @@
+# Generated runtime files
+*/results/
+*/temp/
+*/uploads/
+frontal_prod/results/
+frontal_prod/temp/
+frontal_prod/uploads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Docker
+.docker/
+
+# Environment
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
