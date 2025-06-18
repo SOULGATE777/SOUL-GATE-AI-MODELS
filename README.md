@@ -1,37 +1,52 @@
 # SG - Facial Recognition Production Pipeline
 
-Complete production-ready facial recognition system with morphological analysis capabilities.
+Complete production-ready facial recognition system with morphological and anthropometric analysis capabilities.
 
 ## Project Structure
 
 ```
 SG/
-├── frontal_prod/                   # Frontal facial analysis module
-│   └── morfologico/               # Morphological facial analysis
-│       ├── app/                   # FastAPI application
-│       │   ├── main.py           # API endpoints and startup
-│       │   ├── models/           # Model implementations
-│       │   │   ├── facial_analysis_pipeline.py
-│       │   │   └── anthropometric_detection.py
-│       │   └── utils/            # Utility functions
+├── frontal_prod/                   # Frontal facial analysis modules
+│   ├── morfologico/               # Morphological facial analysis
+│   │   ├── app/                   # FastAPI application
+│   │   │   ├── main.py           # API endpoints and startup
+│   │   │   ├── models/           # Model implementations
+│   │   │   │   ├── facial_analysis_pipeline.py
+│   │   │   │   └── anthropometric_detection.py
+│   │   │   └── utils/            # Utility functions
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/               # Trained model weights
+│   │   │   ├── facial_landmarks_detection_model.pth    (158MB)
+│   │   │   ├── facial_points_detection_model.pth       (158MB)
+│   │   │   └── best_facial_landmark_classifier.pth     (3.6MB)
+│   │   ├── Dockerfile            # Container configuration
+│   │   ├── docker-compose.yml    # Service orchestration
+│   │   ├── requirements.txt      # Python dependencies
+│   │   └── results/              # Generated visualizations
+│   └── antropometrico/           # Anthropometric facial analysis
+│       ├── app/                  # FastAPI application
+│       │   ├── main.py          # API endpoints and startup
+│       │   ├── models/          # Model implementations
+│       │   │   └── anthropometric_pipeline.py
+│       │   └── utils/           # Utility functions
 │       │       ├── visualization.py
 │       │       └── image_processing.py
-│       ├── models/               # Trained model weights
-│       │   ├── facial_landmarks_detection_model.pth    (158MB)
-│       │   ├── facial_points_detection_model.pth       (158MB)
-│       │   └── best_facial_landmark_classifier.pth     (3.6MB)
-│       ├── Dockerfile            # Container configuration
-│       ├── docker-compose.yml    # Service orchestration
-│       ├── requirements.txt      # Python dependencies
-│       └── results/              # Generated visualizations
-├── .gitattributes               # Git LFS configuration
-├── .gitignore                   # Git ignore rules
-└── README.md                    # This file
+│       ├── models/              # Trained model weights
+│       │   ├── facial_points_detection_model.pth        (158MB)
+│       │   └── shape_predictor_68_face_landmarks.dat    (95MB)
+│       ├── Dockerfile           # Container configuration
+│       ├── docker-compose.yml   # Service orchestration
+│       ├── requirements.txt     # Python dependencies
+│       └── results/             # Generated visualizations
+├── .gitattributes              # Git LFS configuration
+├── .gitignore                  # Git ignore rules
+└── README.md                   # This file
 ```
 
 ## Features
 
-### Morphological Facial Analysis
+### Morphological Facial Analysis (Port 8000)
 - **3-Model Ensemble Architecture**:
   - Facial landmark detection (Faster R-CNN)
   - Characteristic classification (CNN)
@@ -41,6 +56,19 @@ SG/
 - **Production Ready**: Docker containerization
 - **RESTful API**: FastAPI with automatic documentation
 
+### Anthropometric Facial Analysis (Port 8001)
+- **Hybrid Detection System**:
+  - 68 standard dlib facial landmarks
+  - Custom Faster R-CNN for 3 key anthropometric points
+  - Enhanced facial proportion calculations
+- **Advanced Measurements**:
+  - Facial thirds analysis with model-enhanced precision
+  - Eye relationship analysis
+  - Mouth-pupil proportions
+  - Eyebrow slope calculations
+- **Model Integration**: Uses custom trained points to replace inferred measurements
+- **Independent Service**: Completely separate from morfologico module
+
 ## Quick Start
 
 ### Prerequisites
@@ -48,7 +76,7 @@ SG/
 - NVIDIA GPU with drivers (recommended)
 - NVIDIA Container Toolkit (for GPU support)
 
-### Deployment
+### Deploy Morfologico Module
 
 ```bash
 # Clone the repository
@@ -65,14 +93,49 @@ docker compose up --build -d
 curl http://localhost:8000/health
 ```
 
-### API Documentation
-Once deployed, access the interactive API documentation at:
+### Deploy Antropometrico Module
+
+```bash
+# Navigate to anthropometric analysis
+cd frontal_prod/antropometrico
+
+# Deploy with GPU acceleration
+docker compose up --build -d
+
+# Check health
+curl http://localhost:8001/health
+```
+
+### Deploy Both Modules
+
+```bash
+# Deploy both services independently
+cd frontal_prod/morfologico
+docker compose up --build -d
+
+cd ../antropometrico
+docker compose up --build -d
+
+# Both services now running:
+# - Morfologico: http://localhost:8000
+# - Antropometrico: http://localhost:8001
+```
+
+## API Documentation
+
+### Morfologico Module
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+### Antropometrico Module
+- **Swagger UI**: http://localhost:8001/docs
+- **ReDoc**: http://localhost:8001/redoc
+
 ## API Endpoints
 
-### Complete Facial Analysis
+### Morfologico Module (Port 8000)
+
+#### Complete Facial Analysis
 ```bash
 curl -X POST "http://localhost:8000/analyze-face" \
   -H "Content-Type: multipart/form-data" \
@@ -81,12 +144,30 @@ curl -X POST "http://localhost:8000/analyze-face" \
   -F "include_visualization=true"
 ```
 
-### Individual Components
+#### Individual Components
 - **Facial Landmarks**: `POST /detect-landmarks`
 - **Anthropometric Points**: `POST /detect-points`
 - **Health Check**: `GET /health`
 
-### Response Format
+### Antropometrico Module (Port 8001)
+
+#### Complete Anthropometric Analysis
+```bash
+curl -X POST "http://localhost:8001/analyze-anthropometric" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_visualization=true"
+```
+
+#### Individual Components
+- **Facial Landmarks**: `POST /detect-landmarks`
+- **Model Points**: `POST /detect-points`
+- **Health Check**: `GET /health`
+
+## Response Formats
+
+### Morfologico Response
 ```json
 {
   "facial_landmarks": {
@@ -105,9 +186,44 @@ curl -X POST "http://localhost:8000/analyze-face" \
 }
 ```
 
+### Antropometrico Response
+```json
+{
+  "facial_landmarks": {
+    "count": 68,
+    "extended_points": 73
+  },
+  "model_predictions": {
+    "1": [243, 154],
+    "2": [243, 131],
+    "3": [149, 509]
+  },
+  "proportions": {
+    "distance_69_68_proportion": 0.324,
+    "distance_68_34_proportion": 0.331,
+    "distance_34_9_proportion": 0.345,
+    "eye_distance_proportion": 0.469,
+    "mouth_to_eye_proportion": 0.615
+  },
+  "analysis_summary": {
+    "facial_thirds": {
+      "primer_tercio": "tercio superior standard",
+      "segundo_tercio": "tercio medio standard",
+      "tercer_tercio": "tercio inferior standard"
+    },
+    "model_integration": {
+      "point_2_used": true,
+      "point_3_used": true,
+      "point_1_detected": true
+    }
+  },
+  "visualization_path": "/app/results/anthropometric_xxx.jpg"
+}
+```
+
 ## Model Information
 
-### Included Models
+### Morfologico Models
 1. **Facial Landmarks Detection** (158MB)
    - Architecture: Faster R-CNN ResNet50 FPN
    - Classes: 18 facial regions (eyes, nose, mouth, etc.)
@@ -120,12 +236,32 @@ curl -X POST "http://localhost:8000/analyze-face" \
    - Architecture: Custom CNN
    - Classes: 50 facial characteristics and features
 
-### Model Storage
-Large model files (>100MB) are stored using Git LFS for efficient repository management.
+### Antropometrico Models
+1. **dlib Facial Landmarks** (95MB)
+   - Pre-trained 68-point facial landmark detector
+   - Standard facial feature detection
+
+2. **Custom Facial Points Detection** (158MB)
+   - Architecture: Faster R-CNN ResNet50 FPN
+   - Classes: 3 key anthropometric points (between eyebrows, top of head, reference point)
+   - Enhances dlib landmarks with model-predicted precision points
+
+## Analysis Output Labels
+
+### Antropometrico Facial Thirds Classification
+- **tercio superior largo/corto/standard** - First third proportion analysis
+- **tercio medio largo/corto/standard** - Second third proportion analysis  
+- **tercio inferior largo/corto/standard** - Third third proportion analysis
+
+### Eye Relationship Analysis
+- **Cercanos/Standard/Lejanos** - Internal eye spacing classification
+
+### Mouth-Pupil Relationship
+- **boca grande/pequeña/estándar en relación a las pupilas** - Mouth size relative to eye spacing
 
 ## Configuration
 
-### GPU Production Setup
+### GPU Production Setup (Both Modules)
 ```yaml
 # docker-compose.yml
 environment:
@@ -149,59 +285,55 @@ environment:
 
 ## Development
 
-### Local Development
+### Local Development - Morfologico
 ```bash
 cd frontal_prod/morfologico
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run locally
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Testing
+### Local Development - Antropometrico
 ```bash
-# Test with sample image
-curl -X POST "http://localhost:8000/analyze-face" \
-  -F "file=@test_image.jpg" \
-  -F "confidence_threshold=0.5"
-
-# View generated visualization
-# Check results/ directory or access via API
+cd frontal_prod/antropometrico
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 ## Production Deployment
 
 ### System Requirements
 - **GPU**: NVIDIA GPU with 4GB+ VRAM (recommended)
-- **RAM**: 8GB+ system memory
-- **Storage**: 2GB+ for models and containers
+- **RAM**: 12GB+ system memory (for both modules)
+- **Storage**: 4GB+ for models and containers
 - **CPU**: Multi-core processor for preprocessing
 
-### Scaling
-For high-throughput production:
-- Deploy multiple container instances
+### Independent Scaling
+Each module can be scaled independently:
+- Deploy multiple instances of either module
 - Use load balancer for request distribution
-- Configure GPU memory optimization
+- Configure GPU memory optimization per module
 - Implement request queuing for batch processing
 
 ### Monitoring
 ```bash
-# Container health
+# Morfologico health
+curl http://localhost:8000/health
+
+# Antropometrico health  
+curl http://localhost:8001/health
+
+# Container status
 docker compose ps
 
 # GPU utilization
 nvidia-smi
-
-# API metrics
-curl http://localhost:8000/health
 ```
 
 ## Architecture Roadmap
 
 ### Current: Frontal Analysis
 - ✅ `frontal_prod/morfologico/` - Morphological facial analysis
+- ✅ `frontal_prod/antropometrico/` - Anthropometric facial analysis
 
 ### Planned Extensions
 - 🔄 `frontal_prod/[other_analysis]/` - Additional frontal analysis types
@@ -213,10 +345,10 @@ curl http://localhost:8000/health
 
 ### Issues & Questions
 - Repository: https://github.com/quantileMX/SG
-- Documentation: See `/docs` endpoint when API is running
+- Documentation: See `/docs` endpoint when APIs are running
 
 ### Model Access
-All trained model weights are included in this repository via Git LFS. No additional downloads required.
+All trained model weights are included in this repository. Large files use Git LFS for efficient repository management.
 
 ## License
 
