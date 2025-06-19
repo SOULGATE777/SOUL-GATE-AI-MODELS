@@ -1,13 +1,13 @@
 # SG - Facial Recognition Production Pipeline
 
-Complete production-ready facial recognition system with morphological, anthropometric, and validation analysis capabilities.
+Complete production-ready facial recognition system with morphological, anthropometric, and validation analysis capabilities for both frontal and profile views.
 
 ## Project Structure
 
 ```
-SG/
+SG_prod/
 ├── frontal_prod/                   
-│   ├── validacion/                 
+│   ├── validacion/                 (Port 8002)
 │   │   ├── app/                   
 │   │   │   ├── main.py           
 │   │   │   ├── models/           
@@ -16,12 +16,12 @@ SG/
 │   │   │       ├── visualization.py
 │   │   │       └── image_processing.py
 │   │   ├── models/               
-│   │   │   └── best.pt                              
+│   │   │   └── best.pt
 │   │   ├── Dockerfile            
 │   │   ├── docker-compose.yml     
 │   │   ├── requirements.txt      
 │   │   └── results/              
-│   ├── morfologico/               
+│   ├── morfologico/               (Port 8000)
 │   │   ├── app/                   
 │   │   │   ├── main.py           
 │   │   │   ├── models/           
@@ -31,14 +31,14 @@ SG/
 │   │   │       ├── visualization.py
 │   │   │       └── image_processing.py
 │   │   ├── models/               
-│   │   │   ├── facial_landmarks_detection_model.pth    (158MB)
-│   │   │   ├── facial_points_detection_model.pth       (158MB)
-│   │   │   └── best_facial_landmark_classifier.pth     (3.6MB)
+│   │   │   ├── facial_landmarks_detection_model.pth
+│   │   │   ├── facial_points_detection_model.pth
+│   │   │   └── best_facial_landmark_classifier.pth
 │   │   ├── Dockerfile            
 │   │   ├── docker-compose.yml     
 │   │   ├── requirements.txt      
 │   │   └── results/              
-│   └── antropometrico/           
+│   └── antropometrico/           (Port 8001)
 │       ├── app/                  
 │       │   ├── main.py          
 │       │   ├── models/          
@@ -47,8 +47,54 @@ SG/
 │       │       ├── visualization.py
 │       │       └── image_processing.py
 │       ├── models/              
-│       │   ├── facial_points_detection_model.pth        (158MB)
-│       │   └── shape_predictor_68_face_landmarks.dat    (95MB)
+│       │   ├── facial_points_detection_model.pth
+│       │   └── shape_predictor_68_face_landmarks.dat
+│       ├── Dockerfile           
+│       ├── docker-compose.yml   
+│       ├── requirements.txt     
+│       └── results/             
+├── profile_prod/
+│   ├── validacion/                 (Port 8005)
+│   │   ├── app/                   
+│   │   │   ├── main.py           
+│   │   │   ├── models/           
+│   │   │   │   └── profile_validation_pipeline.py
+│   │   │   └── utils/            
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/               
+│   │   │   └── profile_best.pt
+│   │   ├── Dockerfile            
+│   │   ├── docker-compose.yml     
+│   │   ├── requirements.txt      
+│   │   └── results/              
+│   ├── morfologico/               (Port 8003)
+│   │   ├── app/                   
+│   │   │   ├── main.py           
+│   │   │   ├── models/           
+│   │   │   │   ├── profile_analysis_pipeline.py
+│   │   │   │   └── profile_detection.py
+│   │   │   └── utils/            
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/               
+│   │   │   ├── profile_landmarks_detection_model.pth
+│   │   │   ├── profile_features_detection_model.pth
+│   │   │   └── profile_classifier.pth
+│   │   ├── Dockerfile            
+│   │   ├── docker-compose.yml     
+│   │   ├── requirements.txt      
+│   │   └── results/              
+│   └── antropometrico/           (Port 8004)
+│       ├── app/                  
+│       │   ├── main.py          
+│       │   ├── models/          
+│       │   │   └── profile_anthropometric_pipeline.py
+│       │   └── utils/           
+│       │       ├── visualization.py
+│       │       └── image_processing.py
+│       ├── models/              
+│       │   └── profile_aware_point_detection_model.pth
 │       ├── Dockerfile           
 │       ├── docker-compose.yml   
 │       ├── requirements.txt     
@@ -60,7 +106,9 @@ SG/
 
 ## Features
 
-### Facial Feature Validation (Port 8002) - NEW
+### Frontal Analysis (Ports 8000-8002)
+
+#### Facial Feature Validation (Port 8002) 
 - **YOLO-Based Detection**: Custom trained YOLOv8 model for 17 facial feature classes
 - **Feature Categories**:
   - Hair Coverage (cabello_tapando_i, cabello_tapando_derecho, cabello_tapando_central)
@@ -73,11 +121,8 @@ SG/
   - Facial Points (p_d_g_iz, p_d_g_d, p_d_v)
 - **Image Quality Assessment**: Automatic evaluation of image suitability for analysis
 - **Smart Recommendations**: AI-powered suggestions for better image quality
-- **Beautiful Visualizations**: Color-coded detection boxes with category grouping
-- **GPU Acceleration**: Full CUDA support with PyTorch backend
-- **Production Ready**: Docker containerization with health monitoring
 
-### Morphological Facial Analysis (Port 8000)
+#### Morphological Facial Analysis (Port 8000)
 - **3-Model Ensemble Architecture**:
   - Facial landmark detection (Faster R-CNN)
   - Characteristic classification (CNN)
@@ -85,9 +130,8 @@ SG/
 - **GPU Acceleration**: Full CUDA support
 - **Beautiful Visualizations**: Modern, clean annotations
 - **Production Ready**: Docker containerization
-- **RESTful API**: FastAPI with automatic documentation
 
-### Anthropometric Facial Analysis (Port 8001)
+#### Anthropometric Facial Analysis (Port 8001)
 - **Hybrid Detection System**:
   - 68 standard dlib facial landmarks
   - Custom Faster R-CNN for 3 key anthropometric points
@@ -97,8 +141,35 @@ SG/
   - Eye relationship analysis
   - Mouth-pupil proportions
   - Eyebrow slope calculations
-- **Model Integration**: Uses custom trained points to replace inferred measurements
-- **Independent Service**: Completely separate from morfologico module
+
+### Profile Analysis (Ports 8003-8005) 🆕
+
+#### Profile Anthropometric Analysis (Port 8004) ✅ **ACTIVE**
+- **Profile-Specific Point Detection**: Custom trained model for profile anthropometric points
+- **Advanced Profile Measurements**:
+  - Nasal profile analysis (protrusion, angle, classification)
+  - Facial thirds in profile view
+  - Mandible classification (Sanguinea, Bilosa, Nerviosa, Linfática)
+  - Angular measurements (nose tip, forehead, chin angles)
+  - Ear morphology analysis (width, trago-antitrago proportions)
+- **Side Detection**: Automatic left/right profile determination with vector analysis
+- **Spurious Prediction Filtering**: Intelligent filtering of minority-side predictions
+- **Profile-Specific Visualizations**: Detailed analysis plots with measurement overlays
+- **GPU Acceleration**: Full CUDA support with CPU fallback
+
+#### Profile Morphological Analysis (Port 8003) 🔄 **PLANNED**
+- Profile-specific facial feature detection
+- Nasal profile classification (recta, aguileña, respingada, convexa)
+- Forehead profile analysis (recta, inclinada, prominente)
+- Chin profile assessment (prominente, retrasado, normal)
+- Overall profile classification (convexo, cóncavo, recto)
+
+#### Profile Validation (Port 8005) 🔄 **PLANNED**
+- Profile angle validation (true profile vs 3/4 view)
+- Profile-specific quality assessment
+- Hair coverage detection in profile
+- Profile accessories validation
+- Lighting and background analysis
 
 ## Quick Start
 
@@ -107,263 +178,154 @@ SG/
 - NVIDIA GPU with drivers (recommended)
 - NVIDIA Container Toolkit (for GPU support)
 
-### Deploy All Modules
+### Deploy All Active Modules
 
 ```bash
 # Clone the repository
-git clone https://github.com/quantileMX/SG.git
-cd SG/frontal_prod
+git clone https://github.com/quantileMX/SG_prod.git
+cd SG_prod
 
-# Deploy Validacion Module (Port 8002)
-cd validacion
-docker compose up --build -d
-cd ..
+# Deploy Frontal Modules
+cd frontal_prod
 
-# Deploy Morfologico Module (Port 8000)
-cd morfologico
-docker compose up --build -d
-cd ..
+# Frontal Validacion (Port 8002)
+cd validacion && docker compose up --build -d && cd ..
 
-# Deploy Antropometrico Module (Port 8001)
-cd antropometrico
-docker compose up --build -d
-cd ..
+# Frontal Morfologico (Port 8000)
+cd morfologico && docker compose up --build -d && cd ..
 
-# Check all services
-curl http://localhost:8000/health  # Morfologico
-curl http://localhost:8001/health  # Antropometrico
-curl http://localhost:8002/health  # Validacion
+# Frontal Antropometrico (Port 8001)
+cd antropometrico && docker compose up --build -d && cd ..
+
+# Deploy Profile Modules
+cd ../profile_prod
+
+# Profile Antropometrico (Port 8004) ✅ ACTIVE
+cd antropometrico && docker compose up --build -d && cd ..
+
+# Check all active services
+curl http://localhost:8000/health  # Frontal Morfologico
+curl http://localhost:8001/health  # Frontal Antropometrico
+curl http://localhost:8002/health  # Frontal Validacion
+curl http://localhost:8004/health  # Profile Antropometrico ✅
 ```
 
 ### Deploy Individual Modules
 
-#### Validacion Module
+#### Profile Antropometrico Module ✅
 ```bash
-cd frontal_prod/validacion
+cd profile_prod/antropometrico
 docker compose up --build -d
-curl http://localhost:8002/health
-```
-
-#### Morfologico Module
-```bash
-cd frontal_prod/morfologico
-docker compose up --build -d
-curl http://localhost:8000/health
-```
-
-#### Antropometrico Module
-```bash
-cd frontal_prod/antropometrico
-docker compose up --build -d
-curl http://localhost:8001/health
+curl http://localhost:8004/health
 ```
 
 ## API Documentation
 
-### Validacion Module (Port 8002)
-- **Swagger UI**: http://localhost:8002/docs
-- **ReDoc**: http://localhost:8002/redoc
+### Active Services
+- **Frontal Validacion (Port 8002)**: http://localhost:8002/docs
+- **Frontal Morfologico (Port 8000)**: http://localhost:8000/docs
+- **Frontal Antropometrico (Port 8001)**: http://localhost:8001/docs
+- **Profile Antropometrico (Port 8004)**: http://localhost:8004/docs ✅
 
-### Morfologico Module (Port 8000)
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### Antropometrico Module (Port 8001)
-- **Swagger UI**: http://localhost:8001/docs
-- **ReDoc**: http://localhost:8001/redoc
+### Planned Services
+- **Profile Morfologico (Port 8003)**: *Coming Soon*
+- **Profile Validacion (Port 8005)**: *Coming Soon*
 
 ## API Endpoints
 
-### Validacion Module (Port 8002)
+### Profile Antropometrico Module (Port 8004) ✅
 
-#### Complete Facial Feature Validation
+#### Complete Profile Anthropometric Analysis
 ```bash
-curl -X POST "http://localhost:8002/analyze-validation" \
+curl -X POST "http://localhost:8004/analyze-profile-anthropometric" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@image.jpg" \
-  -F "confidence_threshold=0.20" \
+  -F "file=@profile_image.jpg" \
+  -F "confidence_threshold=0.15" \
   -F "include_visualization=true"
 ```
 
-#### Feature Detection Only
+#### Profile Point Detection Only
 ```bash
-curl -X POST "http://localhost:8002/detect-features" \
+curl -X POST "http://localhost:8004/detect-profile-points" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@image.jpg" \
-  -F "confidence_threshold=0.20"
+  -F "file=@profile_image.jpg" \
+  -F "confidence_threshold=0.15"
 ```
 
 #### Health Check
 ```bash
-curl http://localhost:8002/health
+curl http://localhost:8004/health
 ```
-
-### Morfologico Module (Port 8000)
-
-#### Complete Facial Analysis
-```bash
-curl -X POST "http://localhost:8000/analyze-face" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@image.jpg" \
-  -F "confidence_threshold=0.5" \
-  -F "include_visualization=true"
-```
-
-#### Individual Components
-- **Facial Landmarks**: `POST /detect-landmarks`
-- **Anthropometric Points**: `POST /detect-points`
-- **Health Check**: `GET /health`
-
-### Antropometrico Module (Port 8001)
-
-#### Complete Anthropometric Analysis
-```bash
-curl -X POST "http://localhost:8001/analyze-anthropometric" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@image.jpg" \
-  -F "confidence_threshold=0.5" \
-  -F "include_visualization=true"
-```
-
-#### Individual Components
-- **Facial Landmarks**: `POST /detect-landmarks`
-- **Model Points**: `POST /detect-points`
-- **Health Check**: `GET /health`
 
 ## Response Formats
 
-### Validacion Response
+### Profile Antropometrico Response ✅
 ```json
 {
-  "detection_results": {
-    "total_detections": 5,
-    "detections": [...],
-    "class_counts": {"lentes": 1, "barba": 1},
-    "average_confidence": 0.756,
-    "high_confidence_count": 3
+  "analysis_id": "uuid-string",
+  "profile_analysis": {
+    "profile_side": "left|right|unknown",
+    "total_detected_points": 15,
+    "filtered_points": 12,
+    "anthropometric_points": [
+      {
+        "class": "24",
+        "coordinates": [x, y],
+        "confidence": 0.856
+      }
+    ]
   },
-  "feature_analysis": {
-    "categorized_features": {...},
-    "feature_summary": {...}
-  },
-  "validation_summary": {
-    "image_suitable": true,
-    "suitability_score": 85,
-    "quality_issues": [],
-    "recommendations": [...]
-  },
-  "visualization_path": "/app/results/validation_xxx.jpg",
-  "visualization_url": "/visualization/validation_xxx.jpg"
-}
-```
-
-### Morfologico Response
-```json
-{
-  "facial_landmarks": {
-    "count": 16,
-    "detections": [...]
-  },
-  "anthropometric_points": {
-    "count": 20,
-    "detections": [...]
-  },
-  "summary": {
-    "total_detections": 36,
-    "confidence_threshold": 0.5
-  },
-  "visualization_path": "/app/results/analysis_xxx.jpg"
-}
-```
-
-### Antropometrico Response
-```json
-{
-  "facial_landmarks": {
-    "count": 68,
-    "extended_points": 73
-  },
-  "model_predictions": {
-    "1": [243, 154],
-    "2": [243, 131],
-    "3": [149, 509]
-  },
-  "proportions": {
-    "distance_69_68_proportion": 0.324,
-    "distance_68_34_proportion": 0.331,
-    "distance_34_9_proportion": 0.345,
-    "eye_distance_proportion": 0.469,
-    "mouth_to_eye_proportion": 0.615
+  "anthropometric_measurements": {
+    "reference_distance": 245.67,
+    "nose_classification": "nariz normal",
+    "nose_normalized": 0.152,
+    "tercio_superior_normalized": 0.334,
+    "tercio_medio_normalized": 0.331,
+    "tercio_inferior_normalized": 0.335,
+    "mandibula_classification": "Mandibula Bilosa",
+    "nose_tip_angle": 12.5,
+    "nose_tip_classification": "punta de nariz promedio",
+    "ear_width": 78.45,
+    "trago_antitrago_proportion": 0.245
   },
   "analysis_summary": {
-    "facial_thirds": {
-      "primer_tercio": "tercio superior standard",
-      "segundo_tercio": "tercio medio standard",
-      "tercer_tercio": "tercio inferior standard"
-    },
-    "model_integration": {
-      "point_2_used": true,
-      "point_3_used": true,
-      "point_1_detected": true
-    }
+    "confidence_threshold": 0.15,
+    "has_measurements": true,
+    "profile_determination": "left"
   },
-  "visualization_path": "/app/results/anthropometric_xxx.jpg"
+  "visualization_path": "/app/results/profile_anthropometric_xxx.png",
+  "visualization_url": "/visualization/profile_anthropometric_xxx.png"
 }
 ```
 
 ## Model Information
 
-### Validacion Models
-1. **YOLO Facial Feature Detection** (Custom size)
-   - Architecture: YOLOv8 Custom Trained
-   - Classes: 17 facial features and characteristics
-   - Features: piercing, cabello_tapando_*, tatuaje, barba, facial_points, lentes, etc.
+### Profile Models ✅
 
-### Morfologico Models
-1. **Facial Landmarks Detection** (158MB)
-   - Architecture: Faster R-CNN ResNet50 FPN
-   - Classes: 18 facial regions (eyes, nose, mouth, etc.)
+#### Profile Anthropometric Point Detection (Custom)
+- **Architecture**: Custom ResNet50-based model with attention mechanisms
+- **Classes**: 25+ profile anthropometric points with left/right variants
+- **Features**: Profile-aware training, side detection, spurious prediction filtering
+- **Input Size**: 224x224 pixels
+- **Output**: Heatmaps + profile classification logits
 
-2. **Facial Points Detection** (158MB)
-   - Architecture: Faster R-CNN ResNet50 FPN
-   - Classes: 13 anthropometric measurement points
+### Profile Analysis Classifications
 
-3. **Characteristic Classification** (3.6MB)
-   - Architecture: Custom CNN
-   - Classes: 50 facial characteristics and features
+#### Nasal Profile Analysis
+- **Protrusion**: nariz protruyente, nariz normal, nariz corta
+- **Tip Angle**: punta muy hacia arriba, punta hacia arriba, punta promedio, punta hacia abajo
 
-### Antropometrico Models
-1. **dlib Facial Landmarks** (95MB)
-   - Pre-trained 68-point facial landmark detector
-   - Standard facial feature detection
+#### Mandible Classification
+- **Mandíbula Sanguínea**: Strong, prominent mandible (≥0.75 proportion)
+- **Mandíbula Bilosa**: Medium mandible (0.20-0.65 proportion)
+- **Mandíbula Nerviosa**: Weak mandible (≤0.10 proportion)
+- **Mandíbula Linfática**: Absent mandible definition
 
-2. **Custom Facial Points Detection** (158MB)
-   - Architecture: Faster R-CNN ResNet50 FPN
-   - Classes: 3 key anthropometric points (between eyebrows, top of head, reference point)
-   - Enhances dlib landmarks with model-predicted precision points
-
-## Analysis Output Labels
-
-### Validacion Feature Categories
-- **Hair Coverage**: cabello_tapando_i, cabello_tapando_derecho, cabello_tapando_central
-- **Facial Hair**: barba, bc_bigote  
-- **Facial Expression**: bc_abierta, bc_sonriendo
-- **Accessories**: piercing, lentes, objeto_frente
-- **Body Modifications**: tatuaje
-- **Head Characteristics**: calvo
-- **Eye Features**: l_ej_i, l_ej_d
-- **Facial Points**: p_d_g_iz, p_d_g_d, p_d_v
-
-### Antropometrico Facial Thirds Classification
-- **tercio superior largo/corto/standard** - First third proportion analysis
-- **tercio medio largo/corto/standard** - Second third proportion analysis  
-- **tercio inferior largo/corto/standard** - Third third proportion analysis
-
-### Eye Relationship Analysis
-- **Cercanos/Standard/Lejanos** - Internal eye spacing classification
-
-### Mouth-Pupil Relationship
-- **boca grande/pequeña/estándar en relación a las pupilas** - Mouth size relative to eye spacing
+#### Facial Thirds (Profile)
+- **Tercio Superior**: Hairline to eyebrow level
+- **Tercio Medio**: Eyebrow to nasal base
+- **Tercio Inferior**: Nasal base to chin
+- Classifications: largo/corto/standard for each third
 
 ## Configuration
 
@@ -391,34 +353,30 @@ environment:
 
 ## Development
 
-### Local Development - Validacion
+### Local Development - Profile Antropometrico ✅
 ```bash
-cd frontal_prod/validacion
+cd profile_prod/antropometrico
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8002
-```
-
-### Local Development - Morfologico
-```bash
-cd frontal_prod/morfologico
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Local Development - Antropometrico
-```bash
-cd frontal_prod/antropometrico
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8004
 ```
 
 ## Production Deployment
 
 ### System Requirements
 - **GPU**: NVIDIA GPU with 4GB+ VRAM (recommended)
-- **RAM**: 16GB+ system memory (for all three modules)
-- **Storage**: 6GB+ for models and containers
+- **RAM**: 20GB+ system memory (for all active modules)
+- **Storage**: 8GB+ for models and containers
 - **CPU**: Multi-core processor for preprocessing
+
+### Port Allocation
+- **Frontal Analysis**: 8000-8002
+  - Morfológico: 8000
+  - Antropométrico: 8001  
+  - Validación: 8002
+- **Profile Analysis**: 8003-8005
+  - Morfológico: 8003 (Planned)
+  - Antropométrico: 8004 ✅ **Active**
+  - Validación: 8005 (Planned)
 
 ### Independent Scaling
 Each module can be scaled independently:
@@ -429,10 +387,11 @@ Each module can be scaled independently:
 
 ### Monitoring
 ```bash
-# All modules health
-curl http://localhost:8000/health  # Morfologico
-curl http://localhost:8001/health  # Antropometrico  
-curl http://localhost:8002/health  # Validacion
+# All active modules health
+curl http://localhost:8000/health  # Frontal Morfologico
+curl http://localhost:8001/health  # Frontal Antropometrico  
+curl http://localhost:8002/health  # Frontal Validacion
+curl http://localhost:8004/health  # Profile Antropometrico ✅
 
 # Container status
 docker ps
@@ -443,26 +402,34 @@ nvidia-smi
 
 ## Architecture Roadmap
 
-### Current: Frontal Analysis
-- ✅ `frontal_prod/validacion/` - Facial feature validation and quality assessment
-- ✅ `frontal_prod/morfologico/` - Morphological facial analysis
-- ✅ `frontal_prod/antropometrico/` - Anthropometric facial analysis
+### Current Status
+- ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico (Ports 8000-8002)
+- ✅ **Profile Antropometrico**: Advanced profile anthropometric analysis (Port 8004)
+- 🔄 **Profile Morfologico**: Profile morphological analysis (Port 8003) - *In Development*
+- 🔄 **Profile Validacion**: Profile validation and quality assessment (Port 8005) - *In Development*
 
 ### Planned Extensions
-- 🔄 `frontal_prod/[other_analysis]/` - Additional frontal analysis types
-- 🔄 `profile_prod/` - Profile facial analysis
-- 🔄 `whole_body_prod/` - Full body analysis
-- 🔄 Master orchestration for multi-service deployment
+- 🔄 **Profile Analysis Completion**: Morfologico and Validacion modules
+- 🔄 **Whole Body Analysis**: Full body anthropometric measurements
+- 🔄 **Master Orchestration**: Multi-service deployment and result aggregation
+- 🔄 **3D Analysis Pipeline**: Depth-aware facial reconstruction
 
 ## Usage Workflow
 
 ### Recommended Analysis Pipeline
-1. **Validacion** (Port 8002): First validate image quality and detect potential issues
-2. **Morfologico** (Port 8000): Perform morphological facial analysis if image is suitable
-3. **Antropometrico** (Port 8001): Conduct detailed anthropometric measurements
+
+#### For Frontal Images
+1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues
+2. **Frontal Morfologico** (Port 8000): Perform morphological analysis if suitable
+3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements
+
+#### For Profile Images ✅
+1. **Profile Antropometrico** (Port 8004): Complete profile anthropometric analysis
+2. **Profile Morfologico** (Port 8003): Profile morphological analysis *(Coming Soon)*
+3. **Profile Validacion** (Port 8005): Profile quality validation *(Coming Soon)*
 
 ### Quality-First Approach
-The **Validacion** module serves as a quality gate, identifying:
+The **Validacion** modules serve as quality gates, identifying:
 - Hair covering facial features
 - Problematic accessories (glasses, objects)
 - Poor lighting or image quality
@@ -472,7 +439,7 @@ The **Validacion** module serves as a quality gate, identifying:
 ## Support
 
 ### Issues & Questions
-- Repository: https://github.com/quantileMX/SG
+- Repository: https://github.com/quantileMX/SG_prod
 - Documentation: See `/docs` endpoint when APIs are running
 
 ### Model Access
