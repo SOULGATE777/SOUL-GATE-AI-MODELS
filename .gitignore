@@ -39,3 +39,10 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+
+# Results and output images
+frontal_prod/*/results/*.jpg
+frontal_prod/*/results/*.jpeg
+frontal_prod/*/results/*.png
+frontal_prod/*/results/*.bmp
+frontal_prod/*/results/*.tiff
