@@ -6,42 +6,42 @@ Complete production-ready facial recognition system with morphological and anthr
 
 ```
 SG/
-├── frontal_prod/                   # Frontal facial analysis modules
-│   ├── morfologico/               # Morphological facial analysis
-│   │   ├── app/                   # FastAPI application
-│   │   │   ├── main.py           # API endpoints and startup
-│   │   │   ├── models/           # Model implementations
+├── frontal_prod/                   
+│   ├── morfologico/               
+│   │   ├── app/                   
+│   │   │   ├── main.py           
+│   │   │   ├── models/           
 │   │   │   │   ├── facial_analysis_pipeline.py
 │   │   │   │   └── anthropometric_detection.py
-│   │   │   └── utils/            # Utility functions
+│   │   │   └── utils/            
 │   │   │       ├── visualization.py
 │   │   │       └── image_processing.py
-│   │   ├── models/               # Trained model weights
+│   │   ├── models/               
 │   │   │   ├── facial_landmarks_detection_model.pth    (158MB)
 │   │   │   ├── facial_points_detection_model.pth       (158MB)
 │   │   │   └── best_facial_landmark_classifier.pth     (3.6MB)
-│   │   ├── Dockerfile            # Container configuration
-│   │   ├── docker-compose.yml    # Service orchestration
-│   │   ├── requirements.txt      # Python dependencies
-│   │   └── results/              # Generated visualizations
-│   └── antropometrico/           # Anthropometric facial analysis
-│       ├── app/                  # FastAPI application
-│       │   ├── main.py          # API endpoints and startup
-│       │   ├── models/          # Model implementations
+│   │   ├── Dockerfile            
+│   │   ├── docker-compose.yml     
+│   ├── requirements.txt      
+│   │   └── results/              
+│   └── antropometrico/           
+│       ├── app/                  
+│       │   ├── main.py          
+│       │   ├── models/          
 │       │   │   └── anthropometric_pipeline.py
-│       │   └── utils/           # Utility functions
+│       │   └── utils/           
 │       │       ├── visualization.py
 │       │       └── image_processing.py
-│       ├── models/              # Trained model weights
+│       ├── models/              
 │       │   ├── facial_points_detection_model.pth        (158MB)
 │       │   └── shape_predictor_68_face_landmarks.dat    (95MB)
-│       ├── Dockerfile           # Container configuration
-│       ├── docker-compose.yml   # Service orchestration
-│       ├── requirements.txt     # Python dependencies
-│       └── results/             # Generated visualizations
-├── .gitattributes              # Git LFS configuration
-├── .gitignore                  # Git ignore rules
-└── README.md                   # This file
+│       ├── Dockerfile           
+│       ├── docker-compose.yml   
+│       ├── requirements.txt     
+│       └── results/             
+├── .gitattributes              
+├── .gitignore                  
+└── README.md                   
 ```
 
 ## Features
