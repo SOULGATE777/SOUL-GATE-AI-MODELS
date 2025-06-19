@@ -1,0 +1,26 @@
+services:
+  validacion:
+    build: .
+    container_name: sg_validacion
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./results:/app/results
+      - ./models:/app/models:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
