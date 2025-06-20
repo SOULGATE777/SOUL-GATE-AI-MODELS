@@ -502,3 +502,4 @@ All trained model weights are included in this repository. Large files use Git L
 [Add appropriate license information]
 ---
 **quantileMX** - Advanced AI Solutions
+
