@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  profile-morfologico:
+    build: .
+    container_name: profile_morfologico_service
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./results:/app/results
+      - ./models:/app/models:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - profile_network
+
+networks:
+  profile_network:
+    driver: bridge
+
