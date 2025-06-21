@@ -1,5 +1,5 @@
-# SG - Facial Recognition Production Pipeline
-Complete production-ready facial recognition system with morphological, anthropometric, and validation analysis capabilities for both frontal and profile views.
+# SG - Complete AI Analysis Production Pipeline
+Complete production-ready AI analysis system with facial recognition, body analysis, morphological, anthropometric, and validation capabilities for frontal, profile, and full body views.
 
 ## Project Structure
 ```
@@ -97,6 +97,35 @@ SG_prod/
 │       ├── docker-compose.yml   
 │       ├── requirements.txt     
 │       └── results/             
+├── body_prod/                      ✅ **NEW COMPLETE**
+│   ├── morfologico/               (Port 8006) ✅ **NEW COMPLETE**
+│   │   ├── app/                   
+│   │   │   ├── main.py           
+│   │   │   ├── models/           
+│   │   │   │   └── body_analysis_pipeline.py
+│   │   │   └── utils/            
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/               
+│   │   │   └── lightweight_body_classifier.pth
+│   │   ├── Dockerfile            
+│   │   ├── docker-compose.yml     
+│   │   ├── requirements.txt      
+│   │   └── results/              
+│   └── antropometrico/           (Port 8007) ✅ **NEW COMPLETE**
+│       ├── app/                  
+│       │   ├── main.py          
+│       │   ├── models/          
+│       │   │   └── anthropometric_pipeline.py
+│       │   └── utils/           
+│       │       ├── visualization.py
+│       │       └── image_processing.py
+│       ├── models/              
+│       │   └── yolov8n-pose.pt
+│       ├── Dockerfile           
+│       ├── docker-compose.yml   
+│       ├── requirements.txt     
+│       └── results/             
 ├── .gitattributes              
 ├── .gitignore                  
 └── README.md                   
@@ -186,6 +215,43 @@ SG_prod/
 - **NMS Filtering**: Per-class non-maximum suppression for clean detections
 - **GPU Acceleration**: Full CUDA support with CPU fallback
 
+### Body Analysis (Ports 8006-8007) ✅ **ALL COMPLETE** ✅ **NEW!**
+
+#### Body Morphological Analysis (Port 8006) ✅ **NEW COMPLETE**
+- **LightweightHierarchicalModel**: ResNet18-based architecture optimized for body type classification
+- **7 Body Type Classifications**:
+  - Bilioso/NormalPocaGrasa (Normal Poca Grasa)
+  - Nervioso/Delgado (Delgado)
+  - SanguineoLinfatico/MusculosoGordo (Musculoso Gordo)
+  - Sanguineo/Musculoso (Musculoso)
+  - Flematico/Gordograsacuelga (Gordo Grasa Cuelga)
+  - Linfatico/Gordo (Gordo)
+  - BiliosoSanguineo/NormalMusculoso (Normal Musculoso)
+- **Gender Classification**: Hombre/Mujer prediction with confidence scores
+- **Morphological Insights**: Body composition, metabolic tendencies, physical characteristics
+- **Advanced Analysis**: Confidence metrics, prediction certainty levels, consistency assessment
+- **Hierarchical Classification**: Coarse and fine-grained body type predictions
+- **GPU Acceleration**: Full CUDA support with CPU fallback
+
+#### Body Anthropometric Analysis (Port 8007) ✅ **NEW COMPLETE**
+- **YOLOv8n Pose Detection**: 17-keypoint full body pose estimation
+- **Precise Skull Detection**: Anatomical proportions + contour refinement methodology
+- **Advanced Skull Measurements**:
+  - Skull-to-body ratio calculations (adult: 12.5-14.3%, child: 16-18%)
+  - Head orientation analysis and tilt compensation
+  - Anatomical assessment and age estimation
+  - Multi-method skull detection (nose-centered, eye-centered, contour-refined)
+- **Body Proportion Analysis**:
+  - Full body keypoint detection and grouping
+  - Body part measurements and relationships
+  - Pose quality assessment for anthropometric reliability
+- **Comprehensive Analysis**:
+  - Detailed anatomical insights and recommendations
+  - Confidence analysis for all detected keypoints
+  - Quality metrics and measurement reliability assessment
+- **Advanced Visualizations**: Multi-panel anthropometric dashboards with detailed reports
+- **GPU Acceleration**: Full CUDA support with CPU fallback
+
 ## Quick Start
 
 ### Prerequisites
@@ -193,7 +259,7 @@ SG_prod/
 - NVIDIA GPU with drivers (recommended)
 - NVIDIA Container Toolkit (for GPU support)
 
-### Deploy All Complete Modules ✅
+### Deploy All Complete Modules ✅ **ALL 8 MODULES**
 
 ```bash
 # Clone the repository
@@ -221,28 +287,46 @@ cd morfologico && docker compose up --build -d && cd ..
 # Profile Antropometrico (Port 8004) ✅
 cd antropometrico && docker compose up --build -d && cd ..
 
-# Profile Validacion (Port 8005) ✅ NEW!
+# Profile Validacion (Port 8005) ✅
 cd validacion && docker compose up --build -d && cd ..
 
-# Check all active services ✅
+# Deploy Body Modules ✅ ALL COMPLETE ✅ NEW!
+cd ../body_prod
+
+# Body Morfologico (Port 8006) ✅ NEW!
+cd morfologico && docker compose up --build -d && cd ..
+
+# Body Antropometrico (Port 8007) ✅ NEW!
+cd antropometrico && docker compose up --build -d && cd ..
+
+# Check all active services ✅ ALL 8 MODULES
 curl http://localhost:8000/health  # Frontal Morfologico ✅
 curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
 curl http://localhost:8003/health  # Profile Morfologico ✅
 curl http://localhost:8004/health  # Profile Antropometrico ✅
-curl http://localhost:8005/health  # Profile Validacion ✅ NEW!
+curl http://localhost:8005/health  # Profile Validacion ✅
+curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
+curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
 ```
 
-### Deploy Individual Modules
+### Deploy Individual Body Modules ✅ **NEW**
 
-#### Profile Validacion Module ✅ **NEW COMPLETE**
+#### Body Morphological Analysis Module ✅ **NEW COMPLETE**
 ```bash
-cd profile_prod/validacion
+cd body_prod/morfologico
 docker compose up --build -d
-curl http://localhost:8005/health
+curl http://localhost:8006/health
 ```
 
-## API Documentation ✅ **ALL SERVICES ACTIVE**
+#### Body Anthropometric Analysis Module ✅ **NEW COMPLETE**
+```bash
+cd body_prod/antropometrico
+docker compose up --build -d
+curl http://localhost:8007/health
+```
+
+## API Documentation ✅ **ALL 8 SERVICES ACTIVE**
 
 ### Complete Active Services
 - **Frontal Validacion (Port 8002)**: http://localhost:8002/docs ✅ **COMPLETE**
@@ -251,109 +335,177 @@ curl http://localhost:8005/health
 - **Profile Morfologico (Port 8003)**: http://localhost:8003/docs ✅ **COMPLETE**
 - **Profile Antropometrico (Port 8004)**: http://localhost:8004/docs ✅ **COMPLETE**
 - **Profile Validacion (Port 8005)**: http://localhost:8005/docs ✅ **COMPLETE**
+- **Body Morfologico (Port 8006)**: http://localhost:8006/docs ✅ **NEW COMPLETE**
+- **Body Antropometrico (Port 8007)**: http://localhost:8007/docs ✅ **NEW COMPLETE**
 
 ## API Endpoints
 
-### Profile Validacion Module (Port 8005) ✅ **NEW COMPLETE**
+### Body Morphological Analysis Module (Port 8006) ✅ **NEW COMPLETE**
 
-#### Complete Profile Validation Analysis
+#### Complete Body Type Analysis
 ```bash
-curl -X POST "http://localhost:8005/analyze-profile-validation" \
+curl -X POST "http://localhost:8006/analyze-body-morphology" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@profile_image.jpg" \
+  -F "file=@body_image.jpg" \
   -F "confidence_threshold=0.5" \
-  -F "include_visualization=true"
+  -F "include_visualization=true" \
+  -F "detailed_analysis=true"
 ```
 
-#### Profile Occlusion Detection Only
+#### Body Type Classification Only
 ```bash
-curl -X POST "http://localhost:8005/detect-profile-occlusions" \
+curl -X POST "http://localhost:8006/classify-body-type" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@profile_image.jpg" \
+  -F "file=@body_image.jpg" \
   -F "confidence_threshold=0.5"
 ```
 
-#### Profile Quality Assessment
+#### Batch Body Classification
 ```bash
-curl -X POST "http://localhost:8005/assess-profile-quality" \
+curl -X POST "http://localhost:8006/batch-classify" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@profile_image.jpg"
+  -F "files=@image1.jpg" \
+  -F "files=@image2.jpg" \
+  -F "confidence_threshold=0.5"
 ```
 
-#### Model Information
+### Body Anthropometric Analysis Module (Port 8007) ✅ **NEW COMPLETE**
+
+#### Complete Anthropometric Analysis
 ```bash
-curl http://localhost:8005/model-info
+curl -X POST "http://localhost:8007/analyze-body-anthropometry" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@body_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_visualization=true" \
+  -F "detailed_analysis=true"
 ```
 
-#### Health Check
+#### Skull Measurements Only
 ```bash
-curl http://localhost:8005/health
+curl -X POST "http://localhost:8007/detect-skull-measurements" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@body_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_contour_refinement=true"
+```
+
+#### Pose Detection Only
+```bash
+curl -X POST "http://localhost:8007/detect-pose-keypoints" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@body_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
+#### Health Checks
+```bash
+curl http://localhost:8006/health  # Body Morfologico
+curl http://localhost:8007/health  # Body Antropometrico
+curl http://localhost:8006/model-info  # Body Type Model Info
+curl http://localhost:8007/model-info  # Pose Detection Model Info
 ```
 
 ## Response Formats
 
-### Profile Validacion Response ✅ **NEW**
+### Body Morphological Analysis Response ✅ **NEW**
 ```json
 {
   "analysis_id": "uuid-string",
-  "validation_status": {
-    "is_suitable": true,
-    "overall_score": 85.5,
-    "has_occlusions": false,
-    "quality_passed": true
+  "body_type_analysis": {
+    "predicted_class": "Sanguineo/Musculoso",
+    "predicted_class_simple": "Musculoso",
+    "confidence": 0.85,
+    "meets_threshold": true,
+    "all_probabilities": {...},
+    "top_3_predictions": [...]
   },
-  "occlusion_analysis": {
-    "total_detections": 0,
-    "confidence_threshold_used": 0.5,
-    "detections": []
+  "gender_analysis": {
+    "predicted_gender": "Hombre",
+    "confidence": 0.92,
+    "all_probabilities": {...}
   },
-  "quality_assessment": {
-    "quality_score": 88.0,
-    "blur_score": 125.8,
-    "brightness": 142.3,
-    "contrast": 45.2,
-    "resolution": [1024, 768],
-    "quality_issues": [],
-    "is_suitable": true
+  "analysis_metrics": {
+    "overall_confidence": 0.88,
+    "prediction_certainty": "high",
+    "gender_body_consistency": "high"
   },
-  "recommendations": [],
-  "analysis_summary": {
-    "timestamp": "2025-06-20T...",
-    "processing_successful": true,
-    "model_classes": ["objeto", "cabello_tapando_oreja", "cabello_tapando_frente"],
-    "device_used": "cuda:0"
+  "morphological_insights": {
+    "body_composition": "Mesomorphic build with well-developed musculature",
+    "metabolic_tendency": "Efficient metabolism, responds well to exercise",
+    "physical_characteristics": "Athletic build, defined muscle structure"
   },
-  "visualization_path": "/app/results/profile_validation_xxx.png",
-  "visualization_url": "/visualization/profile_validation_xxx.png"
+  "classification_summary": {...},
+  "analysis_summary": {...}
+}
+```
+
+### Body Anthropometric Analysis Response ✅ **NEW**
+```json
+{
+  "analysis_id": "uuid-string",
+  "num_persons": 1,
+  "anthropometric_analysis": [
+    {
+      "person_id": 1,
+      "keypoint_summary": {
+        "total_keypoints": 15,
+        "detection_percentage": 88.2,
+        "keypoint_completeness": "excellent"
+      },
+      "body_proportions": {
+        "skull_height": 156,
+        "skull_width": 142,
+        "body_height": 1089,
+        "skull_to_body_ratio": 0.143,
+        "skull_percentage": 14.3,
+        "anatomical_assessment": "Normal adult skull proportions",
+        "head_orientation": "frontal (2.1°)",
+        "detection_method": "nose_anatomical+contour_refined"
+      },
+      "detailed_analysis": {
+        "skull_analysis": {...},
+        "age_assessment": "adult_proportions",
+        "anthropometric_insights": {...}
+      }
+    }
+  ],
+  "analysis_summary": {...}
 }
 ```
 
 ## Model Information
 
-### Profile Validation Model ✅ **NEW**
-- **Architecture**: Custom trained Faster R-CNN for profile occlusion detection
-- **Classes**: 3 occlusion categories (objeto, cabello_tapando_oreja, cabello_tapando_frente)
-- **Features**: Advanced quality assessment, smart recommendations, NMS filtering
+### Body Morphological Analysis Model ✅ **NEW**
+- **Architecture**: LightweightHierarchicalModel (ResNet18 backbone)
+- **Classifications**: 7 body types + 2 genders + 4 coarse types
+- **Features**: Attention mechanism, hierarchical classification, morphological insights
 - **Input Size**: 224x224 pixels
-- **Output**: Occlusion detections + comprehensive quality metrics + actionable recommendations
+- **Output**: Multi-class predictions with confidence scores and detailed analysis
 
-### Profile Validation Classifications ✅ **NEW**
-#### Occlusion Categories (3 Classes)
-- **objeto**: Objects or accessories obstructing the profile
-- **cabello_tapando_oreja**: Hair covering the ear area
-- **cabello_tapando_frente**: Hair covering the forehead area
+### Body Anthropometric Analysis Model ✅ **NEW**
+- **Architecture**: YOLOv8n-pose for 17-keypoint detection
+- **Measurements**: Skull dimensions, body proportions, anatomical assessments
+- **Features**: Head orientation analysis, contour refinement, age estimation
+- **Input Format**: RGB images (any resolution, auto-resized)
+- **Output**: Pose keypoints + skull measurements + anthropometric analysis
 
-#### Quality Assessment Metrics
-- **Resolution Validation**: Minimum 224x224 pixels required
-- **Blur Detection**: Laplacian variance analysis
-- **Brightness Analysis**: Optimal range 50-200
-- **Contrast Assessment**: Standard deviation analysis
-- **Profile Orientation**: Basic validation of true profile vs frontal view
+### Body Model Classifications ✅ **NEW**
 
-#### Smart Recommendations System
-- **Quality-Based**: Resolution, lighting, stability suggestions
-- **Occlusion-Based**: Hair positioning, accessory removal guidance
-- **Profile-Specific**: Angle optimization, background improvement tips
+#### Body Type Categories (7 Classes)
+- **Bilioso/NormalPocaGrasa**: Normal build with low body fat
+- **Nervioso/Delgado**: Ectomorphic, lean build
+- **SanguineoLinfatico/MusculosoGordo**: Muscular with higher body fat
+- **Sanguineo/Musculoso**: Mesomorphic, athletic build
+- **Flematico/Gordograsacuelga**: Endomorphic with soft tissue
+- **Linfatico/Gordo**: Endomorphic, higher body fat
+- **BiliosoSanguineo/NormalMusculoso**: Balanced muscular build
+
+#### Anthropometric Measurements
+- **Skull Ratio Analysis**: Adult (12.5-14.3%), Child (16-18%)
+- **17 Body Keypoints**: Full pose detection including head, torso, limbs
+- **Head Orientation**: Frontal, tilted left/right with angle measurements
+- **Detection Methods**: Anatomical estimation + contour refinement
 
 ## Configuration
 
@@ -382,12 +534,12 @@ environment:
 ## Production Deployment
 
 ### System Requirements
-- **GPU**: NVIDIA GPU with 4GB+ VRAM (recommended)
-- **RAM**: 30GB+ system memory (for all 6 active modules)
-- **Storage**: 15GB+ for models and containers
+- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 8 modules)
+- **RAM**: 40GB+ system memory (for all 8 active modules)
+- **Storage**: 20GB+ for models and containers
 - **CPU**: Multi-core processor for preprocessing
 
-### Port Allocation ✅ **ALL OCCUPIED**
+### Port Allocation ✅ **ALL 8 PORTS OCCUPIED**
 - **Frontal Analysis**: 8000-8002 ✅ **ALL COMPLETE**
   - Morfológico: 8000 ✅
   - Antropométrico: 8001 ✅
@@ -395,7 +547,10 @@ environment:
 - **Profile Analysis**: 8003-8005 ✅ **ALL COMPLETE**
   - Morfológico: 8003 ✅
   - Antropométrico: 8004 ✅
-  - Validación: 8005 ✅ **NEW!**
+  - Validación: 8005 ✅
+- **Body Analysis**: 8006-8007 ✅ **ALL COMPLETE** ✅ **NEW!**
+  - Morfológico: 8006 ✅ **NEW!**
+  - Antropométrico: 8007 ✅ **NEW!**
 
 ### Independent Scaling ✅
 Each module can be scaled independently:
@@ -404,7 +559,7 @@ Each module can be scaled independently:
 - Configure GPU memory optimization per module
 - Implement request queuing for batch processing
 
-### Monitoring ✅ **ALL SERVICES**
+### Monitoring ✅ **ALL 8 SERVICES**
 ```bash
 # All complete modules health check
 curl http://localhost:8000/health  # Frontal Morfologico ✅
@@ -412,7 +567,9 @@ curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
 curl http://localhost:8003/health  # Profile Morfologico ✅
 curl http://localhost:8004/health  # Profile Antropometrico ✅
-curl http://localhost:8005/health  # Profile Validacion ✅ NEW!
+curl http://localhost:8005/health  # Profile Validacion ✅
+curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
+curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
 
 # Container status
 docker ps
@@ -421,14 +578,15 @@ docker ps
 nvidia-smi
 ```
 
-## Architecture Status ✅ **PROJECT COMPLETE**
+## Architecture Status ✅ **PROJECT EXPANDED**
 
-### Current Status ✅ **ALL MODULES OPERATIONAL**
+### Current Status ✅ **ALL 8 MODULES OPERATIONAL**
 - ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico (Ports 8000-8002) ✅ **ALL COMPLETE**
 - ✅ **Profile Analysis Complete**: morfologico, antropometrico, validacion (Ports 8003-8005) ✅ **ALL COMPLETE**
+- ✅ **Body Analysis Complete**: morfologico, antropometrico (Ports 8006-8007) ✅ **ALL COMPLETE** ✅ **NEW!**
 
-### Core Pipeline Complete ✅
-The SG_prod facial recognition production pipeline is now **COMPLETE** with all 6 modules operational:
+### Complete AI Analysis Pipeline ✅ **EXPANDED**
+The SG_prod AI analysis production pipeline is now **EXPANDED** with all 8 modules operational:
 
 #### **Frontal Image Processing Pipeline** ✅
 1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
@@ -436,15 +594,19 @@ The SG_prod facial recognition production pipeline is now **COMPLETE** with all 
 3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
 
 #### **Profile Image Processing Pipeline** ✅
-1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅ **COMPLETE**
+1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
 2. **Profile Morfologico** (Port 8003): Complete profile morphological analysis ✅
 3. **Profile Antropometrico** (Port 8004): Advanced anthropometric measurements ✅
 
+#### **Body Image Processing Pipeline** ✅ **NEW COMPLETE**
+1. **Body Morfologico** (Port 8006): Body type classification and morphological analysis ✅ **NEW!**
+2. **Body Antropometrico** (Port 8007): Skull detection and body anthropometric measurements ✅ **NEW!**
+
 ### Future Extensions 🔄
-- 🔄 **Whole Body Analysis**: Full body anthropometric measurements
 - 🔄 **Master Orchestration**: Multi-service deployment and result aggregation
-- 🔄 **3D Analysis Pipeline**: Depth-aware facial reconstruction
+- 🔄 **3D Analysis Pipeline**: Depth-aware facial and body reconstruction
 - 🔄 **Real-time Processing**: WebRTC integration for live analysis
+- 🔄 **Multi-modal Analysis**: Combined facial, profile, and body analysis workflows
 
 ## Usage Workflow ✅ **COMPLETE PIPELINES**
 
@@ -456,17 +618,29 @@ The SG_prod facial recognition production pipeline is now **COMPLETE** with all 
 3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
 
 #### For Profile Images ✅ **COMPLETE WORKFLOW**
-1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅ **NEW!**
+1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
 2. **Profile Morfologico** (Port 8003): Complete profile morphological analysis ✅
 3. **Profile Antropometrico** (Port 8004): Advanced anthropometric measurements ✅
+
+#### For Body Images ✅ **NEW COMPLETE WORKFLOW**
+1. **Body Morfologico** (Port 8006): Body type classification and morphological insights ✅ **NEW!**
+2. **Body Antropometrico** (Port 8007): Skull measurements and body anthropometric analysis ✅ **NEW!**
 
 ### Quality-First Approach ✅
 The **Validacion** modules serve as quality gates, identifying:
 - Hair covering facial features
 - Problematic accessories (glasses, objects)
 - Poor lighting or image quality
-- Unsuitable facial expressions
+- Unsuitable facial expressions or poses
 - Recommendations for better image capture
+
+### Multi-Modal Analysis ✅ **NEW**
+The **Body Analysis** modules provide:
+- Body type classification with morphological insights
+- Comprehensive anthropometric measurements
+- Skull-to-body proportion analysis
+- Age assessment based on anatomical proportions
+- Full body pose detection and keypoint analysis
 
 ## Support
 
@@ -482,4 +656,4 @@ All trained model weights are included in this repository. Large files use Git L
 
 ---
 **quantileMX** - Advanced AI Solutions  
-**Status**: ✅ **PRODUCTION READY - ALL MODULES COMPLETE** ✅
+**Status**: ✅ **PRODUCTION READY - ALL 8 MODULES COMPLETE** ✅
