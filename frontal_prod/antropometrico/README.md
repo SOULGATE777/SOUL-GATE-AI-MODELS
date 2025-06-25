@@ -1,119 +1,287 @@
-# Antropometrico Analysis Module
+# Antropometrico Analysis API v2.0
 
-Advanced anthropometric facial analysis with custom point detection using ensemble of dlib landmarks and trained Faster R-CNN model.
+Advanced anthropometric facial analysis system with comprehensive feature detection, custom model integration, and detailed reporting capabilities.
 
-## Features
+## 🚀 New Features in v2.0
 
-- **Hybrid Detection**: Combines dlib 68-point landmarks with custom trained model
-- **Enhanced Measurements**: Precision facial proportion analysis
-- **Model Integration**: Uses custom Faster R-CNN for key anthropometric points
-- **Production Ready**: Docker containerization with GPU support
-- **Independent Service**: Runs on port 8001, completely separate from morfologico
+### Enhanced Analysis Features
+- **Eyebrow Length Analysis**: Classifies eyebrow length relative to eye length (corta/normal/larga)
+- **Eye Angle Analysis**: Measures and classifies eye angles (normal/hacia arriba/hacia abajo)
+- **Face Area Proportions**: Analyzes inner/outer face area ratios and eye-to-face proportions
+- **Enhanced Model Integration**: Uses all 13 custom model points with confidence scoring
+- **Comprehensive Reporting**: Detailed text and JSON reports with all measurements
 
-## Architecture
+### API Endpoints
+- **Complete Analysis**: `/analyze-anthropometric` - Full facial analysis with all features
+- **Focused Analysis**: Specialized endpoints for eyebrows, eyes, and face areas
+- **Detailed Reporting**: `/get-detailed-report` - Comprehensive analysis reports
+- **Enhanced Visualization**: Multiple visualization options including detailed report images
 
-### Model Ensemble
-1. **dlib Facial Landmarks**: 68 standard facial landmarks
-2. **Custom Faster R-CNN**: Detects 3 key anthropometric points
-   - Point 1: Specialized detection point
-   - Point 2: Between eyebrows (replaces inferred point 68)
-   - Point 3: Top of head (replaces inferred point 69)
+## 📁 Directory Structure
 
-### Extended Point System
-- Points 0-67: Standard dlib landmarks
-- Point 68: Between eyebrows (model-enhanced)
-- Point 69: Top of head (model-enhanced)
-- Point 70-71: Calculated pupil centers
-- Point 72: Model point 1 (when detected)
+```
+.
+├── app/
+│   ├── __init__.py
+│   ├── main.py                          # Enhanced FastAPI application
+│   ├── models/
+│   │   ├── anthropometric_pipeline.py   # Core analysis engine with new features
+│   │   └── __init__.py
+│   └── utils/
+│       ├── image_processing.py          # Image processing utilities
+│       ├── visualization.py             # Enhanced visualization functions
+│       └── __init__.py
+├── models/
+│   ├── facial_points_detection_model.pth    # Custom trained model
+│   └── shape_predictor_68_face_landmarks.dat # Dlib predictor
+├── results/                             # Generated visualizations and reports
+├── dataset_frontal/                     # Test images
+├── docker-compose.yml                   # Enhanced Docker composition
+├── Dockerfile                          # Updated container definition
+├── requirements.txt                     # Updated dependencies
+└── README.md                           # This file
+```
 
-## Quick Start
+## 🔧 Installation & Setup
 
 ### Prerequisites
-- Docker & Docker Compose
-- NVIDIA GPU with drivers (recommended)
-- NVIDIA Container Toolkit for GPU support
+- Docker and Docker Compose
+- At least 4GB RAM available for the container
+- The required model files:
+  - `facial_points_detection_model.pth` (custom trained model)
+  - `shape_predictor_68_face_landmarks.dat` (dlib model)
 
-### Required Model Files
-Place these files in the `models/` directory:
-- `facial_points_detection_model.pth` - Your trained Faster R-CNN model
-- `shape_predictor_68_face_landmarks.dat` - dlib landmark predictor
+### Quick Start
+1. **Clone and setup:**
+   ```bash
+   git clone <repository>
+   cd antropometrico
+   ```
 
-### Deployment
+2. **Ensure model files are in place:**
+   ```bash
+   # Place your model files in the models/ directory
+   ls models/
+   # Should show:
+   # facial_points_detection_model.pth
+   # shape_predictor_68_face_landmarks.dat
+   ```
 
+3. **Build and run:**
+   ```bash
+   docker-compose up --build
+   ```
+
+4. **Verify installation:**
+   ```bash
+   curl http://localhost:8001/health
+   ```
+
+## 📊 API Documentation
+
+### Complete Analysis Endpoint
 ```bash
-# Navigate to antropometrico directory
-cd /home/carlos/Documents/SG_prod/frontal_prod/antropometrico/
-
-# Build and start the service
-docker compose up --build -d
-
-# Check service health
-curl http://localhost:8001/health
+POST /analyze-anthropometric
 ```
 
-### CPU-Only Deployment
-If you don't have GPU support, modify `docker-compose.yml`:
-```yaml
-environment:
-  - CUDA_VISIBLE_DEVICES=-1  # Force CPU usage
-# Remove the entire deploy section
+**Parameters:**
+- `file`: Image file (multipart/form-data)
+- `confidence_threshold`: Model confidence threshold (0.0-1.0, default: 0.5)
+- `include_visualization`: Generate visualization image (default: true)
+- `include_detailed_report`: Generate detailed report image (default: false)
+
+**Response includes:**
+- Facial landmarks (68 points + extended points)
+- All model predictions (up to 13 custom points)
+- Facial thirds analysis
+- Eyebrow length classifications
+- Eye angle measurements
+- Face area proportions
+- Comprehensive summary with classifications
+
+### Specialized Analysis Endpoints
+
+#### Eyebrow Analysis
+```bash
+POST /analyze-eyebrows
 ```
+Returns focused eyebrow analysis with length classifications and proportions.
 
-## API Endpoints
+#### Eye Analysis
+```bash
+POST /analyze-eyes
+```
+Returns eye angle analysis, classifications, and face proportion measurements.
 
-### Complete Analysis
+#### Face Area Analysis
+```bash
+POST /analyze-face-areas
+```
+Returns inner/outer face area analysis and proportional measurements.
+
+### Detailed Reporting
+```bash
+POST /get-detailed-report?format=text
+POST /get-detailed-report?format=json
+```
+Generates comprehensive analysis reports in text or JSON format.
+
+## 🎯 Analysis Features
+
+### Facial Thirds Analysis
+- **Primer Tercio**: Top of head to between eyebrows
+- **Segundo Tercio**: Between eyebrows to nose base  
+- **Tercer Tercio**: Nose base to chin
+- Classifications: largo/corto/standard based on proportional thresholds
+
+### Eyebrow Analysis
+- **Length Classification**: Compares eyebrow length to corresponding eye length
+  - `ceja corta`: < 1.0 ratio
+  - `ceja normal`: 1.0-1.4 ratio
+  - `ceja larga`: > 1.4 ratio
+- **Detailed Measurements**: Absolute lengths and proportional ratios
+
+### Eye Analysis
+- **Angle Classification**: Measures eye slope relative to horizontal
+  - `angulo normal`: -5° to +5°
+  - `angulo hacia arriba`: > +5° (upward tilt)
+  - `angulo hacia abajo`: < -5° (downward tilt)
+- **Proportional Analysis**: Eye spacing and face proportions
+
+### Face Area Analysis
+- **Inner/Outer Ratio**: Proportion of inner facial features to total face area
+- **Eye-to-Face Proportions**: Individual eye area relative to total face
+- **Detailed Measurements**: Absolute areas and percentage calculations
+
+### Model Integration
+- **13 Custom Points**: Utilizes all available model predictions
+- **Enhanced Accuracy**: Model points replace inferred calculations where available
+- **Confidence Scoring**: Adjustable thresholds for point detection
+- **Fallback System**: Graceful degradation when model points unavailable
+
+## 🖼️ Visualization Options
+
+### Standard Visualization
+- All 68 facial landmarks
+- Extended points (69-72)
+- Model predictions with color coding
+- Facial thirds reference lines
+- Key measurements overlay
+
+### Detailed Report Image
+- Side-by-side image and comprehensive measurements
+- All analysis results in organized format
+- Model integration status
+- Classification results
+
+### Specialized Visualizations
+- Eyebrow analysis with length comparisons
+- Eye angle visualization with degree measurements
+- Face area boundary visualization
+- Model point detection visualization
+
+## 🔍 Usage Examples
+
+### Complete Analysis with Visualization
 ```bash
 curl -X POST "http://localhost:8001/analyze-anthropometric" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@image.jpg" \
+  -F "file=@face_image.jpg" \
   -F "confidence_threshold=0.5" \
-  -F "include_visualization=true"
+  -F "include_visualization=true" \
+  -F "include_detailed_report=true"
 ```
 
-### Individual Components
-- **Landmarks Only**: `POST /detect-landmarks`
-- **Model Points Only**: `POST /detect-points`
-- **Health Check**: `GET /health`
+### Get Text Report
+```bash
+curl -X POST "http://localhost:8001/get-detailed-report?format=text" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
 
-### API Documentation
-Access interactive documentation:
-- Swagger UI: http://localhost:8001/docs
-- ReDoc: http://localhost:8001/redoc
+### Focused Eyebrow Analysis
+```bash
+curl -X POST "http://localhost:8001/analyze-eyebrows" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg"
+```
 
-## Analysis Output Labels
+## 📈 Performance & Requirements
 
-### Facial Thirds Classification
-- **tercio superior largo** - First third proportion > 0.38 (forehead too tall)
-- **tercio superior corto** - First third proportion < 0.27 (forehead too short)
-- **tercio superior standard** - First third proportion 0.27-0.38 (normal forehead)
-- **tercio medio largo** - Second third proportion > 0.38 (midface too long)
-- **tercio medio corto** - Second third proportion < 0.27 (midface too short)
-- **tercio medio standard** - Second third proportion 0.27-0.38 (normal midface)
-- **tercio inferior largo** - Third third proportion > 0.38 (lower face too long)
-- **tercio inferior corto** - Third third proportion < 0.27 (lower face too short)
-- **tercio inferior standard** - Third third proportion 0.27-0.38 (normal lower face)
+### System Requirements
+- **Memory**: Minimum 2GB, Recommended 4GB
+- **CPU**: Multi-core recommended for model inference
+- **Storage**: 1GB for models and temporary files
+- **Network**: Port 8001 available
 
-### Eye Relationship Analysis
-- **Cercanos** - Internal eye proportion < 0.3 (eyes too close together)
-- **Standard** - Internal eye proportion 0.3-0.37 (normal eye spacing)
-- **Lejanos** - Internal eye proportion > 0.37 (eyes too far apart)
+### Processing Performance
+- **Analysis Time**: 2-5 seconds per image (depending on resolution)
+- **Model Inference**: ~1 second for point detection
+- **Visualization Generation**: ~1 second additional
+- **Supported Formats**: JPG, PNG, BMP, TIFF
 
-### Mouth-Pupil Relationship
-- **boca grande en relación a las pupilas** - Mouth/pupil ratio > 1.0 (mouth wide relative to eye spacing)
-- **boca pequeña en relación a las pupilas** - Mouth/pupil ratio < 0.7 (mouth narrow relative to eye spacing)
-- **relación boca-pupilas estándar** - Mouth/pupil ratio 0.7-1.0 (normal mouth-eye proportion)
+### Image Requirements
+- **Minimum Resolution**: 100x100 pixels
+- **Maximum Resolution**: 4000x4000 pixels (auto-resized)
+- **Face Requirements**: Clear frontal face view
+- **Optimal Conditions**: Good lighting, minimal occlusion
 
-### Eyebrow Slope Analysis (Portions 1 & 2)
-- **portion_X - Ascendente** - Angle 5-75° (eyebrow section slopes upward)
-- **portion_X - Recto** - Angle -1 to 5° (eyebrow section is straight/horizontal)
-- **portion_X - Descendente** - Angle ≤ 0° (eyebrow section slopes downward)
+## 🚨 Error Handling
 
-### Eyebrow Slope Analysis (Portion 3 - Tail)
-- **portion_3 - Descendente** - Angle > 75° (eyebrow tail drops sharply)
-- **portion_3 - Normal** - Angle 10-75° (normal eyebrow tail curve)
-- **portion_3 - Ascendente** - Angle < 10° (eyebrow tail curves upward)
+### Common Issues
+- **No Face Detected**: Returns error with empty analysis
+- **Model Not Loaded**: Check model file paths and permissions
+- **Low Confidence**: Adjust confidence_threshold parameter
+- **Memory Issues**: Reduce image size or increase container memory
 
-### Model Integration Status
-- **✓ Punto 2: Sí** - Custom model successfully detected between-eyebrows point
-- **✓ Punto 3: Sí** - Custom model successfully detected top-of-head point
-- **✓ Punto 1: Sí** - Custom model detected additional reference point
+### Troubleshooting
+1. **Check Health Endpoint**: `curl http://localhost:8001/health`
+2. **Verify Model Files**: Ensure both model files are present and readable
+3. **Check Logs**: `docker-compose logs antropometrico-api`
+4. **Image Quality**: Ensure clear, well-lit frontal face images
+
+## 🔄 API Changes from v1.0
+
+### New Endpoints
+- `/analyze-eyebrows` - Focused eyebrow analysis
+- `/analyze-eyes` - Eye angle and proportion analysis
+- `/analyze-face-areas` - Face area proportion analysis
+- `/get-detailed-report` - Comprehensive reporting
+
+### Enhanced Responses
+- Additional analysis fields in `/analyze-anthropometric`
+- Detailed classifications and measurements
+- Model integration status and confidence scores
+- Enhanced error reporting and validation
+
+### Backward Compatibility
+- All v1.0 endpoints remain functional
+- Response format extended (not breaking)
+- Previous visualization format supported
+
+## 📝 Development & Testing
+
+### Running Tests
+```bash
+# Test with sample image
+curl -X POST "http://localhost:8001/analyze-anthropometric" \
+  -F "file=@dataset_frontal/sample.jpg"
+
+# Health check
+curl http://localhost:8001/health
+
+# API information
+curl http://localhost:8001/api-info
+```
+
+### Development Setup
+```bash
+# For local development without Docker
+pip install -r requirements.txt
+python -m app.main
+```
+
+## 📄 License & Credits
+
+This enhanced version includes advanced anthropometric analysis capabilities developed for comprehensive facial feature assessment. The system integrates classical facial landmark detection with custom-trained deep learning models for enhanced accuracy and detailed analysis.

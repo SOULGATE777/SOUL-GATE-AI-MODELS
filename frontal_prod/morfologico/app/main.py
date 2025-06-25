@@ -35,23 +35,6 @@ app.add_middleware(
 facial_pipeline = None
 point_detector = None
 
-# Tag mapping for better readability
-tag_mapping = {
-    "tag_0": "0", "tag_1": "1", "tag_2": "2", "tag_3": "3", "tag_4": "AN", 
-    "tag_5": "Ab", "tag_6": "Adelgazamiento", "tag_7": "Al", "tag_8": "Ap", 
-    "tag_9": "Ar", "tag_10": "Bigote", "tag_11": "CabellosSueltos", 
-    "tag_12": "Carnosos", "tag_13": "Crl", "tag_14": "Cv", "tag_15": "Delgada", 
-    "tag_16": "El", "tag_17": "Fleco", "tag_18": "Fr", "tag_19": "G", 
-    "tag_20": "Grueso", "tag_21": "H", "tag_22": "Hn", "tag_23": "I", 
-    "tag_24": "LineasVerticales", "tag_25": "Ll", "tag_26": "Lunar", 
-    "tag_27": "Md", "tag_28": "MdA", "tag_29": "Mercurial", "tag_30": "Nd", 
-    "tag_31": "Normal", "tag_32": "Nt", "tag_33": "On", "tag_34": "Pc", 
-    "tag_35": "Pg", "tag_36": "Pl", "tag_37": "Planos", "tag_38": "Pn", 
-    "tag_39": "Pt", "tag_40": "Pursed", "tag_41": "Rc", "tag_42": "Rd", 
-    "tag_43": "Salido", "tag_44": "Sl", "tag_45": "Solar", "tag_46": "Sonriendo", 
-    "tag_47": "SpSl", "tag_48": "abierta", "tag_49": "uniceja"
-}
-
 @app.on_event("startup")
 async def startup_event():
     """Load models on startup"""
@@ -59,10 +42,11 @@ async def startup_event():
     
     try:
         print("Loading facial analysis pipeline...")
+        # Initialize the pipeline - it now has the tag mapping built-in
         facial_pipeline = FacialAnalysisPipeline(
             detection_model_path='/app/models/facial_landmarks_detection_model.pth',
             classification_model_path='/app/models/best_facial_landmark_classifier.pth',
-            tag_mapping_path=None
+            tag_mapping_path=None  # We don't need external mapping anymore
         )
         
         print("Loading anthropometric point detector...")
@@ -71,6 +55,16 @@ async def startup_event():
         )
         
         print("All models loaded successfully!")
+        
+        # Validate tag consistency
+        print("=== TAG MAPPING VALIDATION ===")
+        print(f"Pipeline has {len(facial_pipeline.tags)} tags")
+        print(f"Tag mapping has {len(facial_pipeline.tag_mapping)} entries")
+        print("Sample mappings:")
+        for i, tag in enumerate(facial_pipeline.tags[:5]):
+            tag_name = facial_pipeline.tag_mapping.get(tag, "Unknown")
+            print(f"  {tag} -> {tag_name}")
+        print("=== VALIDATION COMPLETE ===")
         
     except Exception as e:
         print(f"Error loading models: {e}")
@@ -81,7 +75,9 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "models_loaded": facial_pipeline is not None and point_detector is not None
+        "models_loaded": facial_pipeline is not None and point_detector is not None,
+        "tag_mapping_entries": len(facial_pipeline.tag_mapping) if facial_pipeline else 0,
+        "total_tags": len(facial_pipeline.tags) if facial_pipeline else 0
     }
 
 @app.post("/analyze-face")
@@ -110,9 +106,17 @@ async def analyze_face(
             display=False
         )
         
-        # Add tag names to facial results
-        for result in facial_results:
-            result['tag_name'] = tag_mapping.get(result['tag'], "Unknown")
+        # REMOVED: No need to add tag names here - they're already included in process_image
+        # The pipeline now handles this internally with the same logic as Jupyter
+        
+        # Debug: Print first few results for validation
+        print("=== FACIAL ANALYSIS RESULTS ===")
+        for i, result in enumerate(facial_results[:3]):  # Show first 3
+            print(f"Result {i+1}:")
+            print(f"  Landmark: {result['landmark_class']}")
+            print(f"  Tag: {result['tag']}")
+            print(f"  Tag Name: {result['tag_name']}")
+            print(f"  Score: {result['score']:.3f}")
         
         # Run anthropometric point detection
         point_results = point_detector.detect_points(
@@ -176,15 +180,20 @@ async def detect_landmarks(
             display=False
         )
         
-        # Add tag names
-        for result in results:
-            result['tag_name'] = tag_mapping.get(result['tag'], "Unknown")
+        # REMOVED: No need to add tag names - they're already included
+        # Tag names are now handled internally in the pipeline
+        
+        # Debug output
+        print(f"Detected {len(results)} landmarks")
+        for i, result in enumerate(results[:2]):  # Show first 2
+            print(f"  {i+1}. {result['landmark_class']}: {result['tag']} ({result['tag_name']}) (score: {result['score']:.2f})")
         
         # Save visualization if requested
         viz_path = None
         if include_visualization:
             viz_filename = f"landmarks_{uuid.uuid4().hex}.jpg"
             viz_path = f"/app/results/{viz_filename}"
+            os.makedirs("/app/results", exist_ok=True)
             cv2.imwrite(viz_path, cv2.cvtColor(viz_image, cv2.COLOR_RGB2BGR))
         
         # Cleanup
@@ -257,6 +266,18 @@ async def get_visualization(filename: str):
     else:
         raise HTTPException(status_code=404, detail="Visualization not found")
 
+@app.get("/tag-mapping")
+async def get_tag_mapping():
+    """Get the current tag mapping for debugging"""
+    if facial_pipeline:
+        return {
+            "tag_mapping": facial_pipeline.tag_mapping,
+            "total_tags": len(facial_pipeline.tags),
+            "sample_tags": facial_pipeline.tags[:10]
+        }
+    else:
+        raise HTTPException(status_code=503, detail="Models not loaded")
+
 @app.get("/")
 async def root():
     """Root endpoint with API information"""
@@ -267,7 +288,9 @@ async def root():
             "analyze_face": "/analyze-face",
             "detect_landmarks": "/detect-landmarks", 
             "detect_points": "/detect-points",
+            "tag_mapping": "/tag-mapping",
             "health": "/health"
         },
-        "models_loaded": facial_pipeline is not None and point_detector is not None
+        "models_loaded": facial_pipeline is not None and point_detector is not None,
+        "tag_consistency": "Fixed to match Jupyter environment"
     }

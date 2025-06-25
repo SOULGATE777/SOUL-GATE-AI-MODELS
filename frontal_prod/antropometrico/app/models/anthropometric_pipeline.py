@@ -6,6 +6,7 @@ import torch.nn as nn
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.faster_rcnn import FasterRCNN_ResNet50_FPN_Weights
+from scipy.spatial import ConvexHull
 import os
 import math
 
@@ -82,7 +83,7 @@ class AnthropometricAnalyzer:
         return landmarks
 
     def _predict_facial_points(self, image, confidence_threshold=0.5):
-        """Predict facial points using the trained model"""
+        """Predict ALL facial points using the trained model (classes 1-13)"""
         if self.trained_model is None:
             return {}
         
@@ -103,7 +104,7 @@ class AnthropometricAnalyzer:
         with torch.no_grad():
             predictions = self.trained_model(image_tensor)
         
-        # Extract points of interest (classes 1, 2, 3)
+        # Extract ALL detected points (classes 1-13)
         detected_points = {}
         
         if len(predictions) > 0:
@@ -113,7 +114,7 @@ class AnthropometricAnalyzer:
             scores = prediction['scores'].cpu().numpy()
             
             for box, label, score in zip(boxes, labels, scores):
-                if score > confidence_threshold and label in [1, 2, 3]:
+                if score > confidence_threshold:
                     # Calculate center point of bounding box
                     x1, y1, x2, y2 = box
                     center_x = (x1 + x2) / 2
@@ -303,9 +304,223 @@ class AnthropometricAnalyzer:
             "left_eyebrow": left_eyebrow_slopes
         }
 
+    def _calculate_eyebrow_proportions(self, extended_points):
+        """Calculate eyebrow length to eye length ratio for both eyes"""
+        # Right eyebrow points (17-21)
+        right_eyebrow_inner = extended_points[17]  # Most inner point
+        right_eyebrow_outer = extended_points[21]  # Most outer point
+        right_eyebrow_length = float(np.linalg.norm(right_eyebrow_outer - right_eyebrow_inner))
+        
+        # Left eyebrow points (22-26)
+        left_eyebrow_inner = extended_points[26]  # Most inner point 
+        left_eyebrow_outer = extended_points[22]  # Most outer point
+        left_eyebrow_length = float(np.linalg.norm(left_eyebrow_outer - left_eyebrow_inner))
+        
+        # Right eye length (36-39)
+        right_eye_inner = extended_points[39]  # Inner corner
+        right_eye_outer = extended_points[36]  # Outer corner
+        right_eye_length = float(np.linalg.norm(right_eye_outer - right_eye_inner))
+        
+        # Left eye length (42-45)
+        left_eye_inner = extended_points[42]  # Inner corner
+        left_eye_outer = extended_points[45]  # Outer corner
+        left_eye_length = float(np.linalg.norm(left_eye_outer - left_eye_inner))
+        
+        # Calculate proportions
+        right_eyebrow_proportion = right_eyebrow_length / right_eye_length if right_eye_length > 0 else 0
+        left_eyebrow_proportion = left_eyebrow_length / left_eye_length if left_eye_length > 0 else 0
+        
+        return {
+            'right_eyebrow_proportion': right_eyebrow_proportion,
+            'left_eyebrow_proportion': left_eyebrow_proportion,
+            'right_eyebrow_length': right_eyebrow_length,
+            'left_eyebrow_length': left_eyebrow_length,
+            'right_eye_length': right_eye_length,
+            'left_eye_length': left_eye_length
+        }
+
+    def _calculate_eye_angles(self, extended_points):
+        """Calculate the angle of both eyes relative to the horizontal baseline"""
+        # Right eye: inner corner (39) to outer corner (36)
+        right_inner = extended_points[39]
+        right_outer = extended_points[36]
+        
+        # Left eye: inner corner (42) to outer corner (45)
+        left_inner = extended_points[42]
+        left_outer = extended_points[45]
+        
+        # Calculate vertical differences (positive when outer is higher than inner)
+        # Note: In image coordinates, y increases downward, so we flip the calculation
+        right_vertical_diff = right_inner[1] - right_outer[1] 
+        left_vertical_diff = left_inner[1] - left_outer[1]
+        
+        # Calculate horizontal differences (always use absolute distance)
+        right_horizontal_diff = abs(right_outer[0] - right_inner[0])
+        left_horizontal_diff = abs(left_outer[0] - left_inner[0])
+        
+        # Calculate angles using atan2 for proper quadrant handling
+        right_angle_rad = math.atan2(right_vertical_diff, right_horizontal_diff)
+        left_angle_rad = math.atan2(left_vertical_diff, left_horizontal_diff)
+        
+        # Convert to degrees
+        right_angle_deg = math.degrees(right_angle_rad)
+        left_angle_deg = math.degrees(left_angle_rad)
+        
+        # Calculate slopes for reference
+        right_slope = (right_outer[1] - right_inner[1]) / (right_outer[0] - right_inner[0]) if (right_outer[0] - right_inner[0]) != 0 else float('inf')
+        left_slope = (left_outer[1] - left_inner[1]) / (left_outer[0] - left_inner[0]) if (left_outer[0] - left_inner[0]) != 0 else float('inf')
+        
+        return {
+            'left_eye_angle': left_angle_deg,
+            'right_eye_angle': right_angle_deg,
+            'left_eye_slope': left_slope,
+            'right_eye_slope': right_slope
+        }
+
+    def _get_eye_area_points(self, landmarks, eye_side):
+        """Get points that define the eye area boundary"""
+        dlib_points = np.array([(landmarks.part(i).x, landmarks.part(i).y) 
+                               for i in range(68)])
+        
+        if eye_side == 'right':
+            # Right eye points (36-41)
+            eye_points = dlib_points[36:42]
+        else:
+            # Left eye points (42-47)
+            eye_points = dlib_points[42:48]
+        
+        return eye_points
+
+    def _get_face_area_points(self, landmarks, model_predictions):
+        """Get points that define the whole face area using dlib and model points"""
+        dlib_points = np.array([(landmarks.part(i).x, landmarks.part(i).y) 
+                               for i in range(68)])
+        
+        # Start with face contour points (0-16)
+        face_points = list(dlib_points[0:17])
+        
+        # Add all available model points to better define face boundary
+        for label, point in model_predictions.items():
+            face_points.append(np.array([point[0], point[1]]))
+        
+        return np.array(face_points)
+
+    def _calculate_polygon_area(self, points):
+        """Calculate the area of a polygon using the Shoelace formula"""
+        if len(points) < 3:
+            return 0
+        
+        # Use ConvexHull to get the actual boundary
+        try:
+            hull = ConvexHull(points)
+            hull_points = points[hull.vertices]
+            
+            # Shoelace formula
+            x = hull_points[:, 0]
+            y = hull_points[:, 1]
+            return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+        except:
+            # Fallback: simple polygon area calculation
+            x = points[:, 0]
+            y = points[:, 1]
+            return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+    def _get_outer_face_points(self, landmarks, model_predictions):
+        """Get points that define the outer face perimeter (ear to ear)"""
+        # Convert landmarks to numpy array
+        dlib_points = np.array([(landmarks.part(i).x, landmarks.part(i).y) 
+                               for i in range(68)])
+        
+        # Face contour points from dlib (points 0-16: jaw line only)
+        face_contour = dlib_points[0:17]  # Points 0-16
+        
+        # Combine dlib perimeter points
+        outer_points = []
+        
+        # Add jaw line points (0-16)
+        for point in face_contour:
+            outer_points.append(point)
+        
+        # Add ALL model points to better define outer face boundary
+        for label, point in model_predictions.items():
+            outer_points.append(np.array([point[0], point[1]]))
+        
+        return np.array(outer_points)
+
+    def _get_inner_face_points(self, landmarks):
+        """Get points that define the inner face boundary (eyebrows to mouth)"""
+        # Convert landmarks to numpy array
+        dlib_points = np.array([(landmarks.part(i).x, landmarks.part(i).y) 
+                               for i in range(68)])
+        
+        inner_points = []
+        
+        # Eyebrow points (17-26) for upper boundary
+        eyebrow_points = dlib_points[17:27]
+        for point in eyebrow_points:
+            inner_points.append(point)
+        
+        # Mouth outer points (48-67) for lower boundary
+        mouth_points = dlib_points[48:68]
+        for point in mouth_points:
+            inner_points.append(point)
+        
+        return np.array(inner_points)
+
+    def _calculate_eye_face_proportions(self, landmarks, model_predictions):
+        """Calculate left and right eye area proportion to face area"""
+        # Get face area points
+        face_points = self._get_face_area_points(landmarks, model_predictions)
+        face_area = float(self._calculate_polygon_area(face_points))  # Ensure float
+        
+        # Get right eye area
+        right_eye_points = self._get_eye_area_points(landmarks, 'right')
+        right_eye_area = float(self._calculate_polygon_area(right_eye_points))  # Ensure float
+        
+        # Get left eye area
+        left_eye_points = self._get_eye_area_points(landmarks, 'left')
+        left_eye_area = float(self._calculate_polygon_area(left_eye_points))  # Ensure float
+        
+        # Calculate proportions
+        right_eye_proportion = (right_eye_area / face_area * 100) if face_area > 0 else 0
+        left_eye_proportion = (left_eye_area / face_area * 100) if face_area > 0 else 0
+        
+        return {
+            'face_area': face_area,
+            'right_eye_area': right_eye_area,
+            'left_eye_area': left_eye_area,
+            'right_eye_proportion': float(right_eye_proportion),  # Ensure float
+            'left_eye_proportion': float(left_eye_proportion)     # Ensure float
+        }
+
+    def _calculate_inner_outer_face_proportions(self, landmarks, model_predictions):
+        """Calculate inner face area proportion to outer face area - FIXED for JSON serialization"""
+        # Get outer face area points (includes model points for better boundary)
+        outer_points = self._get_outer_face_points(landmarks, model_predictions)
+        outer_area = float(self._calculate_polygon_area(outer_points))  # Ensure float
+        
+        # Get inner face area points (eyebrows to mouth)
+        inner_points = self._get_inner_face_points(landmarks)
+        inner_area = float(self._calculate_polygon_area(inner_points))  # Ensure float
+        
+        # Calculate percentage
+        inner_outer_percentage = float((inner_area / outer_area * 100) if outer_area > 0 else 0)  # Ensure float
+        
+        # Convert numpy arrays to lists for JSON serialization
+        outer_points_list = outer_points.tolist() if isinstance(outer_points, np.ndarray) else outer_points
+        inner_points_list = inner_points.tolist() if isinstance(inner_points, np.ndarray) else inner_points
+        
+        return {
+            'outer_area': outer_area,
+            'inner_area': inner_area,
+            'inner_outer_percentage': inner_outer_percentage,
+            'outer_points': outer_points_list,  # Converted to list
+            'inner_points': inner_points_list   # Converted to list
+        }
+
     def analyze_face(self, image, confidence_threshold=0.5):
         """
-        Complete facial analysis
+        Complete facial analysis with all new features
         
         Args:
             image: Input image as numpy array
@@ -344,8 +559,17 @@ class AnthropometricAnalyzer:
             proportions = self._calculate_proportions(extended_points)
             slopes = self._calculate_eyebrow_slopes(extended_points)
             
+            # NEW FEATURES: Calculate additional analysis
+            eyebrow_proportions = self._calculate_eyebrow_proportions(extended_points)
+            eye_angles = self._calculate_eye_angles(extended_points)
+            eye_face_proportions = self._calculate_eye_face_proportions(landmarks, model_predictions)
+            inner_outer_proportions = self._calculate_inner_outer_face_proportions(landmarks, model_predictions)
+            
             # Create summary
-            summary = self._create_analysis_summary(proportions, slopes, model_predictions)
+            summary = self._create_analysis_summary(
+                proportions, slopes, model_predictions, eyebrow_proportions, 
+                eye_angles, eye_face_proportions, inner_outer_proportions
+            )
             
             return {
                 "landmarks": landmarks,
@@ -353,6 +577,10 @@ class AnthropometricAnalyzer:
                 "extended_points": extended_points,
                 "proportions": proportions,
                 "slopes": slopes,
+                "eyebrow_proportions": eyebrow_proportions,
+                "eye_angles": eye_angles,
+                "eye_face_proportions": eye_face_proportions,
+                "inner_outer_proportions": inner_outer_proportions,
                 "summary": summary,
                 "image_processed": img_processed
             }
@@ -361,8 +589,10 @@ class AnthropometricAnalyzer:
             print(f"❌ Analysis error: {e}")
             return None
 
-    def _create_analysis_summary(self, proportions, slopes, model_predictions):
-        """Create analysis summary with labels"""
+    def _create_analysis_summary(self, proportions, slopes, model_predictions, 
+                               eyebrow_proportions, eye_angles, eye_face_proportions, 
+                               inner_outer_proportions):
+        """Create comprehensive analysis summary with labels"""
         summary = {
             "facial_thirds": {
                 "primer_tercio": self._label_proportion(proportions['distance_69_68_proportion'], 'primer tercio'),
@@ -370,18 +600,65 @@ class AnthropometricAnalyzer:
                 "tercer_tercio": self._label_proportion(proportions['distance_34_9_proportion'], 'tercer tercio')
             },
             "eye_analysis": {
-                "internal_proportion": self._label_proportion(proportions['eye_distance_proportion'], 'proporcion interna ojos')
+                "internal_proportion": self._label_proportion(proportions['eye_distance_proportion'], 'proporcion interna ojos'),
+                "left_eye_angle": self._classify_eye_angle(eye_angles['left_eye_angle']),
+                "right_eye_angle": self._classify_eye_angle(eye_angles['right_eye_angle']),
+                "left_eye_face_proportion": f"{eye_face_proportions['left_eye_proportion']:.2f}%",
+                "right_eye_face_proportion": f"{eye_face_proportions['right_eye_proportion']:.2f}%"
+            },
+            "eyebrow_analysis": {
+                "left_eyebrow_classification": self._classify_eyebrow_length(eyebrow_proportions['left_eyebrow_proportion']),
+                "right_eyebrow_classification": self._classify_eyebrow_length(eyebrow_proportions['right_eyebrow_proportion']),
+                "left_eyebrow_proportion": eyebrow_proportions['left_eyebrow_proportion'],
+                "right_eyebrow_proportion": eyebrow_proportions['right_eyebrow_proportion']
             },
             "mouth_analysis": {
                 "mouth_to_eye_relation": self._label_proportion(proportions['mouth_to_eye_proportion'], 'relacion boca - pupilas')
             },
+            "face_area_analysis": {
+                "inner_outer_percentage": f"{inner_outer_proportions['inner_outer_percentage']:.2f}%",
+                "total_face_area": inner_outer_proportions['outer_area'],
+                "inner_face_area": inner_outer_proportions['inner_area']
+            },
             "model_integration": {
                 "point_2_used": 2 in model_predictions,
                 "point_3_used": 3 in model_predictions,
-                "point_1_detected": 1 in model_predictions
+                "point_1_detected": 1 in model_predictions,
+                "total_model_points": len(model_predictions)
             }
         }
         return summary
+
+    def _classify_eyebrow_length(self, proportion):
+        """Classify eyebrow length based on proportion to eye length"""
+        if proportion >= 1.4:
+            return 'ceja larga'
+        elif 1.0 <= proportion < 1.4:
+            return 'ceja normal'
+        else:
+            return 'ceja corta'
+
+    def _classify_eye_angle(self, angle):
+        """Classify eye angle based on degrees"""
+        if -5 <= angle <= 5:
+            return 'angulo normal'
+        elif angle > 5:
+            return 'angulo hacia arriba'
+        else:  # angle < -5
+            return 'angulo hacia abajo'
+
+    def _convert_slope_to_degrees(self, slope):
+        """Convert slope to degrees"""
+        if slope == float('inf'):
+            return 90
+        elif slope == float('-inf'):
+            return 270
+        else:
+            angle_rad = math.atan2(1, slope)
+            angle_deg = math.degrees(angle_rad)
+            if angle_deg < 0:
+                angle_deg += 360
+            return angle_deg
 
     def _label_proportion(self, proportion, section_name):
         """Label proportions based on thresholds"""
@@ -420,6 +697,24 @@ class AnthropometricAnalyzer:
                 return 'Standard'
             elif proportion > 0.37:
                 return 'Lejanos'
+        elif section_name in ["portion_1", "portion_2"]:
+            if 75 >= proportion > 5:
+                return f'{section_name} - Acendente'
+            elif 5 >= proportion > -1.0:
+                return f'{section_name} - Recto'
+            elif proportion <= 0.0:
+                return f'{section_name} - Decendente'
+            else:
+                return f'{section_name} - Unknown angle'
+        elif section_name == "portion_3":
+            if proportion > 75:
+                return f'{section_name} - Decendente'
+            elif 10 <= proportion <= 75:
+                return f'{section_name} - Normal'
+            elif proportion < 10:
+                return f'{section_name} - Acendente'
+            else:
+                return f'{section_name} - Unknown angle'
         return 'Unknown'
 
     def detect_landmarks_only(self, image):
@@ -439,3 +734,104 @@ class AnthropometricAnalyzer:
         """Detect only model points"""
         gray, img_processed = self._preprocess_image(image)
         return self._predict_facial_points(img_processed, confidence_threshold)
+
+    def get_detailed_analysis_report(self, analysis_results):
+        """Generate a detailed text report of all analysis results"""
+        if not analysis_results:
+            return "No analysis results available"
+        
+        proportions = analysis_results.get('proportions', {})
+        slopes = analysis_results.get('slopes', {})
+        eyebrow_props = analysis_results.get('eyebrow_proportions', {})
+        eye_angles = analysis_results.get('eye_angles', {})
+        eye_face_props = analysis_results.get('eye_face_proportions', {})
+        inner_outer_props = analysis_results.get('inner_outer_proportions', {})
+        model_preds = analysis_results.get('model_predictions', {})
+        summary = analysis_results.get('summary', {})
+        
+        report = []
+        report.append("=== ANÁLISIS ANTROPOMÉTRICO COMPLETO ===\n")
+        
+        # Facial thirds
+        report.append("TERCIOS FACIALES:")
+        report.append(f"• Primer tercio: {proportions.get('distance_69_68_proportion', 0):.4f} - {summary.get('facial_thirds', {}).get('primer_tercio', 'N/A')}")
+        report.append(f"• Segundo tercio: {proportions.get('distance_68_34_proportion', 0):.4f} - {summary.get('facial_thirds', {}).get('segundo_tercio', 'N/A')}")
+        report.append(f"• Tercer tercio: {proportions.get('distance_34_9_proportion', 0):.4f} - {summary.get('facial_thirds', {}).get('tercer_tercio', 'N/A')}")
+        report.append("")
+        
+        # Eye analysis
+        report.append("ANÁLISIS OCULAR:")
+        report.append(f"• Proporción interna ojos: {proportions.get('eye_distance_proportion', 0):.4f} - {summary.get('eye_analysis', {}).get('internal_proportion', 'N/A')}")
+        report.append(f"• Proporción externa ojos: {proportions.get('outter_eye_distance_proportion', 0):.4f}")
+        report.append(f"• Ángulo ojo izquierdo: {eye_angles.get('left_eye_angle', 0):.2f}° - {summary.get('eye_analysis', {}).get('left_eye_angle', 'N/A')}")
+        report.append(f"• Ángulo ojo derecho: {eye_angles.get('right_eye_angle', 0):.2f}° - {summary.get('eye_analysis', {}).get('right_eye_angle', 'N/A')}")
+        report.append(f"• Proporción ojo izquierdo/cara: {summary.get('eye_analysis', {}).get('left_eye_face_proportion', 'N/A')}")
+        report.append(f"• Proporción ojo derecho/cara: {summary.get('eye_analysis', {}).get('right_eye_face_proportion', 'N/A')}")
+        report.append("")
+        
+        # Eyebrow analysis
+        report.append("ANÁLISIS DE CEJAS:")
+        report.append(f"• Ceja izquierda: {eyebrow_props.get('left_eyebrow_proportion', 0):.4f} - {summary.get('eyebrow_analysis', {}).get('left_eyebrow_classification', 'N/A')}")
+        report.append(f"• Ceja derecha: {eyebrow_props.get('right_eyebrow_proportion', 0):.4f} - {summary.get('eyebrow_analysis', {}).get('right_eyebrow_classification', 'N/A')}")
+        report.append("")
+        
+        # Face measurements
+        report.append("MEDIDAS FACIALES:")
+        report.append(f"• Ancho facial: {proportions.get('head_width_proportion', 0):.4f}")
+        report.append(f"• Longitud boca: {proportions.get('mouth_length_proportion', 0):.4f}")
+        report.append(f"• Relación boca-pupila: {proportions.get('mouth_to_eye_proportion', 0):.4f} - {summary.get('mouth_analysis', {}).get('mouth_to_eye_relation', 'N/A')}")
+        report.append(f"• Relación mentón-ancho cara: {proportions.get('chin_to_face_width_proportion', 0):.4f}")
+        report.append("")
+        
+        # Area analysis
+        report.append("ANÁLISIS DE ÁREAS:")
+        report.append(f"• Área total cara: {inner_outer_props.get('outer_area', 0):.2f} píxeles²")
+        report.append(f"• Área interna cara: {inner_outer_props.get('inner_area', 0):.2f} píxeles²")
+        report.append(f"• Porcentaje interno/externo: {summary.get('face_area_analysis', {}).get('inner_outer_percentage', 'N/A')}")
+        report.append("")
+        
+        # Eyebrow slopes
+        if slopes:
+            report.append("PENDIENTES DE CEJAS:")
+            right_slopes = slopes.get('right_eyebrow', {})
+            left_slopes = slopes.get('left_eyebrow', {})
+            
+            for portion in ['portion_1', 'portion_2', 'portion_3']:
+                if portion in right_slopes:
+                    slope = right_slopes[portion]
+                    degrees = self._convert_slope_to_degrees(slope)
+                    if portion == 'portion_1':
+                        degrees = 180 - degrees
+                    elif portion == 'portion_2':
+                        degrees = 90 - degrees
+                        degrees = max(degrees, 0)
+                    label = self._label_proportion(degrees, portion)
+                    report.append(f"• Ceja derecha {portion}: {slope:.4f} ({degrees:.2f}°) - {label}")
+            
+            for portion in ['portion_1', 'portion_2', 'portion_3']:
+                if portion in left_slopes:
+                    slope = left_slopes[portion]
+                    degrees = self._convert_slope_to_degrees(slope)
+                    if portion == 'portion_1':
+                        degrees = 180 - degrees
+                    elif portion == 'portion_2':
+                        degrees = 90 - degrees
+                        degrees = max(degrees, 0)
+                    label = self._label_proportion(degrees, portion)
+                    report.append(f"• Ceja izquierda {portion}: {slope:.4f} ({degrees:.2f}°) - {label}")
+            report.append("")
+        
+        # Model integration
+        report.append("INTEGRACIÓN DEL MODELO:")
+        report.append(f"• Puntos del modelo detectados: {summary.get('model_integration', {}).get('total_model_points', 0)}")
+        report.append(f"• Punto 1 detectado: {'✓' if summary.get('model_integration', {}).get('point_1_detected') else '✗'}")
+        report.append(f"• Punto 2 usado (entre cejas): {'✓' if summary.get('model_integration', {}).get('point_2_used') else '✗'}")
+        report.append(f"• Punto 3 usado (parte superior cabeza): {'✓' if summary.get('model_integration', {}).get('point_3_used') else '✗'}")
+        
+        if model_preds:
+            report.append("")
+            report.append("TODOS LOS PUNTOS DEL MODELO DETECTADOS:")
+            for label, point in model_preds.items():
+                report.append(f"• Punto modelo {label}: {point}")
+        
+        return "\n".join(report)

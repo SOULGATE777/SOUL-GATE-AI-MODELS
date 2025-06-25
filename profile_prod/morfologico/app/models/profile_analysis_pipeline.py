@@ -301,7 +301,7 @@ class ProfileAnalysisPipeline:
         return detected_objects
     
     def classify_landmarks(self, original_image, detected_objects, image_size=224):
-        """Classify landmark tags using model 2"""
+        """Classify landmark tags using model 2 - returns top 2 predictions"""
         classifications = []
         h_orig, w_orig = original_image.shape[:2]
         scale_x = w_orig / image_size
@@ -335,18 +335,31 @@ class ProfileAnalysisPipeline:
                 with torch.no_grad():
                     outputs = self.classifier_model(crop_tensor)
                     probabilities = torch.nn.functional.softmax(outputs, dim=1)
-                    predicted_class = torch.argmax(probabilities, dim=1).item()
-                    confidence = probabilities[0][predicted_class].item()
-                
-                if predicted_class < len(self.classifier_tags):
-                    tag = self.classifier_tags[predicted_class]
-                    classifications.append({
-                        'bbox': bbox,
-                        'original_class': obj['class'],
-                        'tag': tag,
-                        'tag_confidence': confidence,
-                        'bbox_confidence': obj['confidence']
-                    })
+                    
+                    # Get top 2 predictions
+                    top2_values, top2_indices = torch.topk(probabilities[0], k=2)
+                    
+                    # Prepare top 2 tags
+                    top_tags = []
+                    for i in range(min(2, len(top2_indices))):
+                        class_idx = top2_indices[i].item()
+                        confidence = top2_values[i].item()
+                        
+                        if class_idx < len(self.classifier_tags):
+                            tag = self.classifier_tags[class_idx]
+                            top_tags.append({
+                                'tag': tag,
+                                'confidence': confidence,
+                                'rank': i + 1  # 1 for first, 2 for second
+                            })
+                    
+                    if top_tags:  # Only add if we have valid tags
+                        classifications.append({
+                            'bbox': bbox,
+                            'original_class': obj['class'],
+                            'top_tags': top_tags,  # Changed from single 'tag' to 'top_tags' list
+                            'bbox_confidence': obj['confidence']
+                        })
         
         return classifications
     
@@ -445,7 +458,7 @@ class ProfileAnalysisPipeline:
         return results
     
     def visualize_results(self, original_image, results, image_path):
-        """Visualize all analysis results"""
+        """Visualize all analysis results with top 2 tags"""
         try:
             fig, axes = plt.subplots(1, 3, figsize=(21, 7))
             
@@ -474,11 +487,16 @@ class ProfileAnalysisPipeline:
                 width = x2_orig - x1_orig
                 height = y2_orig - y1_orig
                 
-                # Find corresponding classification
+                # Find corresponding classification with top 2 tags
                 tag_info = ""
                 for cls in results['landmark_classifications']:
                     if np.array_equal(cls['bbox'], bbox):
-                        tag_info = f" -> {cls['tag']} ({cls['tag_confidence']:.2f})"
+                        if 'top_tags' in cls and cls['top_tags']:
+                            # Format top 2 tags
+                            tag_strings = []
+                            for tag_data in cls['top_tags']:
+                                tag_strings.append(f"{tag_data['tag']} ({tag_data['confidence']:.2f})")
+                            tag_info = f" -> {' | '.join(tag_strings)}"
                         break
                 
                 color = plt.cm.tab10(i % 10)
@@ -486,7 +504,7 @@ class ProfileAnalysisPipeline:
                                    fill=False, edgecolor=color, linewidth=2)
                 axes[1].add_patch(rect)
                 axes[1].text(x1_orig, y1_orig-5, f"{obj['class']}: {obj['confidence']:.2f}{tag_info}",
-                            color=color, fontsize=9, bbox=dict(facecolor='white', alpha=0.8))
+                            color=color, fontsize=8, bbox=dict(facecolor='white', alpha=0.8))
             axes[1].axis('off')
             
             # Anthropometric points
@@ -525,5 +543,3 @@ class ProfileAnalysisPipeline:
         except Exception as e:
             logger.error(f"Visualization failed: {str(e)}")
             # Don't raise exception for visualization errors
-
-

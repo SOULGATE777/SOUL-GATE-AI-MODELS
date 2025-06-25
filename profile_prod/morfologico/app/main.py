@@ -191,10 +191,13 @@ async def analyze_profile_morphological(
             "landmark_classifications": [
                 {
                     "original_class": cls["original_class"],
-                    "classified_tag": cls["tag"],
                     "bbox": cls["bbox"].tolist() if hasattr(cls["bbox"], "tolist") else cls["bbox"],
-                    "tag_confidence": float(cls["tag_confidence"]),
-                    "bbox_confidence": float(cls["bbox_confidence"])
+                    "bbox_confidence": float(cls["bbox_confidence"]),
+                    # Handle both old format (backward compatibility) and new top_tags format
+                    "top_tags": cls.get("top_tags", []),  # New format with top 2 tags
+                    # For backward compatibility, provide primary tag info
+                    "classified_tag": cls["top_tags"][0]["tag"] if cls.get("top_tags") else cls.get("tag", ""),
+                    "tag_confidence": cls["top_tags"][0]["confidence"] if cls.get("top_tags") else cls.get("tag_confidence", 0.0)
                 } for cls in results["landmark_classifications"]
             ],
             "anthropometric_points": [
@@ -374,10 +377,13 @@ async def classify_profile_landmarks(
             "landmark_classifications": [
                 {
                     "original_class": cls["original_class"],
-                    "classified_tag": cls["tag"],
                     "bbox": cls["bbox"].tolist() if hasattr(cls["bbox"], "tolist") else cls["bbox"],
-                    "tag_confidence": float(cls["tag_confidence"]),
-                    "bbox_confidence": float(cls["bbox_confidence"])
+                    "bbox_confidence": float(cls["bbox_confidence"]),
+                    # Handle both old format (backward compatibility) and new top_tags format
+                    "top_tags": cls.get("top_tags", []),  # New format with top 2 tags
+                    # For backward compatibility, provide primary tag info
+                    "classified_tag": cls["top_tags"][0]["tag"] if cls.get("top_tags") else cls.get("tag", ""),
+                    "tag_confidence": cls["top_tags"][0]["confidence"] if cls.get("top_tags") else cls.get("tag_confidence", 0.0)
                 } for cls in classifications
             ]
         }
@@ -502,4 +508,3 @@ async def get_model_info():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8003)
-

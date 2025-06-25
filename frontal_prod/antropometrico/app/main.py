@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 import uvicorn
 import os
 import cv2
@@ -8,14 +8,14 @@ from typing import Optional
 import uuid
 from datetime import datetime
 
-from .models.anthropometric_pipeline import AnthropometricAnalyzer
-from .utils.visualization import create_visualization
-from .utils.image_processing import process_uploaded_image
+from app.models.anthropometric_pipeline import AnthropometricAnalyzer
+from app.utils.visualization import create_visualization, create_detailed_report_image
+from app.utils.image_processing import process_uploaded_image
 
 app = FastAPI(
     title="Antropometrico Analysis API",
-    description="Advanced anthropometric facial analysis with custom point detection",
-    version="1.0.0"
+    description="Advanced anthropometric facial analysis with custom point detection and comprehensive features",
+    version="2.0.0"
 )
 
 # Initialize the analyzer (will be loaded on startup)
@@ -26,7 +26,7 @@ async def startup_event():
     """Initialize the anthropometric analyzer on startup"""
     global analyzer
     analyzer = AnthropometricAnalyzer()
-    print("✅ Antropometrico Analysis API initialized successfully")
+    print("✅ Antropometrico Analysis API v2.0 initialized successfully")
 
 @app.get("/health")
 async def health_check():
@@ -34,26 +34,38 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "antropometrico",
+        "version": "2.0.0",
         "timestamp": datetime.now().isoformat(),
-        "analyzer_loaded": analyzer is not None
+        "analyzer_loaded": analyzer is not None,
+        "features": [
+            "facial_landmarks_detection",
+            "custom_model_points",
+            "eyebrow_length_analysis", 
+            "eye_angle_analysis",
+            "eye_face_area_proportions",
+            "inner_outer_face_analysis",
+            "comprehensive_reporting"
+        ]
     }
 
 @app.post("/analyze-anthropometric")
 async def analyze_anthropometric(
     file: UploadFile = File(...),
     confidence_threshold: float = Form(0.5),
-    include_visualization: bool = Form(True)
+    include_visualization: bool = Form(True),
+    include_detailed_report: bool = Form(False)
 ):
     """
-    Complete anthropometric facial analysis
+    Complete anthropometric facial analysis with all features
     
     Args:
         file: Input image file
         confidence_threshold: Confidence threshold for model predictions (0.0-1.0)
         include_visualization: Whether to generate visualization
+        include_detailed_report: Whether to generate detailed report image
     
     Returns:
-        JSON response with analysis results
+        JSON response with comprehensive analysis results
     """
     try:
         if analyzer is None:
@@ -68,8 +80,18 @@ async def analyze_anthropometric(
             confidence_threshold=confidence_threshold
         )
         
+        if not results:
+            return JSONResponse(content={
+                "error": "No face detected in the image",
+                "facial_landmarks": {"count": 0},
+                "model_predictions": {},
+                "analysis_summary": {}
+            })
+        
         visualization_path = None
-        if include_visualization and results:
+        detailed_report_path = None
+        
+        if include_visualization:
             # Generate unique filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             unique_id = str(uuid.uuid4())[:8]
@@ -89,17 +111,48 @@ async def analyze_anthropometric(
             os.makedirs("/app/results", exist_ok=True)
             cv2.imwrite(visualization_path, vis_image)
         
-        # Prepare response
+        if include_detailed_report:
+            # Generate detailed report image
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_id = str(uuid.uuid4())[:8]
+            report_filename = f"detailed_report_{timestamp}_{unique_id}.jpg"
+            detailed_report_path = f"/app/results/{report_filename}"
+            
+            # Create detailed report image
+            report_image = create_detailed_report_image(image_array, results)
+            
+            # Save detailed report
+            os.makedirs("/app/results", exist_ok=True)
+            cv2.imwrite(detailed_report_path, report_image)
+        
+        # Prepare comprehensive response
         response = {
             "facial_landmarks": {
                 "count": 68,
                 "extended_points": len(results['extended_points']) if results else 0
             },
-            "model_predictions": results['model_predictions'] if results else {},
-            "proportions": results['proportions'] if results else {},
-            "slopes": results['slopes'] if results else {},
-            "analysis_summary": results['summary'] if results else {},
+            "model_predictions": results['model_predictions'],
+            "proportions": results['proportions'],
+            "slopes": results['slopes'],
+            "eyebrow_analysis": {
+                "proportions": results['eyebrow_proportions'],
+                "classifications": {
+                    "left_eyebrow": analyzer._classify_eyebrow_length(results['eyebrow_proportions']['left_eyebrow_proportion']),
+                    "right_eyebrow": analyzer._classify_eyebrow_length(results['eyebrow_proportions']['right_eyebrow_proportion'])
+                }
+            },
+            "eye_analysis": {
+                "angles": results['eye_angles'],
+                "classifications": {
+                    "left_eye_angle": analyzer._classify_eye_angle(results['eye_angles']['left_eye_angle']),
+                    "right_eye_angle": analyzer._classify_eye_angle(results['eye_angles']['right_eye_angle'])
+                },
+                "face_proportions": results['eye_face_proportions']
+            },
+            "face_area_analysis": results['inner_outer_proportions'],
+            "analysis_summary": results['summary'],
             "visualization_path": visualization_path,
+            "detailed_report_path": detailed_report_path,
             "confidence_threshold": confidence_threshold
         }
         
@@ -107,6 +160,170 @@ async def analyze_anthropometric(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.post("/analyze-eyebrows")
+async def analyze_eyebrows(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5)
+):
+    """
+    Analyze eyebrow proportions and characteristics
+    """
+    try:
+        if analyzer is None:
+            raise HTTPException(status_code=500, detail="Analyzer not initialized")
+        
+        image_array = await process_uploaded_image(file)
+        results = analyzer.analyze_face(image_array, confidence_threshold)
+        
+        if not results:
+            return JSONResponse(content={"error": "No face detected"})
+        
+        eyebrow_analysis = {
+            "eyebrow_proportions": results['eyebrow_proportions'],
+            "classifications": {
+                "left_eyebrow": analyzer._classify_eyebrow_length(results['eyebrow_proportions']['left_eyebrow_proportion']),
+                "right_eyebrow": analyzer._classify_eyebrow_length(results['eyebrow_proportions']['right_eyebrow_proportion'])
+            },
+            "slopes": results['slopes'],
+            "summary": results['summary']['eyebrow_analysis']
+        }
+        
+        return JSONResponse(content=eyebrow_analysis)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Eyebrow analysis failed: {str(e)}")
+
+@app.post("/analyze-eyes")
+async def analyze_eyes(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5)
+):
+    """
+    Analyze eye angles and proportions
+    """
+    try:
+        if analyzer is None:
+            raise HTTPException(status_code=500, detail="Analyzer not initialized")
+        
+        image_array = await process_uploaded_image(file)
+        results = analyzer.analyze_face(image_array, confidence_threshold)
+        
+        if not results:
+            return JSONResponse(content={"error": "No face detected"})
+        
+        eye_analysis = {
+            "eye_angles": results['eye_angles'],
+            "angle_classifications": {
+                "left_eye": analyzer._classify_eye_angle(results['eye_angles']['left_eye_angle']),
+                "right_eye": analyzer._classify_eye_angle(results['eye_angles']['right_eye_angle'])
+            },
+            "eye_face_proportions": results['eye_face_proportions'],
+            "internal_eye_proportion": results['proportions']['eye_distance_proportion'],
+            "summary": results['summary']['eye_analysis']
+        }
+        
+        return JSONResponse(content=eye_analysis)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Eye analysis failed: {str(e)}")
+
+@app.post("/analyze-face-areas")
+async def analyze_face_areas(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5)
+):
+    """
+    Analyze face area proportions (inner/outer)
+    """
+    try:
+        if analyzer is None:
+            raise HTTPException(status_code=500, detail="Analyzer not initialized")
+        
+        image_array = await process_uploaded_image(file)
+        results = analyzer.analyze_face(image_array, confidence_threshold)
+        
+        if not results:
+            return JSONResponse(content={"error": "No face detected"})
+        
+        area_analysis = {
+            "inner_outer_proportions": results['inner_outer_proportions'],
+            "eye_face_proportions": results['eye_face_proportions'],
+            "total_facial_measurements": {
+                "head_width_proportion": results['proportions']['head_width_proportion'],
+                "mouth_length_proportion": results['proportions']['mouth_length_proportion'],
+                "chin_to_face_width_proportion": results['proportions']['chin_to_face_width_proportion']
+            },
+            "summary": results['summary']['face_area_analysis']
+        }
+        
+        return JSONResponse(content=area_analysis)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Face area analysis failed: {str(e)}")
+
+@app.post("/get-detailed-report")
+async def get_detailed_report(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5),
+    format: str = Form("text")  # "text" or "json"
+):
+    """
+    Generate a detailed analysis report
+    
+    Args:
+        file: Input image file
+        confidence_threshold: Confidence threshold for model predictions
+        format: Output format ("text" or "json")
+    """
+    try:
+        if analyzer is None:
+            raise HTTPException(status_code=500, detail="Analyzer not initialized")
+        
+        image_array = await process_uploaded_image(file)
+        results = analyzer.analyze_face(image_array, confidence_threshold)
+        
+        if not results:
+            return JSONResponse(content={"error": "No face detected"})
+        
+        if format == "text":
+            report_text = analyzer.get_detailed_analysis_report(results)
+            return PlainTextResponse(content=report_text)
+        else:
+            # Return comprehensive JSON report
+            detailed_report = {
+                "analysis_metadata": {
+                    "timestamp": datetime.now().isoformat(),
+                    "confidence_threshold": confidence_threshold,
+                    "model_points_detected": len(results['model_predictions']),
+                    "extended_points_count": len(results['extended_points'])
+                },
+                "facial_thirds": {
+                    "primer_tercio": {
+                        "value": results['proportions']['distance_69_68_proportion'],
+                        "classification": results['summary']['facial_thirds']['primer_tercio']
+                    },
+                    "segundo_tercio": {
+                        "value": results['proportions']['distance_68_34_proportion'],
+                        "classification": results['summary']['facial_thirds']['segundo_tercio']
+                    },
+                    "tercer_tercio": {
+                        "value": results['proportions']['distance_34_9_proportion'],
+                        "classification": results['summary']['facial_thirds']['tercer_tercio']
+                    }
+                },
+                "eye_analysis": results['eye_angles'],
+                "eyebrow_analysis": results['eyebrow_proportions'],
+                "face_proportions": results['proportions'],
+                "area_analysis": results['inner_outer_proportions'],
+                "model_integration": results['model_predictions'],
+                "summary": results['summary']
+            }
+            
+            return JSONResponse(content=detailed_report)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
 @app.post("/detect-landmarks")
 async def detect_landmarks(
@@ -150,7 +367,22 @@ async def detect_anthropometric_points(
         return JSONResponse(content={
             "model_predictions": model_predictions,
             "points_detected": len(model_predictions),
-            "confidence_threshold": confidence_threshold
+            "confidence_threshold": confidence_threshold,
+            "point_descriptions": {
+                "1": "Custom point 1",
+                "2": "Between eyebrows", 
+                "3": "Top of head",
+                "4": "Custom point 4",
+                "5": "Custom point 5",
+                "6": "Custom point 6",
+                "7": "Custom point 7",
+                "8": "Custom point 8",
+                "9": "Custom point 9",
+                "10": "Custom point 10",
+                "11": "Custom point 11",
+                "12": "Custom point 12",
+                "13": "Custom point 13"
+            }
         })
         
     except Exception as e:
@@ -159,13 +391,44 @@ async def detect_anthropometric_points(
 @app.get("/results/{filename}")
 async def get_result_image(filename: str):
     """
-    Retrieve generated visualization image
+    Retrieve generated visualization or report image
     """
     file_path = f"/app/results/{filename}"
     if os.path.exists(file_path):
         return FileResponse(file_path)
     else:
-        raise HTTPException(status_code=404, detail="Visualization not found")
+        raise HTTPException(status_code=404, detail="Image not found")
+
+@app.get("/api-info")
+async def get_api_info():
+    """
+    Get information about all available endpoints
+    """
+    return {
+        "service": "Antropometrico Analysis API",
+        "version": "2.0.0",
+        "endpoints": {
+            "/analyze-anthropometric": "Complete facial analysis with all features",
+            "/analyze-eyebrows": "Focused eyebrow analysis",
+            "/analyze-eyes": "Eye angle and proportion analysis", 
+            "/analyze-face-areas": "Face area proportion analysis",
+            "/get-detailed-report": "Generate comprehensive report",
+            "/detect-landmarks": "Detect facial landmarks only",
+            "/detect-points": "Detect custom model points only",
+            "/results/{filename}": "Retrieve generated images",
+            "/health": "Health check",
+            "/api-info": "This endpoint"
+        },
+        "new_features": {
+            "eyebrow_length_analysis": "Classifies eyebrow length relative to eye length",
+            "eye_angle_analysis": "Measures and classifies eye angles",
+            "face_area_proportions": "Analyzes inner/outer face area ratios",
+            "comprehensive_reporting": "Detailed text and JSON reports",
+            "enhanced_model_integration": "Uses all 13 custom model points"
+        }
+  }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+	uvicorn.run(app, host="0.0.0.0", port=8001)
+
+

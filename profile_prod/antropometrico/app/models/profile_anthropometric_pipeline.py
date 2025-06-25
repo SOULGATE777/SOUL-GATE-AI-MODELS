@@ -61,7 +61,7 @@ class MinimalPointModel(nn.Module):
         return heatmaps, profile_logits
 
 class ProfileAnthropometricPipeline:
-    """Profile-specific anthropometric analysis pipeline"""
+    """Profile-specific anthropometric analysis pipeline with comprehensive measurements"""
     
     def __init__(self, model_path: str, device: str = 'cuda'):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
@@ -222,29 +222,33 @@ class ProfileAnthropometricPipeline:
         return None
     
     def perform_anthropometric_analysis(self, points: Dict[str, Tuple[float, float]]) -> Dict:
-        """Perform all anthropometric measurements"""
-        print("\n=== PROFILE ANTHROPOMETRIC ANALYSIS ===")
+        """Perform comprehensive anthropometric measurements including all new features"""
+        print("\n=== COMPREHENSIVE PROFILE ANTHROPOMETRIC ANALYSIS ===")
         
         # Get all required points
-        point_24 = points.get("24", None)
-        point_10 = points.get("10", None)
-        point_17 = points.get("17", None)
-        point_18 = points.get("18", None)
-        point_16 = points.get("16", None)
-        point_5 = points.get("5", None)
-        point_9 = points.get("9", None)
-        point_19 = points.get("19", None)
-        point_22 = points.get("22", None)
-        point_11 = points.get("11", None)
-        point_6 = points.get("6", None)
+        point_1 = points.get("1", None)
         point_2 = points.get("2", None)
         point_3 = points.get("3", None)
-        point_1 = points.get("1", None)
         point_4 = points.get("4", None)
+        point_5 = points.get("5", None)
+        point_6 = points.get("6", None)
         point_7 = points.get("7", None)
         point_8 = points.get("8", None)
+        point_9 = points.get("9", None)
+        point_10 = points.get("10", None)
+        point_11 = points.get("11", None)
+        point_16 = points.get("16", None)
+        point_17 = points.get("17", None)
+        point_18 = points.get("18", None)
+        point_19 = points.get("19", None)
+        point_22 = points.get("22", None)
+        point_24 = points.get("24", None)
+        point_26 = points.get("26", None)
+        point_30 = points.get("30", None)
         
         measurements = {}
+        
+        print("\n--- BASIC MEASUREMENTS ---")
         
         # Calculate reference distance (24 to 10)
         if point_24 and point_10:
@@ -255,7 +259,8 @@ class ProfileAnthropometricPipeline:
             print("Warning: Reference points 24 and 10 not found. Cannot perform normalized measurements.")
             return measurements
         
-        # Nose measurements (18 to 17)
+        # === NOSE ANALYSIS ===
+        print("\n--- NOSE ANALYSIS ---")
         if point_18 and point_17:
             distance_18_17 = self.dist(point_18, point_17)
             normalized_distance_18_17 = distance_18_17 / reference_distance
@@ -274,83 +279,194 @@ class ProfileAnthropometricPipeline:
                 nose_label = "nariz corta"
             
             measurements['nose_classification'] = nose_label
-            print(f"Label for points 18 and 17: {nose_label}")
+            print(f"Nose classification: {nose_label}")
         
-        # Tercio measurements
+        # === FACIAL THIRDS ANALYSIS ===
+        print("\n--- FACIAL THIRDS ANALYSIS ---")
+        
+        # Upper third (24 to 22)
         if point_24 and point_22:
             distance_24_22 = self.dist(point_24, point_22)
             normalized_distance_24_22 = distance_24_22 / reference_distance
             measurements['tercio_superior_distance'] = distance_24_22
             measurements['tercio_superior_normalized'] = normalized_distance_24_22
             
-            print(f"Distance between points 24 and 22: {distance_24_22:.2f}")
-            print(f"Proportion of distance between points 24 and 22: {normalized_distance_24_22:.3f}")
-            print(f"Label for portion between points 24 and 22: tercio superior")
+            print(f"Upper third distance (24-22): {distance_24_22:.2f}")
+            print(f"Upper third proportion: {normalized_distance_24_22:.3f}")
+            print(f"Upper third label: tercio superior")
         
+        # Middle third (22 to 16)
         if point_22 and point_16:
             distance_22_16 = self.dist(point_22, point_16)
             normalized_distance_22_16 = distance_22_16 / reference_distance
             measurements['tercio_medio_distance'] = distance_22_16
             measurements['tercio_medio_normalized'] = normalized_distance_22_16
             
-            print(f"Distance between points 22 and 16: {distance_22_16:.2f}")
-            print(f"Proportion of distance between points 22 and 16: {normalized_distance_22_16:.3f}")
-            print(f"Label for portion between points 22 and 16: tercio medio")
+            print(f"Middle third distance (22-16): {distance_22_16:.2f}")
+            print(f"Middle third proportion: {normalized_distance_22_16:.3f}")
+            print(f"Middle third label: tercio medio")
         
+        # Lower third (18 to 10)
         if point_18 and point_10:
             distance_18_10 = self.dist(point_18, point_10)
             normalized_distance_18_10 = distance_18_10 / reference_distance
             measurements['tercio_inferior_distance'] = distance_18_10
             measurements['tercio_inferior_normalized'] = normalized_distance_18_10
             
-            print(f"Distance between points 18 and 10: {distance_18_10:.2f}")
-            print(f"Proportion of distance between points 18 and 10: {normalized_distance_18_10:.3f}")
-            print(f"Label for portion between points 18 and 10: tercio inferior")
+            print(f"Lower third distance (18-10): {distance_18_10:.2f}")
+            print(f"Lower third proportion: {normalized_distance_18_10:.3f}")
+            print(f"Lower third label: tercio inferior")
             
-            # Mandibula analysis
+            # === MANDIBLE ANALYSIS ===
+            print("\n--- MANDIBLE ANALYSIS ---")
             if point_5 and point_9:
                 distance_5_9 = self.dist(point_5, point_9)
                 normalized_distance_5_9 = distance_5_9 / distance_18_10
                 measurements['mandibula_distance'] = distance_5_9
                 measurements['mandibula_normalized'] = normalized_distance_5_9
                 
-                print(f"Distance between points 5 and 9: {distance_5_9:.2f}")
-                print(f"Proportion of distance between points 5 and 9 to tercio inferior: {normalized_distance_5_9:.3f}")
+                print(f"Mandible width (5-9): {distance_5_9:.2f}")
+                print(f"Mandible proportion to lower third: {normalized_distance_5_9:.3f}")
                 
                 # Classify mandibula
                 if normalized_distance_5_9 >= 0.75:
                     mandibula_label = "Mandibula Sanguinea"
-                elif 0.65 <= normalized_distance_5_9 <= 0.75:
+                elif 0.65 <= normalized_distance_5_9 < 0.75:
                     mandibula_label = "Mandibula intermedia sanguineo/bilosa"
-                elif 0.20 <= normalized_distance_5_9 <= 0.65:
+                elif 0.20 <= normalized_distance_5_9 < 0.65:
                     mandibula_label = "Mandibula Bilosa"
                 elif 0.10 <= normalized_distance_5_9 < 0.20:
                     mandibula_label = "Mandibula intermedia bilosa/nerviosa"
-                elif normalized_distance_5_9 <= 0.10:
+                elif normalized_distance_5_9 < 0.10:
                     mandibula_label = "Mandibula Nerviosa"
                 else:
                     mandibula_label = "Mandibula Intermedia"
                 
                 measurements['mandibula_classification'] = mandibula_label
-                print(f"Label for mandibula (points 5 and 9): {mandibula_label}")
+                print(f"Mandible classification: {mandibula_label}")
             elif not point_9:
                 measurements['mandibula_classification'] = "Mandibula Linfatica"
-                print("Label for mandibula (points 5 and 9): Mandibula Linfatica")
+                print("Mandible classification: Mandibula Linfatica (point 9 missing)")
         
-        # Ear measurements
+        # === EAR ANALYSIS ===
+        print("\n--- EAR ANALYSIS ---")
+        
+        # Basic ear width
         if point_2 and point_6:
             ear_width = self.dist(point_2, point_6)
             measurements['ear_width'] = ear_width
-            print(f"Distance of ear width: {ear_width:.2f}")
+            print(f"Ear width (2-6): {ear_width:.2f}")
+        
+        # === NEW COMPREHENSIVE MEASUREMENTS ===
+        print("\n--- ADDITIONAL MEASUREMENTS ---")
+        
+        # 1) Ear length proportion calculation
+        if point_4 and point_5 and point_10 and point_24:
+            ear_length = self.dist(point_4, point_5)
+            face_length = self.dist(point_10, point_24)  # Same as reference_distance
             
-            if point_7 and point_8:
-                distance_7_8 = self.dist(point_7, point_8)
-                trago_antitrago = distance_7_8 / ear_width
-                measurements['trago_antitrago_distance'] = distance_7_8
-                measurements['trago_antitrago_proportion'] = trago_antitrago
-                
-                print(f"Distance between points 7 and 8: {distance_7_8:.2f}")
-                print(f"Proporcion trago - antitrago: {trago_antitrago:.3f}")
+            ear_length_proportion = ear_length / face_length
+            measurements['ear_length'] = ear_length
+            measurements['ear_length_proportion'] = ear_length_proportion
+            
+            print(f"Ear length (4-5): {ear_length:.2f}")
+            print(f"Face length (10-24): {face_length:.2f}")
+            print(f"Ear length proportion: {ear_length_proportion:.3f}")
+            
+            # Classify ear length
+            if ear_length_proportion > 0.33:
+                ear_length_label = "oreja larga"
+            elif 0.20 <= ear_length_proportion <= 0.33:
+                ear_length_label = "oreja normal"
+            else:  # < 0.2
+                ear_length_label = "oreja corta"
+            
+            measurements['ear_length_classification'] = ear_length_label
+            print(f"Ear length classification: {ear_length_label}")
+        else:
+            print("Missing points for ear length calculation (need points 4, 5, 10, 24)")
+        
+        # 2) Ear lobe proportion calculation
+        if point_3 and point_5 and point_4:
+            lobe_length = self.dist(point_3, point_5)
+            if 'ear_length' not in measurements:
+                ear_length = self.dist(point_4, point_5)
+            else:
+                ear_length = measurements['ear_length']
+            
+            ear_lobe_proportion = lobe_length / ear_length
+            measurements['ear_lobe_length'] = lobe_length
+            measurements['ear_lobe_proportion'] = ear_lobe_proportion
+            
+            print(f"Ear lobe length (3-5): {lobe_length:.2f}")
+            print(f"Ear lobe proportion: {ear_lobe_proportion:.3f}")
+            
+            # Classify ear lobe
+            if ear_lobe_proportion > 0.25:
+                ear_lobe_label = "lobulo grande"
+            elif 0.19 <= ear_lobe_proportion <= 0.25:
+                ear_lobe_label = "lobulo normal"
+            else:  # < 0.19
+                ear_lobe_label = "lobulo chico"
+            
+            measurements['ear_lobe_classification'] = ear_lobe_label
+            print(f"Ear lobe classification: {ear_lobe_label}")
+        else:
+            print("Missing points for ear lobe calculation (need points 3, 4, 5)")
+        
+        # 3) Nasal orifice triangulation calculation
+        if point_26 and point_17 and point_18 and point_30:
+            nasal_orifice_distance = self.dist(point_26, point_17)
+            nose_reference_distance = self.dist(point_18, point_30)
+            
+            nasal_orifice_proportion = nasal_orifice_distance / nose_reference_distance
+            measurements['nasal_orifice_distance'] = nasal_orifice_distance
+            measurements['nose_reference_distance'] = nose_reference_distance
+            measurements['nasal_orifice_proportion'] = nasal_orifice_proportion
+            
+            print(f"Nasal orifice distance (26-17): {nasal_orifice_distance:.2f}")
+            print(f"Nose reference distance (18-30): {nose_reference_distance:.2f}")
+            print(f"Nasal orifice proportion: {nasal_orifice_proportion:.3f}")
+            
+            # Classify nasal orifice triangulation
+            if nasal_orifice_proportion > 0.1:
+                nasal_triangulation_label = "triangulacion de fosa"
+            else:  # <= 0.1
+                nasal_triangulation_label = "sin triangulacion de fosa"
+            
+            measurements['nasal_triangulation_classification'] = nasal_triangulation_label
+            print(f"Nasal triangulation classification: {nasal_triangulation_label}")
+        else:
+            print("Missing points for nasal orifice calculation (need points 26, 17, 18, 30)")
+        
+        # 4) Enhanced tragus-antitragus proportion calculation
+        if point_7 and point_8 and point_2 and point_6:
+            distance_7_8 = self.dist(point_7, point_8)
+            if 'ear_width' not in measurements:
+                ear_width = self.dist(point_2, point_6)
+            else:
+                ear_width = measurements['ear_width']
+            
+            tragus_antitragus_proportion = distance_7_8 / ear_width
+            measurements['tragus_antitragus_distance'] = distance_7_8
+            measurements['tragus_antitragus_proportion'] = tragus_antitragus_proportion
+            
+            print(f"Tragus-antitragus distance (7-8): {distance_7_8:.2f}")
+            print(f"Ear width (2-6): {ear_width:.2f}")
+            print(f"Tragus-antitragus proportion: {tragus_antitragus_proportion:.3f}")
+            
+            # Classify tragus-antitragus
+            if tragus_antitragus_proportion >= 0.2:
+                tragus_antitragus_label = "grande"
+            elif 0.1 <= tragus_antitragus_proportion < 0.2:
+                tragus_antitragus_label = "normal"
+            else:  # < 0.1
+                tragus_antitragus_label = "corta"
+            
+            measurements['tragus_antitragus_classification'] = tragus_antitragus_label
+            print(f"Tragus-antitragus classification: {tragus_antitragus_label}")
+        else:
+            print("Missing points for tragus-antitragus calculation (need points 7, 8, 2, 6)")
         
         # Angular measurements
         self.calculate_angular_measurements(points, measurements)
@@ -359,6 +475,8 @@ class ProfileAnthropometricPipeline:
     
     def calculate_angular_measurements(self, points: Dict[str, Tuple[float, float]], measurements: Dict):
         """Calculate all angular measurements with proper left/right profile handling via vector analysis"""
+        print("\n--- ANGULAR ANALYSIS ---")
+        
         point_22 = points.get("22", None)
         point_18 = points.get("18", None)
         point_17 = points.get("17", None)
@@ -381,6 +499,7 @@ class ProfileAnthropometricPipeline:
         # Determine head direction based on the reference vector (infallible method)
         head_direction = "right" if vector_22_18[0] > 0 else "left"
         print(f"Head direction determined via vector analysis: {head_direction}")
+        measurements['head_direction'] = head_direction
         
         # Nose tip angle (18 to 17) - using your original logic
         if point_17 and point_18:
@@ -415,9 +534,9 @@ class ProfileAnthropometricPipeline:
                 angle_degrees = 180 + angle_degrees
             
             measurements['nose_tip_angle'] = angle_degrees
-            print(f"Slope of reference line (22 to 18): {ref_slope:.2f}")
-            print(f"Slope of perpendicular line: {perp_slope:.2f}")
-            print(f"Angle from perpendicular line to nose tip: {angle_degrees:.2f} degrees")
+            print(f"Reference line slope (22-18): {ref_slope:.2f}")
+            print(f"Perpendicular line slope: {perp_slope:.2f}")
+            print(f"Nose tip angle: {angle_degrees:.2f} degrees")
             
             # Classify nose tip
             if angle_degrees >= 26:
@@ -430,20 +549,226 @@ class ProfileAnthropometricPipeline:
                 nose_tip_label = "punta hacia abajo"
             
             measurements['nose_tip_classification'] = nose_tip_label
-            print(f"Etiqueta para ángulo de punta de nariz: {nose_tip_label}")
+            print(f"Nose tip classification: {nose_tip_label}")
         
-        # Additional angular measurements would continue here...
-        # (Forehead angle, chin angle, implantation angles, etc.)
-        # Keeping the structure but condensed for space
+        # Calculate slope for 'angulo de nariz' (19 to 17)
+        if point_17 and point_19:
+            def calculate_slope(p1, p2):
+                if p1 and p2:
+                    dx = p2[0] - p1[0]
+                    dy = p2[1] - p1[1]
+                    return dy / dx if dx != 0 else float('inf')
+                return None
+            
+            slope_19_17 = calculate_slope(point_17, point_19)
+            if slope_19_17 is not None:
+                measurements['nose_slope_19_17'] = slope_19_17
+                print(f"Nose angle slope (19-17): {slope_19_17:.2f}")
+                angle_19_17 = degrees(atan2(slope_19_17, 1))
+                measurements['nose_angle_19_17'] = angle_19_17
+                print(f"Nose angle (19-17): {angle_19_17:.2f} degrees")
         
+        # Forehead angle (24 to 22) - with proper left/right handling
+        if point_24 and point_22:
+            vector_22_24 = np.array([point_24[0] - point_22[0], point_24[1] - point_22[1]])
+            
+            # Normalize both vectors for dot product calculation
+            v1_u = vector_22_18 / np.linalg.norm(vector_22_18)
+            v2_u = vector_22_24 / np.linalg.norm(vector_22_24)
+            
+            # Calculate angle using dot product formula
+            cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+            angle_radians = np.arccos(cos_angle)
+            angle_degrees = np.degrees(angle_radians)
+            
+            # Adjust angle based on head direction (from your original logic)
+            if head_direction == "left":
+                if vector_22_24[0] < vector_22_18[0]:  # Turning right
+                    angle_degrees = abs(angle_degrees)
+                else:  # Turning left
+                    angle_degrees = -angle_degrees
+            else:  # Right side of face
+                if vector_22_24[0] < vector_22_18[0]:  # Turning right
+                    angle_degrees = -angle_degrees
+                else:  # Turning left
+                    angle_degrees = abs(angle_degrees)
+            
+            # Normalize angle to be between 0 and 90 degrees
+            if angle_degrees < 0:
+                angle_degrees = abs(angle_degrees)
+            if angle_degrees > 90:
+                angle_degrees = 180 - angle_degrees
+            
+            measurements['forehead_angle'] = angle_degrees
+            print(f"Forehead angle (24-22): {angle_degrees:.2f} degrees")
+            
+            # Classify forehead using np.select logic from original
+            if angle_degrees > 15:
+                forehead_label = 'frente inclinada hacia atras'
+            elif 11 <= angle_degrees <= 15:
+                forehead_label = 'frente neutra'
+            else:  # < 11
+                forehead_label = 'frente vertical'
+            
+            measurements['forehead_classification'] = forehead_label
+            print(f"Forehead classification: {forehead_label}")
+        
+        # Chin angle (18 to 11) - with proper face side detection
+        if point_18 and point_11:
+            vector_18_11 = np.array([point_11[0] - point_18[0], point_11[1] - point_18[1]])
+            
+            # Normalize both vectors for dot product calculation
+            v1_u = vector_22_18 / np.linalg.norm(vector_22_18)
+            v2_u = vector_18_11 / np.linalg.norm(vector_18_11)
+            
+            # Calculate angle using dot product formula
+            cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+            angle_radians = np.arccos(cos_angle)
+            angle_degrees = np.degrees(angle_radians)
+            
+            # Determine which side of face and adjust angle accordingly (from your original logic)
+            if point_17 and point_17[0] < point_18[0]:  # Left side of face
+                # On left side, positive angles mean turning right
+                if vector_18_11[0] < vector_22_18[0]:  # Turning right
+                    angle_degrees = abs(angle_degrees)
+                else:  # Turning left
+                    angle_degrees = -angle_degrees
+            else:  # Right side of face
+                # On right side, positive angles mean turning left
+                if vector_18_11[0] < vector_22_18[0]:  # Turning right
+                    angle_degrees = -angle_degrees
+                else:  # Turning left
+                    angle_degrees = abs(angle_degrees)
+            
+            # Normalize angle to be between -90 and +90 degrees
+            if angle_degrees > 90:
+                angle_degrees = -(180 - angle_degrees)
+            elif angle_degrees < -90:
+                angle_degrees = 180 + angle_degrees
+            
+            measurements['chin_angle'] = angle_degrees
+            print(f"Chin angle (18-11): {angle_degrees:.2f} degrees")
+            
+            # Classify chin using the exact logic from your original code
+            if angle_degrees <= -5:
+                chin_label = 'menton nervioso'
+            elif -5 < angle_degrees <= 5.5:
+                chin_label = 'menton biloso/linfatico'
+            else:  # > 5.5
+                chin_label = 'menton sanguineo'
+            
+            measurements['chin_classification'] = chin_label
+            print(f"Chin classification: {chin_label}")
+        
+        # Implantation angles with head direction consideration
+        if all([point_22, point_18, point_4, point_5, point_1, point_3]):
+            implantation_results = self.calculate_implantation_angles(
+                point_22, point_18, point_4, point_5, point_1, point_3, head_direction
+            )
+            
+            if implantation_results:
+                (angle_superior, classification_superior,
+                 angle_inferior, classification_inferior,
+                 angle_intersection, classification_intersection) = implantation_results
+                
+                measurements['implantation_superior_angle'] = angle_superior
+                measurements['implantation_superior_classification'] = classification_superior
+                measurements['implantation_inferior_angle'] = angle_inferior
+                measurements['implantation_inferior_classification'] = classification_inferior
+                measurements['intersection_angle'] = angle_intersection
+                measurements['intersection_classification'] = classification_intersection
+                
+                print(f"Superior implantation angle: {angle_superior:.2f} degrees")
+                print(f"Superior implantation classification: {classification_superior}")
+                print(f"Inferior implantation angle: {angle_inferior:.2f} degrees")
+                print(f"Inferior implantation classification: {classification_inferior}")
+                print(f"Vector intersection angle (22_18 and 1_3): {angle_intersection:.2f} degrees")
+    
+    def calculate_implantation_angles(self, point_22, point_18, point_4, point_5, point_1, point_3, head_direction=None):
+        """
+        Calculate both superior and inferior implantation angles relative to the line from 22 to 18.
+        Also calculates intersection angle between vectors 22_18 and 1_3.
+        Takes into account head direction for proper angle adjustment.
+        Returns angles and classifications for both superior and inferior positions.
+        """
+        if not all([point_22, point_18, point_4, point_5, point_1, point_3]):
+            return None
+        
+        # Calculate vectors
+        vector_22_18 = np.array([point_18[0] - point_22[0], point_18[1] - point_22[1]])
+        vector_18_4 = np.array([point_4[0] - point_18[0], point_4[1] - point_18[1]])
+        vector_18_5 = np.array([point_5[0] - point_18[0], point_5[1] - point_18[1]])
+        vector_1_3 = np.array([point_1[0] - point_3[0], point_1[1] - point_3[1]])
+        
+        # Calculate slopes
+        ref_slope = vector_22_18[1] / vector_22_18[0] if vector_22_18[0] != 0 else float('inf')
+        perp_slope = -1/ref_slope if ref_slope != 0 else float('inf')
+        
+        # Create perpendicular vector at point 18
+        perp_vector = np.array([1, perp_slope])
+        
+        # Calculate superior angle (point 4)
+        v1_u_superior = vector_18_4 / np.linalg.norm(vector_18_4)
+        v2_u = perp_vector / np.linalg.norm(perp_vector)
+        cos_angle_superior = np.clip(np.dot(v1_u_superior, v2_u), -1.0, 1.0)
+        angle_radians_superior = np.arccos(cos_angle_superior)
+        angle_degrees_superior = np.degrees(angle_radians_superior)
+        
+        # Calculate inferior angle (point 5)
+        v1_u_inferior = vector_18_5 / np.linalg.norm(vector_18_5)
+        cos_angle_inferior = np.clip(np.dot(v1_u_inferior, v2_u), -1.0, 1.0)
+        angle_radians_inferior = np.arccos(cos_angle_inferior)
+        angle_degrees_inferior = np.degrees(angle_radians_inferior)
+        
+        # Calculate intersection angle between vectors 22_18 and 1_3
+        v1_u_intersection = vector_22_18 / np.linalg.norm(vector_22_18)
+        v2_u_intersection = vector_1_3 / np.linalg.norm(vector_1_3)
+        cos_angle_intersection = np.clip(np.dot(v1_u_intersection, v2_u_intersection), -1.0, 1.0)
+        angle_radians_intersection = np.arccos(cos_angle_intersection)
+        angle_degrees_intersection = np.degrees(angle_radians_intersection)
+        
+        # Detect face direction if not provided
+        if head_direction is None:
+            head_direction = "right" if vector_22_18[0] > 0 else "left"
+        
+        # Adjust angles based on head direction (from your original logic)
+        if head_direction in ["left", "right"]:
+            angle_degrees_superior = abs(angle_degrees_superior)
+            angle_degrees_inferior = abs(angle_degrees_inferior)
+            angle_degrees_intersection = abs(angle_degrees_intersection)
+        
+        # Normalize angles to 0 to 180 degrees
+        for angle_var in ['angle_degrees_superior', 'angle_degrees_inferior', 'angle_degrees_intersection']:
+            angle = locals()[angle_var]
+            if angle > 90:
+                locals()[angle_var] = 180 - angle
+            elif angle < 0:
+                locals()[angle_var] = abs(angle)
+        
+        # Classify angles (using your original thresholds)
+        classification_superior = "implantacion alta" if angle_degrees_superior <= -9 else "implantacion estandard"
+        classification_inferior = "implantacion baja" if angle_degrees_inferior <= -10 else "implantacion estandard"
+        
+        # Classify intersection angle
+        if angle_degrees_intersection > 90:
+            classification_intersection = "wide intersection"
+        elif angle_degrees_intersection == 90:
+            classification_intersection = "right intersection"
+        else:
+            classification_intersection = "acute intersection"
+        
+        return (angle_degrees_superior, classification_superior, 
+                angle_degrees_inferior, classification_inferior,
+                angle_degrees_intersection, classification_intersection)
+    
     def create_visualization(self, original_image: np.ndarray, detected_points: List[Dict], 
                            actual_profile: str, measurements: Dict) -> str:
-        """Create visualization and return as base64 string"""
-        fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+        """Create comprehensive visualization and return as base64 string"""
+        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
         
         # Left plot: Original image with detected points
         axes[0].imshow(original_image)
-        axes[0].set_title(f"Profile Anthropometric Points - {actual_profile.title()} Profile")
+        axes[0].set_title(f"Profile Anthropometric Points - {actual_profile.title()} Profile", fontsize=14, fontweight='bold')
         
         image_h, image_w = original_image.shape[:2]
         scale_x = image_w / 224
@@ -463,16 +788,16 @@ class ProfileAnthropometricPipeline:
         
         axes[0].axis('off')
         
-        # Right plot: Measurements summary
+        # Right plot: Comprehensive measurements summary
         axes[1].axis('off')
-        axes[1].set_title("Profile Anthropometric Measurements", fontsize=14, fontweight='bold')
+        axes[1].set_title("Comprehensive Anthropometric Analysis", fontsize=14, fontweight='bold')
         
-        # Create text summary
-        summary_text = self._create_measurement_summary(measurements)
+        # Create comprehensive text summary
+        summary_text = self._create_comprehensive_measurement_summary(measurements)
         
-        # Display text
+        # Display text with smaller font to fit more content
         axes[1].text(0.05, 0.95, summary_text, transform=axes[1].transAxes, 
-                    fontsize=10, verticalalignment='top', fontfamily='monospace',
+                    fontsize=8, verticalalignment='top', fontfamily='monospace',
                     bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
         
         plt.tight_layout()
@@ -486,63 +811,150 @@ class ProfileAnthropometricPipeline:
         
         return image_base64
     
-    def _create_measurement_summary(self, measurements: Dict) -> str:
-        """Create formatted measurement summary text"""
+    def _create_comprehensive_measurement_summary(self, measurements: Dict) -> str:
+        """Create comprehensive formatted measurement summary text"""
         summary_lines = []
         
+        # Basic info
         if 'reference_distance' in measurements:
+            summary_lines.append("=== BASIC MEASUREMENTS ===")
             summary_lines.append(f"Reference Distance (24-10): {measurements['reference_distance']:.2f}")
+            if 'head_direction' in measurements:
+                summary_lines.append(f"Head Direction: {measurements['head_direction']}")
             summary_lines.append("")
         
         # Nose measurements
         if 'nose_classification' in measurements:
-            summary_lines.append("NOSE ANALYSIS:")
-            summary_lines.append(f"  Distance (18-17): {measurements.get('nose_distance', 0):.2f}")
-            summary_lines.append(f"  Normalized: {measurements.get('nose_normalized', 0):.3f}")
-            summary_lines.append(f"  Classification: {measurements['nose_classification']}")
+            summary_lines.append("=== NOSE ANALYSIS ===")
+            summary_lines.append(f"Distance (18-17): {measurements.get('nose_distance', 0):.2f}")
+            summary_lines.append(f"Normalized: {measurements.get('nose_normalized', 0):.3f}")
+            summary_lines.append(f"Classification: {measurements['nose_classification']}")
+            if 'nose_tip_classification' in measurements:
+                summary_lines.append(f"Tip Angle: {measurements.get('nose_tip_angle', 0):.1f}°")
+                summary_lines.append(f"Tip Classification: {measurements['nose_tip_classification']}")
             summary_lines.append("")
         
-        # Tercio measurements
+        # Facial thirds
         if 'tercio_superior_distance' in measurements:
-            summary_lines.append("FACIAL THIRDS:")
-            summary_lines.append(f"  Superior (24-22): {measurements['tercio_superior_distance']:.2f} ({measurements['tercio_superior_normalized']:.3f})")
+            summary_lines.append("=== FACIAL THIRDS ===")
+            summary_lines.append(f"Superior (24-22): {measurements['tercio_superior_distance']:.2f} ({measurements['tercio_superior_normalized']:.3f})")
             if 'tercio_medio_distance' in measurements:
-                summary_lines.append(f"  Middle (22-16): {measurements['tercio_medio_distance']:.2f} ({measurements['tercio_medio_normalized']:.3f})")
+                summary_lines.append(f"Middle (22-16): {measurements['tercio_medio_distance']:.2f} ({measurements['tercio_medio_normalized']:.3f})")
             if 'tercio_inferior_distance' in measurements:
-                summary_lines.append(f"  Inferior (18-10): {measurements['tercio_inferior_distance']:.2f} ({measurements['tercio_inferior_normalized']:.3f})")
+                summary_lines.append(f"Inferior (18-10): {measurements['tercio_inferior_distance']:.2f} ({measurements['tercio_inferior_normalized']:.3f})")
             summary_lines.append("")
         
-        # Mandibula
+        # Mandible
         if 'mandibula_classification' in measurements:
-            summary_lines.append("MANDIBLE ANALYSIS:")
+            summary_lines.append("=== MANDIBLE ANALYSIS ===")
             if 'mandibula_distance' in measurements:
-                summary_lines.append(f"  Distance (5-9): {measurements['mandibula_distance']:.2f}")
-                summary_lines.append(f"  Proportion: {measurements['mandibula_normalized']:.3f}")
-            summary_lines.append(f"  Classification: {measurements['mandibula_classification']}")
+                summary_lines.append(f"Distance (5-9): {measurements['mandibula_distance']:.2f}")
+                summary_lines.append(f"Proportion: {measurements['mandibula_normalized']:.3f}")
+            summary_lines.append(f"Classification: {measurements['mandibula_classification']}")
             summary_lines.append("")
         
         # Angular measurements
         angular_measurements = []
-        if 'nose_tip_classification' in measurements:
-            angular_measurements.append(f"  Nose tip: {measurements['nose_tip_classification']} ({measurements.get('nose_tip_angle', 0):.1f}°)")
+        if 'forehead_classification' in measurements:
+            angular_measurements.append(f"Forehead: {measurements['forehead_classification']} ({measurements.get('forehead_angle', 0):.1f}°)")
+        if 'chin_classification' in measurements:
+            angular_measurements.append(f"Chin: {measurements['chin_classification']} ({measurements.get('chin_angle', 0):.1f}°)")
         
         if angular_measurements:
-            summary_lines.append("ANGULAR ANALYSIS:")
+            summary_lines.append("=== ANGULAR ANALYSIS ===")
             summary_lines.extend(angular_measurements)
             summary_lines.append("")
         
-        # Ear measurements
+        # Implantation
+        if 'implantation_superior_classification' in measurements:
+            summary_lines.append("=== IMPLANTATION ===")
+            summary_lines.append(f"Superior: {measurements['implantation_superior_classification']} ({measurements.get('implantation_superior_angle', 0):.1f}°)")
+            summary_lines.append(f"Inferior: {measurements['implantation_inferior_classification']} ({measurements.get('implantation_inferior_angle', 0):.1f}°)")
+            summary_lines.append("")
+        
+        # Comprehensive ear measurements
+        ear_measurements = []
         if 'ear_width' in measurements:
-            summary_lines.append("EAR ANALYSIS:")
-            summary_lines.append(f"  Width: {measurements['ear_width']:.2f}")
-            if 'trago_antitrago_proportion' in measurements:
-                summary_lines.append(f"  Trago-antitrago proportion: {measurements['trago_antitrago_proportion']:.3f}")
+            ear_measurements.append(f"Width (2-6): {measurements['ear_width']:.2f}")
+        if 'ear_length_classification' in measurements:
+            ear_measurements.append(f"Length: {measurements['ear_length_classification']} ({measurements.get('ear_length_proportion', 0):.3f})")
+        if 'ear_lobe_classification' in measurements:
+            ear_measurements.append(f"Lobe: {measurements['ear_lobe_classification']} ({measurements.get('ear_lobe_proportion', 0):.3f})")
+        if 'tragus_antitragus_classification' in measurements:
+            ear_measurements.append(f"Tragus-Antitragus: {measurements['tragus_antitragus_classification']} ({measurements.get('tragus_antitragus_proportion', 0):.3f})")
+        
+        if ear_measurements:
+            summary_lines.append("=== EAR ANALYSIS ===")
+            summary_lines.extend(ear_measurements)
+            summary_lines.append("")
+        
+        # Nasal triangulation
+        if 'nasal_triangulation_classification' in measurements:
+            summary_lines.append("=== NASAL TRIANGULATION ===")
+            summary_lines.append(f"Orifice Distance (26-17): {measurements.get('nasal_orifice_distance', 0):.2f}")
+            summary_lines.append(f"Reference Distance (18-30): {measurements.get('nose_reference_distance', 0):.2f}")
+            summary_lines.append(f"Proportion: {measurements.get('nasal_orifice_proportion', 0):.3f}")
+            summary_lines.append(f"Classification: {measurements['nasal_triangulation_classification']}")
+            summary_lines.append("")
         
         return '\n'.join(summary_lines)
     
+    def print_final_summary(self, measurements: Dict):
+        """Print a comprehensive final summary of all measurements"""
+        print("\n" + "="*80)
+        print("COMPREHENSIVE ANTHROPOMETRIC ANALYSIS SUMMARY")
+        print("="*80)
+        
+        # Collect all classifications
+        classifications = {}
+        
+        # Basic measurements
+        if 'reference_distance' in measurements:
+            classifications['Reference Distance (24-10)'] = f"{measurements['reference_distance']:.2f}"
+        if 'head_direction' in measurements:
+            classifications['Head Direction'] = measurements['head_direction']
+        
+        # Nose analysis
+        if 'nose_classification' in measurements:
+            classifications['Nose Type'] = measurements['nose_classification']
+        if 'nose_tip_classification' in measurements:
+            classifications['Nose Tip'] = measurements['nose_tip_classification']
+        
+        # Facial structure
+        if 'mandibula_classification' in measurements:
+            classifications['Mandible'] = measurements['mandibula_classification']
+        if 'forehead_classification' in measurements:
+            classifications['Forehead'] = measurements['forehead_classification']
+        if 'chin_classification' in measurements:
+            classifications['Chin'] = measurements['chin_classification']
+        
+        # Implantation
+        if 'implantation_superior_classification' in measurements:
+            classifications['Superior Implantation'] = measurements['implantation_superior_classification']
+        if 'implantation_inferior_classification' in measurements:
+            classifications['Inferior Implantation'] = measurements['implantation_inferior_classification']
+        
+        # New comprehensive measurements
+        if 'ear_length_classification' in measurements:
+            classifications['Ear Length'] = measurements['ear_length_classification']
+        if 'ear_lobe_classification' in measurements:
+            classifications['Ear Lobe'] = measurements['ear_lobe_classification']
+        if 'nasal_triangulation_classification' in measurements:
+            classifications['Nasal Triangulation'] = measurements['nasal_triangulation_classification']
+        if 'tragus_antitragus_classification' in measurements:
+            classifications['Tragus-Antitragus'] = measurements['tragus_antitragus_classification']
+        
+        # Print all classifications
+        for feature, classification in classifications.items():
+            print(f"{feature:<30}: {classification}")
+        
+        print("="*80)
+        print("Analysis includes all traditional and enhanced anthropometric measurements!")
+        print("="*80)
+    
     def analyze_image(self, image: np.ndarray, include_visualization: bool = True) -> Dict:
-        """Complete analysis pipeline for profile images"""
-        print("Analyzing profile image...")
+        """Complete comprehensive analysis pipeline for profile images"""
+        print("Analyzing profile image with comprehensive measurements...")
         
         # Preprocess image
         original_image, image_tensor = self.preprocess_image(image)
@@ -558,8 +970,11 @@ class ProfileAnthropometricPipeline:
         # Create points dictionary for measurements
         points_dict = self.create_points_dict(filtered_points)
         
-        # Perform anthropometric analysis
+        # Perform comprehensive anthropometric analysis
         measurements = self.perform_anthropometric_analysis(points_dict)
+        
+        # Print final summary
+        self.print_final_summary(measurements)
         
         # Create visualization if requested
         visualization_base64 = None
@@ -568,7 +983,7 @@ class ProfileAnthropometricPipeline:
                 original_image, filtered_points, actual_profile, measurements
             )
         
-        # Compile results
+        # Compile comprehensive results
         results = {
             'profile_side': actual_profile,
             'total_detected_points': len(detected_points),

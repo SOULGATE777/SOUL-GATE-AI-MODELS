@@ -55,12 +55,28 @@ class FacialAnalysisPipeline:
             'TrInCjDr', 'TrInCjIz', 'OD', 'OIz'
         ]
         
-        # Load tag mapping if provided
-        self.tags = []
-        if tag_mapping_path and os.path.exists(tag_mapping_path):
-            with open(tag_mapping_path, 'r') as f:
-                self.tags = json.load(f)
-            print(f"Loaded {len(self.tags)} tags from mapping file")
+        # CORRECTED: Use the exact tag mapping from your trained model (54 tags)
+        self.tag_mapping = {
+            "tag_0": "0", "tag_1": "1", "tag_2": "2", "tag_3": "3", "tag_4": "a_n", 
+            "tag_5": "ab", "tag_6": "abierta", "tag_7": "adelgazamiento", "tag_8": "al", 
+            "tag_9": "ap", "tag_10": "ar", "tag_11": "bigote", "tag_12": "cabellos_sueltos", 
+            "tag_13": "carnosos", "tag_14": "crl", "tag_15": "cv", "tag_16": "delgada", 
+            "tag_17": "el", "tag_18": "fleco", "tag_19": "fr", "tag_20": "g", 
+            "tag_21": "grueso", "tag_22": "h", "tag_23": "hn", "tag_24": "i", 
+            "tag_25": "lineas_sonriza", "tag_26": "lineas_verticales", "tag_27": "ll", 
+            "tag_28": "lunar", "tag_29": "md", "tag_30": "md_a", "tag_31": "mercurial", 
+            "tag_32": "nd", "tag_33": "normal", "tag_34": "nrml", "tag_35": "nt", 
+            "tag_36": "on", "tag_37": "pc", "tag_38": "pg", "tag_39": "pl", 
+            "tag_40": "planos", "tag_41": "pliegue", "tag_42": "pm", "tag_43": "pn", 
+            "tag_44": "ptosis", "tag_45": "pursed", "tag_46": "rc", "tag_47": "rd", 
+            "tag_48": "salido", "tag_49": "sl", "tag_50": "solar", "tag_51": "sonriendo", 
+            "tag_52": "sp_sl", "tag_53": "uniceja"
+        }
+        
+        # Initialize tags list for all 54 classes
+        self.tags = [f"tag_{i}" for i in range(54)]
+        
+        print(f"Initialized with {len(self.tags)} tags and {len(self.tag_mapping)} tag mappings")
         
         # Load models
         self.detection_model = self._load_detection_model(detection_model_path)
@@ -106,24 +122,36 @@ class FacialAnalysisPipeline:
             checkpoint = torch.load(model_path, map_location=self.device)
             
             # Determine number of classes from model checkpoint
-            num_classes = None
-            if isinstance(checkpoint, dict) and 'classifier.4.weight' in checkpoint:
-                num_classes = checkpoint['classifier.4.weight'].shape[0]
-            elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-                for key in checkpoint['state_dict']:
-                    if key.endswith('classifier.4.weight'):
-                        num_classes = checkpoint['state_dict'][key].shape[0]
-                        break
+            num_classes = 54  # We know it's 54 from your model info
             
-            if num_classes is None:
-                if self.tags:
-                    num_classes = len(self.tags)
+            if isinstance(checkpoint, dict):
+                if 'classifier.4.weight' in checkpoint:
+                    detected_classes = checkpoint['classifier.4.weight'].shape[0]
+                    print(f"Detected {detected_classes} classes from model checkpoint")
+                    if detected_classes != 54:
+                        print(f"Warning: Expected 54 classes but model has {detected_classes}")
+                    num_classes = detected_classes
+                elif 'state_dict' in checkpoint:
+                    for key in checkpoint['state_dict']:
+                        if key.endswith('classifier.4.weight'):
+                            detected_classes = checkpoint['state_dict'][key].shape[0]
+                            print(f"Detected {detected_classes} classes from model checkpoint")
+                            if detected_classes != 54:
+                                print(f"Warning: Expected 54 classes but model has {detected_classes}")
+                            num_classes = detected_classes
+                            break
+            
+            print(f"Loading classification model with {num_classes} classes")
+            
+            # Ensure our mapping matches the model
+            if num_classes != len(self.tags):
+                print(f"Adjusting tags from {len(self.tags)} to {num_classes} to match model")
+                if num_classes < len(self.tags):
+                    self.tags = self.tags[:num_classes]
                 else:
-                    print("Warning: Could not determine number of classes. Using default of 50.")
-                    num_classes = 50
-                    self.tags = [f"tag_{i}" for i in range(num_classes)]
+                    while len(self.tags) < num_classes:
+                        self.tags.append(f"tag_{len(self.tags)}")
             
-            print(f"Using classification model with {num_classes} classes")
             model = FacialLandmarkClassifier(num_classes)
             
             # Load weights
@@ -207,25 +235,33 @@ class FacialAnalysisPipeline:
                         tag_idx = pred.item()
                         tag_confidence = confidence.item()
                         
-                        # Get tag name if available, otherwise use index
+                        # Get tag using correct index
                         if tag_idx < len(self.tags):
-                            tag = self.tags[tag_idx]
+                            tag = self.tags[tag_idx]  # This gives us "tag_X"
                         else:
                             tag = f"tag_{tag_idx}"
+                            print(f"Warning: Model predicted index {tag_idx} but we only have {len(self.tags)} tags")
+                        
+                        # Get human-readable tag name
+                        tag_name = self.tag_mapping.get(tag, "Unknown")
                 
                 except Exception as e:
                     print(f"Warning: Classification failed for region: {e}")
                     tag = "unknown"
+                    tag_name = "Unknown"
                     tag_confidence = 0.0
                 
-                # Add to results
-                results.append({
+                # Create result
+                result = {
                     'landmark_class': landmark_class,
                     'tag': tag,
+                    'tag_name': tag_name,
                     'score': float(score),
                     'tag_confidence': float(tag_confidence),
                     'box': [float(x1*scale_x), float(y1*scale_y), float(x2*scale_x), float(y2*scale_y)]
-                })
+                }
+                
+                results.append(result)
             
             return results, image_viz
             

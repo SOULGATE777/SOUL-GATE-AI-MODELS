@@ -123,8 +123,20 @@ class VisualizationManager:
             tag_confidence = 0.0
             for cls in classifications:
                 if np.allclose(cls['bbox'], bbox, rtol=1e-3):
-                    tag_info = cls['tag']
-                    tag_confidence = cls['tag_confidence']
+                    # Handle new top_tags format
+                    if 'top_tags' in cls and cls['top_tags']:
+                        # Use the first (highest confidence) tag for display
+                        tag_info = cls['top_tags'][0]['tag']
+                        tag_confidence = cls['top_tags'][0]['confidence']
+                        
+                        # Optionally show both tags
+                        if len(cls['top_tags']) > 1:
+                            second_tag = cls['top_tags'][1]
+                            tag_info += f" | {second_tag['tag']} ({second_tag['confidence']:.2f})"
+                    else:
+                        # Fallback to old format for backward compatibility
+                        tag_info = cls.get('tag', '')
+                        tag_confidence = cls.get('tag_confidence', 0.0)
                     break
             
             # Choose color
@@ -143,9 +155,9 @@ class VisualizationManager:
                 label_parts.append(f"{obj['confidence']:.2f}")
             
             if tag_info:
-                if show_confidence:
-                    label_parts.append(f"→ {tag_info} ({tag_confidence:.2f})")
-                else:
+                if show_confidence and tag_confidence > 0:
+                    label_parts.append(f"→ {tag_info}")
+                elif tag_info:
                     label_parts.append(f"→ {tag_info}")
             
             label = "\n".join(label_parts)
@@ -170,7 +182,7 @@ class VisualizationManager:
         profile_confidence = results.get('profile_confidence', 0.0)
         
         title = f"Anthropometric Points ({len(points)}) - {profile_side.title()}"
-        if show_confidence:
+        if show_confidence and profile_confidence > 0:
             title += f" ({profile_confidence:.2f})"
         
         ax.set_title(title, fontsize=14)
@@ -386,8 +398,14 @@ class VisualizationManager:
             y_pos -= 0.1
             
             for cls in results['landmark_classifications'][:5]:  # Show first 5
-                tag = cls.get('tag', '')
-                conf = cls.get('tag_confidence', 0)
+                # Handle both old and new format
+                if 'top_tags' in cls and cls['top_tags']:
+                    tag = cls['top_tags'][0]['tag']
+                    conf = cls['top_tags'][0]['confidence']
+                else:
+                    tag = cls.get('tag', cls.get('classified_tag', ''))
+                    conf = cls.get('tag_confidence', 0)
+                
                 ax.text(0.1, y_pos, f'• {tag} ({conf:.2f})', fontsize=9)
                 y_pos -= 0.08
         
