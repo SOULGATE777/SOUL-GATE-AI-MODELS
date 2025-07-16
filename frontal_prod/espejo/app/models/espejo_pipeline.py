@@ -592,22 +592,55 @@ class EspejoAnalyzer:
         applied_rules = []
         
         if region_type == 'FRENTE':
-            if 'solar/lunar' in final_diagnosis.lower() or final_diagnosis.lower() == 'solar/lunar_redonda':
+            # Check for solar/lunar_redonda specifically
+            if final_diagnosis.lower() == 'solar/lunar_redonda':
                 if forehead_proportion is not None:
                     if forehead_proportion < 0.35:
-                        applied_rules.append(f"solar/lunar + forehead proportion {forehead_proportion:.3f} < 0.35 → luna")
+                        applied_rules.append(f"solar/lunar_redonda + forehead proportion {forehead_proportion:.3f} < 0.35 → luna")
                         return 'luna', applied_rules
                     else:
-                        applied_rules.append(f"solar/lunar + forehead proportion {forehead_proportion:.3f} ≥ 0.35 → solar")
+                        applied_rules.append(f"solar/lunar_redonda + forehead proportion {forehead_proportion:.3f} ≥ 0.35 → solar")
                         return 'solar', applied_rules
                 else:
-                    applied_rules.append("solar/lunar detected but forehead proportion N/A → no splitting")
+                    applied_rules.append("solar/lunar_redonda detected but forehead proportion N/A → no splitting")
                     return final_diagnosis, applied_rules
             
             applied_rules.append("No hybrid splitting needed for FRENTE")
             return final_diagnosis, applied_rules
         
         elif region_type == 'rostro_menton':
+            # Check for jupiter/luna_redondo_ancho specifically
+            if final_diagnosis.lower() == 'jupiter/luna_redondo_ancho':
+                if face_proportion is not None:
+                    if face_proportion >= 1.17:
+                        applied_rules.append(f"jupiter/luna_redondo_ancho + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                        return 'neptuno', applied_rules
+                    elif face_proportion < 0.99:
+                        applied_rules.append(f"jupiter/luna_redondo_ancho + face proportion {face_proportion:.3f} < 0.99 → luna")
+                        return 'luna', applied_rules
+                    else:
+                        applied_rules.append(f"jupiter/luna_redondo_ancho + face proportion {face_proportion:.3f} between 0.99-1.17 → jupiter")
+                        return 'jupiter', applied_rules
+                else:
+                    applied_rules.append("jupiter/luna_redondo_ancho detected but face proportion N/A → no splitting")
+                    return final_diagnosis, applied_rules
+            
+            # Check for sol_neptuno_ovalo specifically
+            if final_diagnosis.lower() == 'sol_neptuno_ovalo':
+                if face_proportion is not None:
+                    if face_proportion >= 1.17:
+                        applied_rules.append(f"sol_neptuno_ovalo + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                        return 'neptuno', applied_rules
+                    elif face_proportion < 1.0:
+                        applied_rules.append(f"sol_neptuno_ovalo + face proportion {face_proportion:.3f} < 1.0 → jupiter")
+                        return 'jupiter', applied_rules
+                    else:
+                        applied_rules.append(f"sol_neptuno_ovalo + face proportion {face_proportion:.3f} between 1.0-1.17 → sol")
+                        return 'sol', applied_rules
+                else:
+                    applied_rules.append("sol_neptuno_ovalo detected but face proportion N/A → no splitting")
+                    return final_diagnosis, applied_rules
+            
             applied_rules.append("No hybrid splitting needed for rostro_menton")
             return final_diagnosis, applied_rules
         
