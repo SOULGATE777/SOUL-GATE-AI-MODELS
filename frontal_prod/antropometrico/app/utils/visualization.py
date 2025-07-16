@@ -492,3 +492,241 @@ def create_comprehensive_analysis_grid(image, analysis_results):
     
     # For now, return the detailed report as this is the most comprehensive
     return create_detailed_report_image(image, analysis_results)
+
+def create_eye_colorimetry_visualization(image, eye_colorimetry_results):
+    """
+    Create visualization for eye colorimetry analysis results
+    
+    Args:
+        image: Original image
+        eye_colorimetry_results: Results from eye colorimetry analysis
+        
+    Returns:
+        numpy array: Annotated image with eye colorimetry information
+    """
+    img_vis = image.copy()
+    
+    if "error" in eye_colorimetry_results:
+        # Draw error message
+        cv2.putText(img_vis, f"Error: {eye_colorimetry_results['error']}", 
+                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        return img_vis
+    
+    # Process each face
+    for face_idx, face_data in enumerate(eye_colorimetry_results.get("faces", [])):
+        face_y_offset = face_idx * 150
+        
+        # Draw face index
+        cv2.putText(img_vis, f"Face {face_data.get('face_index', face_idx)}", 
+                   (10, 30 + face_y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        
+        # Process each eye
+        for eye_idx, eye_side in enumerate(['left', 'right']):
+            eye_key = f"{eye_side}_eye"
+            if eye_key in face_data and "error" not in face_data[eye_key]:
+                eye_data = face_data[eye_key]
+                
+                # Get bounding box
+                bbox = eye_data.get("bounding_box", (0, 0, 0, 0))
+                x_min, y_min, x_max, y_max = bbox
+                
+                # Draw eye bounding box
+                cv2.rectangle(img_vis, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                
+                # Get classification results
+                classifications = eye_data.get("classifications", {})
+                iris_rgb_avg = classifications.get("iris_rgb_average", "unknown")
+                iris_rgb_dom = classifications.get("iris_rgb_dominant", "unknown")
+                iris_hsv = classifications.get("iris_hsv", "unknown")
+                
+                # Draw labels
+                label_x = x_min
+                label_y = y_min - 10 if y_min > 30 else y_max + 20
+                
+                cv2.putText(img_vis, f"{eye_side.title()} Eye", 
+                           (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                cv2.putText(img_vis, f"RGB: {iris_rgb_avg}", 
+                           (label_x, label_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+                cv2.putText(img_vis, f"HSV: {iris_hsv}", 
+                           (label_x, label_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+                
+                # Draw color sample if available
+                iris_analysis = eye_data.get("iris_color_analysis", {})
+                if "average_color_rgb" in iris_analysis:
+                    avg_color = iris_analysis["average_color_rgb"]
+                    # Draw color rectangle
+                    color_rect_x = x_max + 5
+                    color_rect_y = y_min
+                    cv2.rectangle(img_vis, (color_rect_x, color_rect_y), 
+                                 (color_rect_x + 20, color_rect_y + 20), 
+                                 (avg_color[2], avg_color[1], avg_color[0]), -1)  # BGR format
+                    cv2.rectangle(img_vis, (color_rect_x, color_rect_y), 
+                                 (color_rect_x + 20, color_rect_y + 20), 
+                                 (255, 255, 255), 1)
+    
+    return img_vis
+
+def create_eye_color_comparison_chart(image, eye_colorimetry_results):
+    """
+    Create a comparison chart showing different classification methods
+    
+    Args:
+        image: Original image
+        eye_colorimetry_results: Results from eye colorimetry analysis
+        
+    Returns:
+        numpy array: Chart image
+    """
+    # Create a larger canvas for the comparison
+    height, width = image.shape[:2]
+    chart_width = width + 400
+    chart_canvas = np.zeros((height, chart_width, 3), dtype=np.uint8)
+    
+    # Place original image on the left
+    chart_canvas[:height, :width] = image
+    
+    # Add comparison chart on the right
+    chart_area = chart_canvas[:, width:]
+    chart_area.fill(40)  # Dark background
+    
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    thickness = 1
+    line_height = 25
+    
+    # Title
+    cv2.putText(chart_canvas, "EYE COLOR CLASSIFICATION COMPARISON", 
+                (width + 10, 30), font, 0.6, (255, 255, 255), 2)
+    
+    y_pos = 60
+    
+    if "error" in eye_colorimetry_results:
+        cv2.putText(chart_canvas, f"Error: {eye_colorimetry_results['error']}", 
+                   (width + 10, y_pos), font, font_scale, (0, 0, 255), thickness)
+        return chart_canvas
+    
+    # Process each face
+    for face_idx, face_data in enumerate(eye_colorimetry_results.get("faces", [])):
+        # Face header
+        cv2.putText(chart_canvas, f"Face {face_data.get('face_index', face_idx)}:", 
+                   (width + 10, y_pos), font, 0.6, (0, 255, 255), thickness)
+        y_pos += line_height + 5
+        
+        # Process each eye
+        for eye_side in ['left', 'right']:
+            eye_key = f"{eye_side}_eye"
+            if eye_key in face_data and "error" not in face_data[eye_key]:
+                eye_data = face_data[eye_key]
+                classifications = eye_data.get("classifications", {})
+                
+                # Eye header
+                cv2.putText(chart_canvas, f"  {eye_side.title()} Eye:", 
+                           (width + 15, y_pos), font, font_scale, (255, 255, 255), thickness)
+                y_pos += line_height
+                
+                # Classification methods
+                methods = [
+                    ("HSV System", classifications.get("iris_hsv", "unknown"), (255, 255, 0)),
+                    ("RGB Average", classifications.get("iris_rgb_average", "unknown"), (0, 255, 255)),
+                    ("RGB Dominant", classifications.get("iris_rgb_dominant", "unknown"), (255, 0, 255))
+                ]
+                
+                for method_name, result, color in methods:
+                    cv2.putText(chart_canvas, f"    {method_name}: {result}", 
+                               (width + 20, y_pos), font, 0.4, color, thickness)
+                    y_pos += line_height
+                
+                # Color information
+                iris_analysis = eye_data.get("iris_color_analysis", {})
+                if "average_color_rgb" in iris_analysis:
+                    avg_color = iris_analysis["average_color_rgb"]
+                    cv2.putText(chart_canvas, f"    Avg RGB: {avg_color}", 
+                               (width + 20, y_pos), font, 0.4, (200, 200, 200), thickness)
+                    y_pos += line_height
+                
+                if "total_pixels_analyzed" in iris_analysis:
+                    pixels = iris_analysis["total_pixels_analyzed"]
+                    cv2.putText(chart_canvas, f"    Pixels: {pixels}", 
+                               (width + 20, y_pos), font, 0.4, (200, 200, 200), thickness)
+                    y_pos += line_height
+                
+                y_pos += 10  # Extra space between eyes
+            else:
+                cv2.putText(chart_canvas, f"  {eye_side.title()} Eye: Error", 
+                           (width + 15, y_pos), font, font_scale, (0, 0, 255), thickness)
+                y_pos += line_height + 10
+        
+        y_pos += 15  # Extra space between faces
+    
+    return chart_canvas
+
+def create_color_palette_visualization(eye_colorimetry_results):
+    """
+    Create a color palette visualization showing detected colors
+    
+    Args:
+        eye_colorimetry_results: Results from eye colorimetry analysis
+        
+    Returns:
+        numpy array: Color palette image
+    """
+    palette_height = 200
+    palette_width = 600
+    palette_canvas = np.zeros((palette_height, palette_width, 3), dtype=np.uint8)
+    
+    if "error" in eye_colorimetry_results:
+        cv2.putText(palette_canvas, f"Error: {eye_colorimetry_results['error']}", 
+                   (10, palette_height//2), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        return palette_canvas
+    
+    # Process each face and eye
+    current_y = 0
+    row_height = 40
+    
+    for face_idx, face_data in enumerate(eye_colorimetry_results.get("faces", [])):
+        for eye_side in ['left', 'right']:
+            eye_key = f"{eye_side}_eye"
+            if eye_key in face_data and "error" not in face_data[eye_key]:
+                eye_data = face_data[eye_key]
+                iris_analysis = eye_data.get("iris_color_analysis", {})
+                
+                # Draw label
+                label = f"Face {face_data.get('face_index', face_idx)} - {eye_side.title()}"
+                cv2.putText(palette_canvas, label, (10, current_y + 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                
+                # Draw color palette
+                if "dominant_colors" in iris_analysis:
+                    dominant_colors = iris_analysis["dominant_colors"]
+                    x_pos = 150
+                    
+                    for color_data, percentage in dominant_colors[:5]:  # Show top 5 colors
+                        color_width = int(percentage * 3)  # Scale width by percentage
+                        color_width = max(color_width, 10)  # Minimum width
+                        
+                        # Draw color rectangle (convert RGB to BGR for OpenCV)
+                        color_bgr = (color_data[2], color_data[1], color_data[0])
+                        cv2.rectangle(palette_canvas, (x_pos, current_y + 5), 
+                                     (x_pos + color_width, current_y + 30), color_bgr, -1)
+                        cv2.rectangle(palette_canvas, (x_pos, current_y + 5), 
+                                     (x_pos + color_width, current_y + 30), (255, 255, 255), 1)
+                        
+                        # Add percentage text
+                        cv2.putText(palette_canvas, f"{percentage:.1f}%", 
+                                   (x_pos, current_y + 45), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 
+                                   (255, 255, 255), 1)
+                        
+                        x_pos += color_width + 5
+                
+                current_y += row_height
+                
+                if current_y >= palette_height - row_height:
+                    break
+            
+            if current_y >= palette_height - row_height:
+                break
+        
+        if current_y >= palette_height - row_height:
+            break
+    
+    return palette_canvas

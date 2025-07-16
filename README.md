@@ -36,16 +36,34 @@ SG_prod/
 │   │   ├── docker-compose.yml     
 │   │   ├── requirements.txt      
 │   │   └── results/              
-│   └── antropometrico/           (Port 8001) ✅ COMPLETE
+│   ├── antropometrico/           (Port 8001) ✅ COMPLETE
+│   │   ├── app/                  
+│   │   │   ├── main.py          
+│   │   │   ├── models/          
+│   │   │   │   └── anthropometric_pipeline.py
+│   │   │   └── utils/           
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/              
+│   │   │   ├── facial_points_detection_model.pth
+│   │   │   └── shape_predictor_68_face_landmarks.dat
+│   │   ├── Dockerfile           
+│   │   ├── docker-compose.yml   
+│   │   ├── requirements.txt     
+│   │   └── results/             
+│   └── espejo/                   (Port 8008) ✅ COMPLETE
 │       ├── app/                  
 │       │   ├── main.py          
 │       │   ├── models/          
-│       │   │   └── anthropometric_pipeline.py
+│       │   │   └── espejo_pipeline.py
 │       │   └── utils/           
 │       │       ├── visualization.py
 │       │       └── image_processing.py
 │       ├── models/              
+│       │   ├── binary_region_classifier_best.pth
 │       │   ├── facial_points_detection_model.pth
+│       │   ├── frente_best_model.pth
+│       │   ├── rostro_menton_best_model.pth
 │       │   └── shape_predictor_68_face_landmarks.dat
 │       ├── Dockerfile           
 │       ├── docker-compose.yml   
@@ -133,7 +151,7 @@ SG_prod/
 
 ## Features
 
-### Frontal Analysis (Ports 8000-8002) ✅ **ALL COMPLETE**
+### Frontal Analysis (Ports 8000-8002, 8008) ✅ **ALL COMPLETE**
 
 #### Facial Feature Validation (Port 8002) ✅ **COMPLETE**
 - **YOLO-Based Detection**: Custom trained YOLOv8 model for 17 facial feature classes
@@ -168,6 +186,19 @@ SG_prod/
   - Eye relationship analysis
   - Mouth-pupil proportions
   - Eyebrow slope calculations
+
+#### Espejo Mirror Analysis (Port 8008) ✅ **COMPLETE**
+- **Mirror Face Generation**: Creates left and right mirrored faces for comprehensive asymmetry analysis
+- **Anthropometric Measurements**: 
+  - Face, forehead, and temporal proportion calculations
+  - 68-point facial landmark detection with dlib
+  - Custom 13-point anthropometric point detection (Faster R-CNN)
+- **Decision Tree Classification**: Excel-based decision rules for facial region analysis
+- **Dual Region Analysis**:
+  - FRENTE region classification (7 classes: jupiter, marte, mercurio, neptuno, solar/lunar, tierra, venus)
+  - rostro_menton region classification (8 classes: jupiter/luna, marte/tierra, mercurio, pluton-venus, pluton, saturno, sol_neptuno, venus)
+- **Hybrid Class Splitting**: Proportion-based diagnosis refinement with confidence thresholds
+- **Comprehensive Reporting**: Detailed analysis reports with visualizations and dashboards
 
 ### Profile Analysis (Ports 8003-8005) ✅ **ALL COMPLETE**
 
@@ -278,6 +309,9 @@ cd morfologico && docker compose up --build -d && cd ..
 # Frontal Antropometrico (Port 8001) ✅
 cd antropometrico && docker compose up --build -d && cd ..
 
+# Frontal Espejo (Port 8008) ✅
+cd espejo && docker compose up --build -d && cd ..
+
 # Deploy Profile Modules ✅ ALL COMPLETE
 cd ../profile_prod
 
@@ -299,7 +333,7 @@ cd morfologico && docker compose up --build -d && cd ..
 # Body Antropometrico (Port 8007) ✅ NEW!
 cd antropometrico && docker compose up --build -d && cd ..
 
-# Check all active services ✅ ALL 8 MODULES
+# Check all active services ✅ ALL 9 MODULES
 curl http://localhost:8000/health  # Frontal Morfologico ✅
 curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
@@ -308,6 +342,7 @@ curl http://localhost:8004/health  # Profile Antropometrico ✅
 curl http://localhost:8005/health  # Profile Validacion ✅
 curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
 curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
+curl http://localhost:8008/health  # Frontal Espejo ✅
 ```
 
 ### Deploy Individual Body Modules ✅ **NEW**
@@ -326,12 +361,20 @@ docker compose up --build -d
 curl http://localhost:8007/health
 ```
 
-## API Documentation ✅ **ALL 8 SERVICES ACTIVE**
+#### Frontal Espejo Mirror Analysis Module ✅ **COMPLETE**
+```bash
+cd frontal_prod/espejo
+docker compose up --build -d
+curl http://localhost:8008/health
+```
+
+## API Documentation ✅ **ALL 9 SERVICES ACTIVE**
 
 ### Complete Active Services
 - **Frontal Validacion (Port 8002)**: http://localhost:8002/docs ✅ **COMPLETE**
 - **Frontal Morfologico (Port 8000)**: http://localhost:8000/docs ✅ **COMPLETE**
 - **Frontal Antropometrico (Port 8001)**: http://localhost:8001/docs ✅ **COMPLETE**
+- **Frontal Espejo (Port 8008)**: http://localhost:8008/docs ✅ **COMPLETE**
 - **Profile Morfologico (Port 8003)**: http://localhost:8003/docs ✅ **COMPLETE**
 - **Profile Antropometrico (Port 8004)**: http://localhost:8004/docs ✅ **COMPLETE**
 - **Profile Validacion (Port 8005)**: http://localhost:8005/docs ✅ **COMPLETE**
@@ -339,6 +382,43 @@ curl http://localhost:8007/health
 - **Body Antropometrico (Port 8007)**: http://localhost:8007/docs ✅ **NEW COMPLETE**
 
 ## API Endpoints
+
+### Frontal Espejo Mirror Analysis Module (Port 8008) ✅ **COMPLETE**
+
+#### Complete Espejo Analysis
+```bash
+curl -X POST "http://localhost:8008/analyze-espejo" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_visualization=true" \
+  -F "include_dashboard=true"
+```
+
+#### Mirror Generation Only
+```bash
+curl -X POST "http://localhost:8008/generate-mirrors" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
+#### Final Diagnosis
+```bash
+curl -X POST "http://localhost:8008/get-diagnosis" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "format=json"
+```
+
+#### Region Classification
+```bash
+curl -X POST "http://localhost:8008/classify-regions" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
 
 ### Body Morphological Analysis Module (Port 8006) ✅ **NEW COMPLETE**
 
@@ -402,11 +482,65 @@ curl -X POST "http://localhost:8007/detect-pose-keypoints" \
 ```bash
 curl http://localhost:8006/health  # Body Morfologico
 curl http://localhost:8007/health  # Body Antropometrico
+curl http://localhost:8008/health  # Frontal Espejo
 curl http://localhost:8006/model-info  # Body Type Model Info
 curl http://localhost:8007/model-info  # Pose Detection Model Info
+curl http://localhost:8008/model-info  # Espejo Model Info
 ```
 
 ## Response Formats
+
+### Frontal Espejo Mirror Analysis Response ✅ **COMPLETE**
+```json
+{
+  "analysis_id": "uuid-string",
+  "face_detected": true,
+  "anthropometric_analysis": {
+    "face_proportions": {
+      "right": 0.456,
+      "left": 0.443
+    },
+    "forehead_proportions": {
+      "right": 0.387,
+      "left": 0.392
+    },
+    "temporal_proportions": {
+      "right": 0.523,
+      "left": 0.518
+    },
+    "custom_model_points": {...},
+    "landmarks_detected": 68
+  },
+  "mirror_analysis": {
+    "right_mirrored": {...},
+    "left_mirrored": {...}
+  },
+  "final_diagnosis": {
+    "right_side": {
+      "frente_diagnosis": "solar",
+      "rostro_diagnosis": "venus_corazon",
+      "confidence_scores": {...}
+    },
+    "left_side": {
+      "frente_diagnosis": "luna",
+      "rostro_diagnosis": "pluton-venus",
+      "confidence_scores": {...}
+    }
+  },
+  "decision_tree_analysis": {
+    "right_side": {
+      "frente_applied_rules": [...],
+      "rostro_applied_rules": [...],
+      "frente_split_rules": [...],
+      "rostro_split_rules": [...]
+    },
+    "left_side": {...}
+  },
+  "analysis_summary": {...},
+  "visualization_path": "/app/results/espejo_analysis_20241215_143022_abc123.png",
+  "dashboard_path": "/app/results/espejo_dashboard_20241215_143022_def456.png"
+}
+```
 
 ### Body Morphological Analysis Response ✅ **NEW**
 ```json
@@ -476,6 +610,21 @@ curl http://localhost:8007/model-info  # Pose Detection Model Info
 
 ## Model Information
 
+### Frontal Espejo Mirror Analysis Model ✅ **COMPLETE**
+- **Architecture**: Multi-model ensemble with decision tree classification
+- **Models**: 
+  - dlib shape predictor (68 facial landmarks)
+  - Faster R-CNN (13 anthropometric points)
+  - Binary region classifier (FRENTE/rostro_menton)
+  - FRENTE classifier (7 classes)
+  - rostro_menton classifier (8 classes)
+- **Classifications**: 
+  - FRENTE: jupiter, marte, mercurio, neptuno, solar/lunar, tierra, venus
+  - rostro_menton: jupiter/luna, marte/tierra, mercurio, pluton-venus, pluton, saturno, sol_neptuno, venus
+- **Features**: Mirror generation, proportion calculation, decision tree rules, hybrid splitting
+- **Input Size**: Variable (auto-resized for processing)
+- **Output**: Dual-side analysis with comprehensive diagnosis and visualizations
+
 ### Body Morphological Analysis Model ✅ **NEW**
 - **Architecture**: LightweightHierarchicalModel (ResNet18 backbone)
 - **Classifications**: 7 body types + 2 genders + 4 coarse types
@@ -534,16 +683,17 @@ environment:
 ## Production Deployment
 
 ### System Requirements
-- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 8 modules)
-- **RAM**: 40GB+ system memory (for all 8 active modules)
-- **Storage**: 20GB+ for models and containers
+- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 9 modules)
+- **RAM**: 45GB+ system memory (for all 9 active modules)
+- **Storage**: 22GB+ for models and containers
 - **CPU**: Multi-core processor for preprocessing
 
-### Port Allocation ✅ **ALL 8 PORTS OCCUPIED**
-- **Frontal Analysis**: 8000-8002 ✅ **ALL COMPLETE**
+### Port Allocation ✅ **ALL 9 PORTS OCCUPIED**
+- **Frontal Analysis**: 8000-8002, 8008 ✅ **ALL COMPLETE**
   - Morfológico: 8000 ✅
   - Antropométrico: 8001 ✅
   - Validación: 8002 ✅
+  - Espejo: 8008 ✅
 - **Profile Analysis**: 8003-8005 ✅ **ALL COMPLETE**
   - Morfológico: 8003 ✅
   - Antropométrico: 8004 ✅
@@ -559,12 +709,13 @@ Each module can be scaled independently:
 - Configure GPU memory optimization per module
 - Implement request queuing for batch processing
 
-### Monitoring ✅ **ALL 8 SERVICES**
+### Monitoring ✅ **ALL 9 SERVICES**
 ```bash
 # All complete modules health check
 curl http://localhost:8000/health  # Frontal Morfologico ✅
 curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
+curl http://localhost:8008/health  # Frontal Espejo ✅
 curl http://localhost:8003/health  # Profile Morfologico ✅
 curl http://localhost:8004/health  # Profile Antropometrico ✅
 curl http://localhost:8005/health  # Profile Validacion ✅
@@ -580,18 +731,19 @@ nvidia-smi
 
 ## Architecture Status ✅ **PROJECT EXPANDED**
 
-### Current Status ✅ **ALL 8 MODULES OPERATIONAL**
-- ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico (Ports 8000-8002) ✅ **ALL COMPLETE**
+### Current Status ✅ **ALL 9 MODULES OPERATIONAL**
+- ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico, espejo (Ports 8000-8002, 8008) ✅ **ALL COMPLETE**
 - ✅ **Profile Analysis Complete**: morfologico, antropometrico, validacion (Ports 8003-8005) ✅ **ALL COMPLETE**
 - ✅ **Body Analysis Complete**: morfologico, antropometrico (Ports 8006-8007) ✅ **ALL COMPLETE** ✅ **NEW!**
 
 ### Complete AI Analysis Pipeline ✅ **EXPANDED**
-The SG_prod AI analysis production pipeline is now **EXPANDED** with all 8 modules operational:
+The SG_prod AI analysis production pipeline is now **EXPANDED** with all 9 modules operational:
 
 #### **Frontal Image Processing Pipeline** ✅
 1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
 2. **Frontal Morfologico** (Port 8000): Perform morphological analysis ✅
 3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
+4. **Frontal Espejo** (Port 8008): Mirror-based comprehensive analysis with decision tree classification ✅
 
 #### **Profile Image Processing Pipeline** ✅
 1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
@@ -616,6 +768,7 @@ The SG_prod AI analysis production pipeline is now **EXPANDED** with all 8 modul
 1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
 2. **Frontal Morfologico** (Port 8000): Perform morphological analysis if suitable ✅
 3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
+4. **Frontal Espejo** (Port 8008): Mirror-based comprehensive analysis with decision tree classification ✅
 
 #### For Profile Images ✅ **COMPLETE WORKFLOW**
 1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
@@ -656,4 +809,4 @@ All trained model weights are included in this repository. Large files use Git L
 
 ---
 **quantileMX** - Advanced AI Solutions  
-**Status**: ✅ **PRODUCTION READY - ALL 8 MODULES COMPLETE** ✅
+**Status**: ✅ **PRODUCTION READY - ALL 9 MODULES COMPLETE** ✅

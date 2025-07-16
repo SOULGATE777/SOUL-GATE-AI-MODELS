@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  espejo-api:
+    build: .
+    container_name: espejo-api
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./models:/app/models:ro
+      - ./results:/app/results
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8008/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
