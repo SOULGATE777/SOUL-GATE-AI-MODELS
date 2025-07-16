@@ -130,16 +130,30 @@ SG_prod/
 │   │   ├── docker-compose.yml     
 │   │   ├── requirements.txt      
 │   │   └── results/              
-│   └── antropometrico/           (Port 8007) ✅ **NEW COMPLETE**
+│   ├── antropometrico/           (Port 8007) ✅ **NEW COMPLETE**
+│   │   ├── app/                  
+│   │   │   ├── main.py          
+│   │   │   ├── models/          
+│   │   │   │   └── anthropometric_pipeline.py
+│   │   │   └── utils/           
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/              
+│   │   │   └── yolov8n-pose.pt
+│   │   ├── Dockerfile           
+│   │   ├── docker-compose.yml   
+│   │   ├── requirements.txt     
+│   │   └── results/             
+│   └── manos/                     (Port 8009) ✅ **NEW COMPLETE**
 │       ├── app/                  
 │       │   ├── main.py          
 │       │   ├── models/          
-│       │   │   └── anthropometric_pipeline.py
+│       │   │   └── hand_analysis_pipeline.py
 │       │   └── utils/           
 │       │       ├── visualization.py
 │       │       └── image_processing.py
 │       ├── models/              
-│       │   └── yolov8n-pose.pt
+│       │   └── dorso_palma_classifier.pth
 │       ├── Dockerfile           
 │       ├── docker-compose.yml   
 │       ├── requirements.txt     
@@ -246,7 +260,7 @@ SG_prod/
 - **NMS Filtering**: Per-class non-maximum suppression for clean detections
 - **GPU Acceleration**: Full CUDA support with CPU fallback
 
-### Body Analysis (Ports 8006-8007) ✅ **ALL COMPLETE** ✅ **NEW!**
+### Body Analysis (Ports 8006-8007, 8009) ✅ **ALL COMPLETE** ✅ **NEW!**
 
 #### Body Morphological Analysis (Port 8006) ✅ **NEW COMPLETE**
 - **LightweightHierarchicalModel**: ResNet18-based architecture optimized for body type classification
@@ -283,6 +297,22 @@ SG_prod/
 - **Advanced Visualizations**: Multi-panel anthropometric dashboards with detailed reports
 - **GPU Acceleration**: Full CUDA support with CPU fallback
 
+#### Hand Analysis (Port 8009) ✅ **NEW COMPLETE**
+- **CNN Hand Classification**: ResNet50-based dorso/palma (back/palm) classification with 89%+ accuracy
+- **Advanced Colorimetry Analysis**: Multi-color-space palm skin analysis (HSV + YCrCb filtering)
+- **Traditional Color Classification**: 5 palm color types classification system:
+  - rosa/sanguineo-linfatico oscuro (Pink/sanguine-lymphatic dark)
+  - rojo/sanguineo (Red/sanguine) 
+  - amarillo/nervioso (Yellow/nervous)
+  - blanco/linfatico (White/lymphatic)
+  - bilioso/cafe_o_oscuro (Bilious/brown or dark)
+- **K-means Color Clustering**: Dominant color extraction with percentage analysis
+- **Comprehensive Analysis**: CNN prediction + colorimetry + color type classification
+- **Intelligent Skin Detection**: Advanced skin masking with morphological operations
+- **Production API**: FastAPI with async processing and batch analysis support
+- **Rich Visualizations**: Multi-panel analysis dashboards with color palettes and detailed reports
+- **GPU Acceleration**: Full CUDA support with CPU fallback
+
 ## Quick Start
 
 ### Prerequisites
@@ -290,7 +320,7 @@ SG_prod/
 - NVIDIA GPU with drivers (recommended)
 - NVIDIA Container Toolkit (for GPU support)
 
-### Deploy All Complete Modules ✅ **ALL 8 MODULES**
+### Deploy All Complete Modules ✅ **ALL 10 MODULES**
 
 ```bash
 # Clone the repository
@@ -333,7 +363,10 @@ cd morfologico && docker compose up --build -d && cd ..
 # Body Antropometrico (Port 8007) ✅ NEW!
 cd antropometrico && docker compose up --build -d && cd ..
 
-# Check all active services ✅ ALL 9 MODULES
+# Hand Analysis (Port 8009) ✅ NEW!
+cd manos && docker compose up --build -d && cd ..
+
+# Check all active services ✅ ALL 10 MODULES
 curl http://localhost:8000/health  # Frontal Morfologico ✅
 curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
@@ -343,6 +376,7 @@ curl http://localhost:8005/health  # Profile Validacion ✅
 curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
 curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
 curl http://localhost:8008/health  # Frontal Espejo ✅
+curl http://localhost:8009/health  # Hand Analysis ✅ NEW!
 ```
 
 ### Deploy Individual Body Modules ✅ **NEW**
@@ -368,7 +402,14 @@ docker compose up --build -d
 curl http://localhost:8008/health
 ```
 
-## API Documentation ✅ **ALL 9 SERVICES ACTIVE**
+#### Hand Analysis Module ✅ **NEW COMPLETE**
+```bash
+cd body_prod/manos
+docker compose up --build -d
+curl http://localhost:8009/health
+```
+
+## API Documentation ✅ **ALL 10 SERVICES ACTIVE**
 
 ### Complete Active Services
 - **Frontal Validacion (Port 8002)**: http://localhost:8002/docs ✅ **COMPLETE**
@@ -380,6 +421,7 @@ curl http://localhost:8008/health
 - **Profile Validacion (Port 8005)**: http://localhost:8005/docs ✅ **COMPLETE**
 - **Body Morfologico (Port 8006)**: http://localhost:8006/docs ✅ **NEW COMPLETE**
 - **Body Antropometrico (Port 8007)**: http://localhost:8007/docs ✅ **NEW COMPLETE**
+- **Hand Analysis (Port 8009)**: http://localhost:8009/docs ✅ **NEW COMPLETE**
 
 ## API Endpoints
 
@@ -478,14 +520,61 @@ curl -X POST "http://localhost:8007/detect-pose-keypoints" \
   -F "confidence_threshold=0.5"
 ```
 
+### Hand Analysis Module (Port 8009) ✅ **NEW COMPLETE**
+
+#### Complete Hand Analysis
+```bash
+curl -X POST "http://localhost:8009/analyze-hand-comprehensive" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@hand_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_colorimetry=true" \
+  -F "include_visualization=true"
+```
+
+#### Hand Side Classification Only
+```bash
+curl -X POST "http://localhost:8009/classify-hand-side" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@hand_image.jpg" \
+  -F "confidence_threshold=0.7"
+```
+
+#### Colorimetry Analysis Only
+```bash
+curl -X POST "http://localhost:8009/analyze-colorimetry" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@hand_image.jpg" \
+  -F "include_visualization=true"
+```
+
+#### With Bounding Box
+```bash
+curl -X POST "http://localhost:8009/analyze-hand-comprehensive" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@hand_image.jpg" \
+  -F "bbox=100,50,300,250"
+```
+
+#### Batch Hand Analysis
+```bash
+curl -X POST "http://localhost:8009/batch-analyze" \
+  -H "Content-Type: multipart/form-data" \
+  -F "files=@hand1.jpg" \
+  -F "files=@hand2.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
 #### Health Checks
 ```bash
 curl http://localhost:8006/health  # Body Morfologico
 curl http://localhost:8007/health  # Body Antropometrico
 curl http://localhost:8008/health  # Frontal Espejo
+curl http://localhost:8009/health  # Hand Analysis
 curl http://localhost:8006/model-info  # Body Type Model Info
 curl http://localhost:8007/model-info  # Pose Detection Model Info
 curl http://localhost:8008/model-info  # Espejo Model Info
+curl http://localhost:8009/model-info  # Hand Analysis Model Info
 ```
 
 ## Response Formats
@@ -608,6 +697,47 @@ curl http://localhost:8008/model-info  # Espejo Model Info
 }
 ```
 
+### Hand Analysis Response ✅ **NEW**
+```json
+{
+  "analysis_id": "uuid-string",
+  "analysis_type": "comprehensive_hand_analysis",
+  "image_path": "/app/temp/temp_uuid.jpg",
+  "bbox": [x_min, y_min, x_max, y_max],
+  "cnn_prediction": {
+    "predicted_class": "Palma",
+    "confidence": 0.89,
+    "probabilities": {
+      "Dorso": 0.11,
+      "Palma": 0.89
+    },
+    "meets_threshold": true
+  },
+  "colorimetry": {
+    "average_color_rgb": [185, 142, 125],
+    "average_color_hsv": [12.5, 32.4, 72.5],
+    "dominant_colors": [
+      [[190, 145, 128], 35.2],
+      [[180, 138, 120], 28.7],
+      [[175, 135, 115], 22.1]
+    ],
+    "hue_mean": 12.8,
+    "hue_std": 8.5,
+    "total_pixels": 15432
+  },
+  "color_classification": {
+    "average_color": {
+      "rosa/sanguineo-linfatico oscuro": 65.0,
+      "rojo/sanguineo": 35.0
+    },
+    "main_color": {
+      "rosa/sanguineo-linfatico oscuro": 100.0
+    }
+  },
+  "visualization_url": "/visualization/hand_analysis_uuid.png"
+}
+```
+
 ## Model Information
 
 ### Frontal Espejo Mirror Analysis Model ✅ **COMPLETE**
@@ -638,6 +768,15 @@ curl http://localhost:8008/model-info  # Espejo Model Info
 - **Features**: Head orientation analysis, contour refinement, age estimation
 - **Input Format**: RGB images (any resolution, auto-resized)
 - **Output**: Pose keypoints + skull measurements + anthropometric analysis
+
+### Hand Analysis Model ✅ **NEW**
+- **CNN Architecture**: ResNet50 with custom classifier head
+- **Classifications**: Binary dorso/palma (back/palm) classification
+- **Colorimetry Pipeline**: HSV + YCrCb color space filtering with K-means clustering
+- **Color Types**: 5 traditional palm color classifications
+- **Features**: Skin detection, dominant color extraction, morphological operations
+- **Input Size**: 224x224 pixels (auto-resized from any input)
+- **Output**: CNN predictions + colorimetry analysis + color type classification
 
 ### Body Model Classifications ✅ **NEW**
 
@@ -683,12 +822,12 @@ environment:
 ## Production Deployment
 
 ### System Requirements
-- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 9 modules)
-- **RAM**: 45GB+ system memory (for all 9 active modules)
-- **Storage**: 22GB+ for models and containers
+- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 10 modules)
+- **RAM**: 50GB+ system memory (for all 10 active modules)
+- **Storage**: 25GB+ for models and containers
 - **CPU**: Multi-core processor for preprocessing
 
-### Port Allocation ✅ **ALL 9 PORTS OCCUPIED**
+### Port Allocation ✅ **ALL 10 PORTS OCCUPIED**
 - **Frontal Analysis**: 8000-8002, 8008 ✅ **ALL COMPLETE**
   - Morfológico: 8000 ✅
   - Antropométrico: 8001 ✅
@@ -698,9 +837,10 @@ environment:
   - Morfológico: 8003 ✅
   - Antropométrico: 8004 ✅
   - Validación: 8005 ✅
-- **Body Analysis**: 8006-8007 ✅ **ALL COMPLETE** ✅ **NEW!**
+- **Body Analysis**: 8006-8007, 8009 ✅ **ALL COMPLETE** ✅ **NEW!**
   - Morfológico: 8006 ✅ **NEW!**
   - Antropométrico: 8007 ✅ **NEW!**
+  - Hand Analysis: 8009 ✅ **NEW!**
 
 ### Independent Scaling ✅
 Each module can be scaled independently:
@@ -709,7 +849,7 @@ Each module can be scaled independently:
 - Configure GPU memory optimization per module
 - Implement request queuing for batch processing
 
-### Monitoring ✅ **ALL 9 SERVICES**
+### Monitoring ✅ **ALL 10 SERVICES**
 ```bash
 # All complete modules health check
 curl http://localhost:8000/health  # Frontal Morfologico ✅
@@ -721,6 +861,7 @@ curl http://localhost:8004/health  # Profile Antropometrico ✅
 curl http://localhost:8005/health  # Profile Validacion ✅
 curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
 curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
+curl http://localhost:8009/health  # Hand Analysis ✅ NEW!
 
 # Container status
 docker ps
@@ -731,13 +872,13 @@ nvidia-smi
 
 ## Architecture Status ✅ **PROJECT EXPANDED**
 
-### Current Status ✅ **ALL 9 MODULES OPERATIONAL**
+### Current Status ✅ **ALL 10 MODULES OPERATIONAL**
 - ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico, espejo (Ports 8000-8002, 8008) ✅ **ALL COMPLETE**
 - ✅ **Profile Analysis Complete**: morfologico, antropometrico, validacion (Ports 8003-8005) ✅ **ALL COMPLETE**
-- ✅ **Body Analysis Complete**: morfologico, antropometrico (Ports 8006-8007) ✅ **ALL COMPLETE** ✅ **NEW!**
+- ✅ **Body Analysis Complete**: morfologico, antropometrico, manos (Ports 8006-8007, 8009) ✅ **ALL COMPLETE** ✅ **NEW!**
 
 ### Complete AI Analysis Pipeline ✅ **EXPANDED**
-The SG_prod AI analysis production pipeline is now **EXPANDED** with all 9 modules operational:
+The SG_prod AI analysis production pipeline is now **EXPANDED** with all 10 modules operational:
 
 #### **Frontal Image Processing Pipeline** ✅
 1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
@@ -753,6 +894,7 @@ The SG_prod AI analysis production pipeline is now **EXPANDED** with all 9 modul
 #### **Body Image Processing Pipeline** ✅ **NEW COMPLETE**
 1. **Body Morfologico** (Port 8006): Body type classification and morphological analysis ✅ **NEW!**
 2. **Body Antropometrico** (Port 8007): Skull detection and body anthropometric measurements ✅ **NEW!**
+3. **Hand Analysis** (Port 8009): Hand classification and advanced palm colorimetry analysis ✅ **NEW!**
 
 ### Future Extensions 🔄
 - 🔄 **Master Orchestration**: Multi-service deployment and result aggregation
@@ -779,6 +921,9 @@ The SG_prod AI analysis production pipeline is now **EXPANDED** with all 9 modul
 1. **Body Morfologico** (Port 8006): Body type classification and morphological insights ✅ **NEW!**
 2. **Body Antropometrico** (Port 8007): Skull measurements and body anthropometric analysis ✅ **NEW!**
 
+#### For Hand Images ✅ **NEW COMPLETE WORKFLOW**
+1. **Hand Analysis** (Port 8009): Comprehensive hand side classification and palm colorimetry analysis ✅ **NEW!**
+
 ### Quality-First Approach ✅
 The **Validacion** modules serve as quality gates, identifying:
 - Hair covering facial features
@@ -795,6 +940,13 @@ The **Body Analysis** modules provide:
 - Age assessment based on anatomical proportions
 - Full body pose detection and keypoint analysis
 
+The **Hand Analysis** module provides:
+- CNN-based hand side classification (dorso/palma)
+- Advanced palm colorimetry analysis
+- Traditional color type classification
+- Dominant color extraction and analysis
+- Comprehensive visualizations and reports
+
 ## Support
 
 ### Issues & Questions
@@ -809,4 +961,4 @@ All trained model weights are included in this repository. Large files use Git L
 
 ---
 **quantileMX** - Advanced AI Solutions  
-**Status**: ✅ **PRODUCTION READY - ALL 9 MODULES COMPLETE** ✅
+**Status**: ✅ **PRODUCTION READY - ALL 10 MODULES COMPLETE** ✅
