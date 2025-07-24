@@ -305,7 +305,7 @@ class EspejoAnalyzer:
                     center_x = center_x * (width / 224)
                     center_y = center_y * (height / 224)
                     
-                    detected_points[label] = (int(center_x), int(center_y))
+                    detected_points[int(label)] = (int(center_x), int(center_y))
         
         return detected_points
     
