@@ -119,6 +119,22 @@ POST /analyze-face-areas
 ```
 Returns inner/outer face area analysis and proportional measurements.
 
+#### Eye Colorimetry Analysis
+```bash
+POST /analyze-eye-colorimetry
+```
+Returns comprehensive iris color analysis with RGB and HSV classification systems.
+
+```bash
+POST /analyze-iris-color
+```
+Returns focused iris color classification using dominant or average color methods.
+
+```bash
+POST /compare-eye-colors
+```
+Compares eye color classifications across different analysis methods.
+
 ### Detailed Reporting
 ```bash
 POST /get-detailed-report?format=text
@@ -152,6 +168,13 @@ Generates comprehensive analysis reports in text or JSON format.
 - **Inner/Outer Ratio**: Proportion of inner facial features to total face area
 - **Eye-to-Face Proportions**: Individual eye area relative to total face
 - **Detailed Measurements**: Absolute areas and percentage calculations
+
+### Eye Colorimetry Analysis
+- **Iris Color Classification**: Advanced RGB and HSV-based eye color detection
+- **Multiple Classification Systems**: RGB range-based and HSV hue-based classification
+- **Comprehensive Color Analysis**: K-means clustering for dominant colors and average color calculation
+- **Bilateral Analysis**: Separate analysis for left and right eyes
+- **Color Categories**: Supports 8 distinct eye color classifications including café oscuro, café claro/hazel, verde, azul claro/gris, azul oscuro, azul intenso/morado, amarillo, and azul verde
 
 ### Model Integration
 - **13 Custom Points**: Utilizes all available model predictions
@@ -205,6 +228,23 @@ curl -X POST "http://localhost:8001/get-detailed-report?format=text" \
 curl -X POST "http://localhost:8001/analyze-eyebrows" \
   -H "Content-Type: multipart/form-data" \
   -F "file=@face_image.jpg"
+```
+
+### Eye Colorimetry Analysis
+```bash
+curl -X POST "http://localhost:8001/analyze-eye-colorimetry" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_visualization=true"
+```
+
+### Iris Color Classification
+```bash
+curl -X POST "http://localhost:8001/analyze-iris-color" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@face_image.jpg" \
+  -F "use_dominant_color=true"
 ```
 
 ## 📈 Performance & Requirements
