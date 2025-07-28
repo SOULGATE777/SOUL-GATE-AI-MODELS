@@ -169,14 +169,104 @@ The system detects 30 anatomical landmarks:
   - `Mandibula Linfatica` (point 9 missing)
 
 ### 5. Angular Analysis
-- **Forehead Angle (24-22)**:
-  - `frente inclinada hacia atras` (> 15°)
-  - `frente neutra` (11-15°)
-  - `frente vertical` (< 11°)
-- **Chin Angle (18-11)**:
-  - `menton nervioso` (≤ -5°)
-  - `menton biloso/linfatico` (-5° to 5.5°)
-  - `menton sanguineo` (> 5.5°)
+
+#### 5.1 Mathematical Foundation
+All angular measurements use the reference vector from point 22 to point 18 as the baseline. The system determines head direction using vector analysis: `head_direction = "right" if vector_22_18[0] > 0 else "left"`.
+
+**Key Implementation Details:**
+- **Vector Normalization**: All vectors are normalized using `vector / np.linalg.norm(vector)` before angle calculations
+- **Dot Product Clamping**: `np.clip(dot_product, -1.0, 1.0)` prevents numerical errors in arccos
+- **Angle Conversion**: All angles converted from radians using `np.degrees(np.arccos(cos_angle))`
+- **Profile Awareness**: Left/right profile detection automatically adjusts angle signs and interpretations
+- **Robust Edge Cases**: Handles infinite slopes and zero-division scenarios gracefully
+
+#### 5.2 Forehead Angle Calculation (Points 24-22)
+**Mathematical Process:**
+1. **Reference Vector**: `vector_22_18 = [point_18[0] - point_22[0], point_18[1] - point_22[1]]`
+2. **Measurement Vector**: `vector_22_24 = [point_24[0] - point_22[0], point_24[1] - point_22[1]]`
+3. **Angle Calculation**: Uses dot product formula between normalized vectors
+   - `cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)`
+   - `angle_degrees = np.degrees(np.arccos(cos_angle))`
+4. **Direction Adjustment**:
+   - **Left Profile**: `angle = abs(angle)` if turning right, `-angle` if turning left
+   - **Right Profile**: `angle = -angle` if turning right, `abs(angle)` if turning left
+5. **Normalization**: Angle normalized to 0-90° range (`abs(angle)` if negative, `180 - angle` if > 90°)
+
+**Classification Thresholds:**
+- `frente inclinada hacia atras`: angle > 15°
+- `frente neutra`: 11° ≤ angle ≤ 15°
+- `frente vertical`: angle < 11°
+
+#### 5.3 Chin Angle Calculation (Points 18-11)
+**Mathematical Process:**
+1. **Reference Vector**: `vector_22_18` (same as above)
+2. **Measurement Vector**: `vector_18_11 = [point_11[0] - point_18[0], point_11[1] - point_18[1]]`
+3. **Angle Calculation**: Dot product between normalized vectors
+4. **Face Side Detection**: Uses point 17 position relative to point 18
+   - If `point_17[0] < point_18[0]`: Left side of face
+   - Otherwise: Right side of face
+5. **Direction Logic**:
+   - **Left Side**: Positive angles = turning right, negative = turning left
+   - **Right Side**: Positive angles = turning left, negative = turning right
+6. **Normalization**: Angle clamped to -90° to +90° range
+
+**Classification Thresholds:**
+- `menton nervioso`: angle ≤ -5°
+- `menton biloso/linfatico`: -5° < angle ≤ 5.5°
+- `menton sanguineo`: angle > 5.5°
+
+#### 5.4 Nose Tip Angle Calculation (Points 18-17)
+**Mathematical Process:**
+1. **Reference Vector**: `vector_22_18` (baseline)
+2. **Perpendicular Calculation**:
+   - `ref_slope = vector_22_18[1] / vector_22_18[0]`
+   - `perp_slope = -1/ref_slope` (negative reciprocal)
+   - `perp_vector = [1, perp_slope]`
+3. **Measurement Vector**: `vector_18_17 = [point_17[0] - point_18[0], point_17[1] - point_18[1]]`
+4. **Angle Calculation**: Dot product between `vector_18_17` and perpendicular vector
+5. **Sign Correction**:
+   - If `point_17[0] < point_18[0]`: Head turning right → negative angle
+   - If `point_17[0] > point_18[0]`: Head turning left → positive angle
+6. **Normalization**: Clamped to -90° to +90° range
+
+**Classification Thresholds:**
+- `punta muy hacia arriba`: angle ≥ 26°
+- `punta de nariz hacia arriba`: 19° ≤ angle < 26°
+- `punta de nariz promedio`: 0° ≤ angle < 19°
+- `punta hacia abajo`: angle < 0°
+
+#### 5.5 Implantation Angle Calculations
+
+##### Superior Implantation (Point 18-4)
+**Mathematical Process:**
+1. **Reference Setup**: Uses same perpendicular vector as nose tip calculation
+2. **Measurement Vector**: `vector_18_4 = [point_4[0] - point_18[0], point_4[1] - point_18[1]]`
+3. **Angle Calculation**: Dot product between `vector_18_4` and perpendicular vector
+4. **Normalization**: Absolute value applied, then clamped to 0-180° range
+5. **Final Adjustment**: If angle > 90°, converted to `180 - angle`
+
+**Classification:**
+- `implantacion alta`: angle ≤ -9°
+- `implantacion estandard`: angle > -9°
+
+##### Inferior Implantation (Point 18-5)
+**Mathematical Process:**
+1. **Measurement Vector**: `vector_18_5 = [point_5[0] - point_18[0], point_5[1] - point_18[1]]`
+2. **Same calculation process as superior implantation**
+
+**Classification:**
+- `implantacion baja`: angle ≤ -10°
+- `implantacion estandard`: angle > -10°
+
+##### Vector Intersection Angle (Vectors 22-18 and 1-3)
+**Mathematical Process:**
+1. **Vector 1**: `vector_22_18` (reference line)
+2. **Vector 2**: `vector_1_3 = [point_1[0] - point_3[0], point_1[1] - point_3[1]]`
+3. **Angle Calculation**: Direct dot product between normalized vectors
+4. **Classification**:
+   - `wide intersection`: angle > 90°
+   - `right intersection`: angle = 90°
+   - `acute intersection`: angle < 90°
 
 ### 6. Ear Analysis
 - **Ear Width (2-6)**: Basic ear width measurement
@@ -194,10 +284,11 @@ The system detects 30 anatomical landmarks:
   - `corta` (< 0.1)
 
 ### 7. Implantation Analysis
-- **Superior Implantation (18-4)**: Upper ear attachment
+**Note**: Detailed mathematical calculations are provided in Section 5.5 above.
+- **Superior Implantation (18-4)**: Upper ear attachment angle relative to perpendicular
   - `implantacion alta` (angle ≤ -9°)
   - `implantacion estandard` (angle > -9°)
-- **Inferior Implantation (18-5)**: Lower ear attachment
+- **Inferior Implantation (18-5)**: Lower ear attachment angle relative to perpendicular
   - `implantacion baja` (angle ≤ -10°)
   - `implantacion estandard` (angle > -10°)
 

@@ -245,6 +245,7 @@ class ProfileAnthropometricPipeline:
         point_24 = points.get("24", None)
         point_26 = points.get("26", None)
         point_30 = points.get("30", None)
+        point_34 = points.get("34", None)
         
         measurements = {}
         
@@ -284,15 +285,15 @@ class ProfileAnthropometricPipeline:
         # === FACIAL THIRDS ANALYSIS ===
         print("\n--- FACIAL THIRDS ANALYSIS ---")
         
-        # Upper third (24 to 22)
-        if point_24 and point_22:
-            distance_24_22 = self.dist(point_24, point_22)
-            normalized_distance_24_22 = distance_24_22 / reference_distance
-            measurements['tercio_superior_distance'] = distance_24_22
-            measurements['tercio_superior_normalized'] = normalized_distance_24_22
+        # Upper third (34 to 22)
+        if point_34 and point_22:
+            distance_34_22 = self.dist(point_34, point_22)
+            normalized_distance_34_22 = distance_34_22 / reference_distance
+            measurements['tercio_superior_distance'] = distance_34_22
+            measurements['tercio_superior_normalized'] = normalized_distance_34_22
             
-            print(f"Upper third distance (24-22): {distance_24_22:.2f}")
-            print(f"Upper third proportion: {normalized_distance_24_22:.3f}")
+            print(f"Upper third distance (34-22): {distance_34_22:.2f}")
+            print(f"Upper third proportion: {normalized_distance_34_22:.3f}")
             print(f"Upper third label: tercio superior")
         
         # Middle third (22 to 16)
@@ -319,25 +320,25 @@ class ProfileAnthropometricPipeline:
             
             # === MANDIBLE ANALYSIS ===
             print("\n--- MANDIBLE ANALYSIS ---")
-            if point_5 and point_9:
-                distance_5_9 = self.dist(point_5, point_9)
-                normalized_distance_5_9 = distance_5_9 / distance_18_10
-                measurements['mandibula_distance'] = distance_5_9
-                measurements['mandibula_normalized'] = normalized_distance_5_9
+            if point_3 and point_9:
+                distance_3_9 = self.dist(point_3, point_9)
+                normalized_distance_3_9 = distance_3_9 / distance_18_10
+                measurements['mandibula_distance'] = distance_3_9
+                measurements['mandibula_normalized'] = normalized_distance_3_9
                 
-                print(f"Mandible width (5-9): {distance_5_9:.2f}")
-                print(f"Mandible proportion to lower third: {normalized_distance_5_9:.3f}")
+                print(f"Mandible width (3-9): {distance_3_9:.2f}")
+                print(f"Mandible proportion to lower third: {normalized_distance_3_9:.3f}")
                 
                 # Classify mandibula
-                if normalized_distance_5_9 >= 0.75:
+                if normalized_distance_3_9 >= 0.75:
                     mandibula_label = "Mandibula Sanguinea"
-                elif 0.65 <= normalized_distance_5_9 < 0.75:
+                elif 0.65 <= normalized_distance_3_9 < 0.75:
                     mandibula_label = "Mandibula intermedia sanguineo/bilosa"
-                elif 0.20 <= normalized_distance_5_9 < 0.65:
+                elif 0.20 <= normalized_distance_3_9 < 0.65:
                     mandibula_label = "Mandibula Bilosa"
-                elif 0.10 <= normalized_distance_5_9 < 0.20:
+                elif 0.10 <= normalized_distance_3_9 < 0.20:
                     mandibula_label = "Mandibula intermedia bilosa/nerviosa"
-                elif normalized_distance_5_9 < 0.10:
+                elif normalized_distance_3_9 < 0.10:
                     mandibula_label = "Mandibula Nerviosa"
                 else:
                     mandibula_label = "Mandibula Intermedia"
@@ -697,6 +698,7 @@ class ProfileAnthropometricPipeline:
         # Calculate vectors
         vector_22_18 = np.array([point_18[0] - point_22[0], point_18[1] - point_22[1]])
         vector_18_4 = np.array([point_4[0] - point_18[0], point_4[1] - point_18[1]])
+        vector_22_4 = np.array([point_4[0] - point_22[0], point_4[1] - point_22[1]])
         vector_18_5 = np.array([point_5[0] - point_18[0], point_5[1] - point_18[1]])
         vector_1_3 = np.array([point_1[0] - point_3[0], point_1[1] - point_3[1]])
         
@@ -708,7 +710,7 @@ class ProfileAnthropometricPipeline:
         perp_vector = np.array([1, perp_slope])
         
         # Calculate superior angle (point 4)
-        v1_u_superior = vector_18_4 / np.linalg.norm(vector_18_4)
+        v1_u_superior = vector_22_4 / np.linalg.norm(vector_22_4)
         v2_u = perp_vector / np.linalg.norm(perp_vector)
         cos_angle_superior = np.clip(np.dot(v1_u_superior, v2_u), -1.0, 1.0)
         angle_radians_superior = np.arccos(cos_angle_superior)
@@ -837,7 +839,7 @@ class ProfileAnthropometricPipeline:
         # Facial thirds
         if 'tercio_superior_distance' in measurements:
             summary_lines.append("=== FACIAL THIRDS ===")
-            summary_lines.append(f"Superior (24-22): {measurements['tercio_superior_distance']:.2f} ({measurements['tercio_superior_normalized']:.3f})")
+            summary_lines.append(f"Superior (34-22): {measurements['tercio_superior_distance']:.2f} ({measurements['tercio_superior_normalized']:.3f})")
             if 'tercio_medio_distance' in measurements:
                 summary_lines.append(f"Middle (22-16): {measurements['tercio_medio_distance']:.2f} ({measurements['tercio_medio_normalized']:.3f})")
             if 'tercio_inferior_distance' in measurements:
@@ -848,7 +850,7 @@ class ProfileAnthropometricPipeline:
         if 'mandibula_classification' in measurements:
             summary_lines.append("=== MANDIBLE ANALYSIS ===")
             if 'mandibula_distance' in measurements:
-                summary_lines.append(f"Distance (5-9): {measurements['mandibula_distance']:.2f}")
+                summary_lines.append(f"Distance (3-9): {measurements['mandibula_distance']:.2f}")
                 summary_lines.append(f"Proportion: {measurements['mandibula_normalized']:.3f}")
             summary_lines.append(f"Classification: {measurements['mandibula_classification']}")
             summary_lines.append("")

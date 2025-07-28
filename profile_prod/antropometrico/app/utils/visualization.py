@@ -169,10 +169,10 @@ class ProfileAnthropometricVisualizer:
             p1, p2 = points_dict['16'], points_dict['18']
             ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'purple', linewidth=2, alpha=0.7, label='Inferior tercio')
         
-        # Mandibula line (5 to 9)
-        if '5' in points_dict and '9' in points_dict:
-            p1, p2 = points_dict['5'], points_dict['9']
-            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'cyan', linewidth=2, alpha=0.7, label='Mandibula (5-9)')
+        # Mandibula line (3 to 9)
+        if '3' in points_dict and '9' in points_dict:
+            p1, p2 = points_dict['3'], points_dict['9']
+            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'cyan', linewidth=2, alpha=0.7, label='Mandibula (3-9)')
         
         # Ear measurements (2 to 6, 7 to 8)
         if '2' in points_dict and '6' in points_dict:
@@ -228,7 +228,7 @@ class ProfileAnthropometricVisualizer:
             ])
             if 'mandibula_distance' in measurements:
                 lines.extend([
-                    f"  Distance (5-9): {measurements['mandibula_distance']:.2f}px",
+                    f"  Distance (3-9): {measurements['mandibula_distance']:.2f}px",
                     f"  Proportion: {measurements['mandibula_normalized']:.3f}"
                 ])
             lines.append("")
