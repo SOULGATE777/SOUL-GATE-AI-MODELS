@@ -142,45 +142,179 @@ POST /get-detailed-report?format=json
 ```
 Generates comprehensive analysis reports in text or JSON format.
 
-## 🎯 Analysis Features
+## 🎯 Detailed Analysis Features
 
-### Facial Thirds Analysis
-- **Primer Tercio**: Top of head to between eyebrows
-- **Segundo Tercio**: Between eyebrows to nose base  
-- **Tercer Tercio**: Nose base to chin
-- Classifications: largo/corto/standard based on proportional thresholds
+### Facial Landmark Detection
+The system uses 68 standard dlib facial landmarks (points 0-67) plus 4 extended points (68-71) and up to 13 custom model-detected points:
 
-### Eyebrow Analysis
-- **Length Classification**: Compares eyebrow length to corresponding eye length
-  - `ceja corta`: < 1.0 ratio
-  - `ceja normal`: 1.0-1.4 ratio
-  - `ceja larga`: > 1.4 ratio
-- **Detailed Measurements**: Absolute lengths and proportional ratios
+#### Standard Landmarks (0-67)
+- **Face contour**: Points 0-16 (jaw line from ear to ear)
+- **Right eyebrow**: Points 17-21 (outer to inner edge)
+- **Left eyebrow**: Points 22-26 (inner to outer edge)
+- **Nose bridge**: Points 27-30 (top to tip)
+- **Nose base**: Points 31-35 (nostrils and base)
+- **Right eye**: Points 36-41 (outer corner to inner corner)
+- **Left eye**: Points 42-47 (inner corner to outer corner)
+- **Mouth outer**: Points 48-59 (outer lip contour)
+- **Mouth inner**: Points 60-67 (inner lip contour)
 
-### Eye Analysis
-- **Angle Classification**: Measures eye slope relative to horizontal
-  - `angulo normal`: -5° to +5°
-  - `angulo hacia arriba`: > +5° (upward tilt)
-  - `angulo hacia abajo`: < -5° (downward tilt)
-- **Proportional Analysis**: Eye spacing and face proportions
+#### Extended Landmarks (68-71)
+- **Point 68**: Between eyebrows (uses model point 2 when available)
+- **Point 69**: Top of head (uses model point 3 when available)
+- **Point 70**: Left pupil center (calculated from eye landmarks)
+- **Point 71**: Right pupil center (calculated from eye landmarks)
+
+#### Custom Model Points (1-13)
+Advanced deep learning model detects up to 13 specialized anthropometric points with confidence scoring:
+- **Point 1**: Superior facial implantation reference
+- **Point 2**: Between eyebrows (replaces calculated point 68)
+- **Point 3**: Superior head point (replaces calculated point 69)
+- **Points 4-13**: Additional facial landmarks for enhanced accuracy
+
+### Facial Thirds Analysis (Golden Ratio Assessment)
+Divides the face into three vertical sections using key anthropometric points:
+
+#### Measurement Points
+- **Top reference**: Point 69 (top of head) or model point 3
+- **Upper division**: Point 68 (between eyebrows) or model point 2
+- **Middle division**: Point 34 (nose base/subnasale)
+- **Lower reference**: Point 9 (menton/chin)
+
+#### Proportional Calculations
+- **Primer Tercio**: Distance 69-68 / Total head height
+  - `tercio superior largo`: > 0.38 proportion
+  - `tercio superior standard`: 0.27-0.38 proportion
+  - `tercio superior corto`: < 0.27 proportion
+
+- **Segundo Tercio**: Distance 68-34 / Total head height
+  - `tercio medio largo`: > 0.38 proportion
+  - `tercio medio standard`: 0.27-0.38 proportion
+  - `tercio medio corto`: < 0.27 proportion
+
+- **Tercer Tercio**: Distance 34-9 / Total head height
+  - `tercio inferior largo`: > 0.38 proportion
+  - `tercio inferior standard`: 0.27-0.38 proportion
+  - `tercio inferior corto`: < 0.27 proportion
+
+### Eyebrow Morphometry Analysis
+Analyzes eyebrow length relative to corresponding eye length for aesthetic proportion assessment:
+
+#### Measurement Points
+- **Right eyebrow**: Points 17 (outer) to 21 (inner)
+- **Left eyebrow**: Points 22 (outer) to 26 (inner)
+- **Right eye**: Points 36 (outer corner) to 39 (inner corner)
+- **Left eye**: Points 42 (inner corner) to 45 (outer corner)
+
+#### Length Classifications
+- **Ceja corta**: Eyebrow/eye ratio < 1.0
+- **Ceja normal**: Eyebrow/eye ratio 1.0-1.4
+- **Ceja larga**: Eyebrow/eye ratio > 1.4
+
+#### Slope Analysis
+Calculates eyebrow angles in three segments for shape assessment:
+- **Portion 1**: Inner ascending segment
+- **Portion 2**: Peak to arch transition
+- **Portion 3**: Outer descending segment
+
+### Eye Angle Analysis (Palpebral Fissure Inclination)
+Measures the angle of eye openings relative to horizontal baseline:
+
+#### Measurement Points
+- **Right eye**: Inner corner (point 39) to outer corner (point 36)
+- **Left eye**: Inner corner (point 42) to outer corner (point 45)
+
+#### Angle Classifications
+- **Ángulo normal**: -5° to +5° (horizontal alignment)
+- **Ángulo hacia arriba**: > +5° (upward slanting, positive canthal tilt)
+- **Ángulo hacia abajo**: < -5° (downward slanting, negative canthal tilt)
+
+#### Calculation Method
+Uses arctangent of vertical difference over horizontal distance between inner and outer eye corners.
+
+### Intercanthal Distance Analysis
+Evaluates eye spacing proportions:
+
+#### Measurements
+- **Inner eye distance**: Distance between points 39 and 42 (inner corners)
+- **Outer eye distance**: Distance between points 36 and 45 (outer corners)
+- **Eye distance proportion**: Inner distance / Outer distance
+
+#### Classifications
+- **Cercanos**: < 0.3 proportion (hypotelorism)
+- **Standard**: 0.3-0.37 proportion (normal spacing)
+- **Lejanos**: > 0.37 proportion (hypertelorism)
 
 ### Face Area Analysis
-- **Inner/Outer Ratio**: Proportion of inner facial features to total face area
-- **Eye-to-Face Proportions**: Individual eye area relative to total face
-- **Detailed Measurements**: Absolute areas and percentage calculations
+Calculates proportional relationships between facial regions:
+
+#### Area Measurements
+- **Outer face area**: Convex hull of jaw contour + all model points
+- **Inner face area**: Region from eyebrows (points 17-26) to mouth (points 48-67)
+- **Eye areas**: Individual eye regions (points 36-41 and 42-47)
+
+#### Proportional Analysis
+- **Inner/Outer percentage**: (Inner area / Outer area) × 100
+- **Eye-to-face proportions**: Individual eye area relative to total face area
+- Provides detailed area measurements in pixels²
+
+### Mouth-to-Eye Proportional Analysis
+Assesses facial harmony through mouth and eye relationships:
+
+#### Measurements
+- **Mouth length**: Distance between points 49 and 54 (mouth corners)
+- **Pupil distance**: Distance between pupil centers (points 70 and 71)
+- **Proportion ratio**: Mouth length / Pupil distance
+
+#### Classifications
+- **Boca grande**: > 1.0 ratio (mouth wider than interpupillary distance)
+- **Relación estándar**: 0.7-1.0 ratio (harmonious proportion)
+- **Boca pequeña**: < 0.7 ratio (mouth narrower than typical)
 
 ### Eye Colorimetry Analysis
-- **Iris Color Classification**: Advanced RGB and HSV-based eye color detection
-- **Multiple Classification Systems**: RGB range-based and HSV hue-based classification
-- **Comprehensive Color Analysis**: K-means clustering for dominant colors and average color calculation
-- **Bilateral Analysis**: Separate analysis for left and right eyes
-- **Color Categories**: Supports 8 distinct eye color classifications including café oscuro, café claro/hazel, verde, azul claro/gris, azul oscuro, azul intenso/morado, amarillo, and azul verde
+Advanced iris color classification using multiple methodologies:
 
-### Model Integration
-- **13 Custom Points**: Utilizes all available model predictions
-- **Enhanced Accuracy**: Model points replace inferred calculations where available
-- **Confidence Scoring**: Adjustable thresholds for point detection
-- **Fallback System**: Graceful degradation when model points unavailable
+#### Color Detection Methods
+1. **HSV-based classification**: Uses hue, saturation, and brightness values
+2. **RGB average classification**: Analyzes average color within iris region
+3. **RGB dominant classification**: Uses K-means clustering for dominant colors
+
+#### Color Categories
+- **color_de_ojo_negro/cafe_oscuro**: Very dark brown/black eyes
+- **cafe_claro/hazel**: Light brown/hazel eyes
+- **verde**: Green eyes
+- **azul_claro/gris**: Light blue/gray eyes
+- **azul_oscuro**: Dark blue eyes
+- **azul_intenso/morado**: Intense blue/violet eyes
+- **amarillo**: Amber/yellow eyes
+- **azul_verde**: Blue-green/turquoise eyes
+
+#### Analysis Process
+1. **Landmark detection**: Identifies eye regions using facial landmarks
+2. **Iris extraction**: Isolates iris region excluding pupil and sclera
+3. **Color analysis**: K-means clustering and average color calculation
+4. **Multi-system classification**: RGB and HSV-based color categorization
+5. **Bilateral comparison**: Separate analysis for left and right eyes
+
+### Model Integration and Confidence Scoring
+The system integrates a custom-trained deep learning model for enhanced accuracy:
+
+#### Model Architecture
+- **Base model**: Faster R-CNN with ResNet-50 backbone
+- **Detection classes**: 13 specialized anthropometric points + background
+- **Input processing**: 224×224 pixel images with normalization
+- **Output**: Bounding boxes, confidence scores, and point classifications
+
+#### Confidence Thresholds
+- **Adjustable threshold**: 0.0-1.0 (default 0.5)
+- **Point validation**: Only points above threshold are used
+- **Fallback system**: Traditional calculations when model points unavailable
+- **Quality indicators**: Model integration status reported in results
+
+#### Enhanced Accuracy Features
+- **Coordinate scaling**: Automatic scaling from model input to original image
+- **Point replacement**: Model points replace calculated estimates when available
+- **Hybrid approach**: Combines traditional landmarks with AI-detected points
+- **Confidence reporting**: Detailed confidence scores for each detected point
 
 ## 🖼️ Visualization Options
 

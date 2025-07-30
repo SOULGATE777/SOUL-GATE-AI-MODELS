@@ -154,12 +154,12 @@ The system detects 30 anatomical landmarks:
   - `punta hacia abajo` (< 0°)
 
 ### 3. Facial Thirds
-- **Superior Third (24-22)**: Upper facial region
+- **Superior Third (34-22)**: Upper facial region
 - **Middle Third (22-16)**: Mid-facial region
 - **Inferior Third (18-10)**: Lower facial region
 
 ### 4. Mandible Analysis
-- **Distance (5-9)**: Mandibular width measurement
+- **Distance (3-9)**: Mandibular width measurement
 - **Classifications**:
   - `Mandibula Sanguinea` (proportion ≥ 0.75)
   - `Mandibula intermedia sanguineo/bilosa` (0.65-0.75)
@@ -237,11 +237,11 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 
 #### 5.5 Implantation Angle Calculations
 
-##### Superior Implantation (Point 18-4)
+##### Superior Implantation (Point 22-4)
 **Mathematical Process:**
 1. **Reference Setup**: Uses same perpendicular vector as nose tip calculation
-2. **Measurement Vector**: `vector_18_4 = [point_4[0] - point_18[0], point_4[1] - point_18[1]]`
-3. **Angle Calculation**: Dot product between `vector_18_4` and perpendicular vector
+2. **Measurement Vector**: `vector_22_4 = [point_4[0] - point_22[0], point_4[1] - point_22[1]]`
+3. **Angle Calculation**: Dot product between `vector_22_4` and perpendicular vector
 4. **Normalization**: Absolute value applied, then clamped to 0-180° range
 5. **Final Adjustment**: If angle > 90°, converted to `180 - angle`
 
@@ -285,7 +285,7 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 
 ### 7. Implantation Analysis
 **Note**: Detailed mathematical calculations are provided in Section 5.5 above.
-- **Superior Implantation (18-4)**: Upper ear attachment angle relative to perpendicular
+- **Superior Implantation (22-4)**: Upper ear attachment angle relative to perpendicular
   - `implantacion alta` (angle ≤ -9°)
   - `implantacion estandard` (angle > -9°)
 - **Inferior Implantation (18-5)**: Lower ear attachment angle relative to perpendicular

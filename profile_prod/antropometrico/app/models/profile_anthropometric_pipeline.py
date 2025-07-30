@@ -245,6 +245,7 @@ class ProfileAnthropometricPipeline:
         point_24 = points.get("24", None)
         point_26 = points.get("26", None)
         point_30 = points.get("30", None)
+        point_33 = points.get("33", None)
         point_34 = points.get("34", None)
         
         measurements = {}
@@ -272,9 +273,9 @@ class ProfileAnthropometricPipeline:
             print(f"Proportion between points 18 and 17: {normalized_distance_18_17:.3f}")
             
             # Classify nose
-            if normalized_distance_18_17 > 0.165:
+            if normalized_distance_18_17 > 0.2:
                 nose_label = "nariz protruyente"
-            elif 0.14 <= normalized_distance_18_17 <= 0.165:
+            elif 0.17 <= normalized_distance_18_17 <= 0.2:
                 nose_label = "nariz normal"
             else:
                 nose_label = "nariz corta"
@@ -296,15 +297,15 @@ class ProfileAnthropometricPipeline:
             print(f"Upper third proportion: {normalized_distance_34_22:.3f}")
             print(f"Upper third label: tercio superior")
         
-        # Middle third (22 to 16)
-        if point_22 and point_16:
-            distance_22_16 = self.dist(point_22, point_16)
-            normalized_distance_22_16 = distance_22_16 / reference_distance
-            measurements['tercio_medio_distance'] = distance_22_16
-            measurements['tercio_medio_normalized'] = normalized_distance_22_16
+        # Middle third (22 to 18)
+        if point_22 and point_18:
+            distance_22_18 = self.dist(point_22, point_18)
+            normalized_distance_22_18 = distance_22_18 / reference_distance
+            measurements['tercio_medio_distance'] = distance_22_18
+            measurements['tercio_medio_normalized'] = normalized_distance_22_18
             
-            print(f"Middle third distance (22-16): {distance_22_16:.2f}")
-            print(f"Middle third proportion: {normalized_distance_22_16:.3f}")
+            print(f"Middle third distance (22-18): {distance_22_18:.2f}")
+            print(f"Middle third proportion: {normalized_distance_22_18:.3f}")
             print(f"Middle third label: tercio medio")
         
         # Lower third (18 to 10)
@@ -330,24 +331,21 @@ class ProfileAnthropometricPipeline:
                 print(f"Mandible proportion to lower third: {normalized_distance_3_9:.3f}")
                 
                 # Classify mandibula
-                if normalized_distance_3_9 >= 0.75:
+                if normalized_distance_3_9 >= 0.8:
                     mandibula_label = "Mandibula Sanguinea"
-                elif 0.65 <= normalized_distance_3_9 < 0.75:
+                elif 0.75 <= normalized_distance_3_9 < 0.8:
                     mandibula_label = "Mandibula intermedia sanguineo/bilosa"
-                elif 0.20 <= normalized_distance_3_9 < 0.65:
+                elif 0.40 <= normalized_distance_3_9 < 0.75:
                     mandibula_label = "Mandibula Bilosa"
-                elif 0.10 <= normalized_distance_3_9 < 0.20:
+                elif 0.35 <= normalized_distance_3_9 < 0.40:
                     mandibula_label = "Mandibula intermedia bilosa/nerviosa"
-                elif normalized_distance_3_9 < 0.10:
+                elif normalized_distance_3_9 < 0.35:
                     mandibula_label = "Mandibula Nerviosa"
                 else:
                     mandibula_label = "Mandibula Intermedia"
                 
                 measurements['mandibula_classification'] = mandibula_label
                 print(f"Mandible classification: {mandibula_label}")
-            elif not point_9:
-                measurements['mandibula_classification'] = "Mandibula Linfatica"
-                print("Mandible classification: Mandibula Linfatica (point 9 missing)")
         
         # === EAR ANALYSIS ===
         print("\n--- EAR ANALYSIS ---")
@@ -375,11 +373,11 @@ class ProfileAnthropometricPipeline:
             print(f"Ear length proportion: {ear_length_proportion:.3f}")
             
             # Classify ear length
-            if ear_length_proportion > 0.33:
+            if ear_length_proportion > 0.432:
                 ear_length_label = "oreja larga"
-            elif 0.20 <= ear_length_proportion <= 0.33:
+            elif 0.38 <= ear_length_proportion <= 0.432:
                 ear_length_label = "oreja normal"
-            else:  # < 0.2
+            else:  # <= 0.38
                 ear_length_label = "oreja corta"
             
             measurements['ear_length_classification'] = ear_length_label
@@ -403,11 +401,11 @@ class ProfileAnthropometricPipeline:
             print(f"Ear lobe proportion: {ear_lobe_proportion:.3f}")
             
             # Classify ear lobe
-            if ear_lobe_proportion > 0.25:
+            if ear_lobe_proportion > 0.31:
                 ear_lobe_label = "lobulo grande"
-            elif 0.19 <= ear_lobe_proportion <= 0.25:
+            elif 0.28 <= ear_lobe_proportion <= 0.31:
                 ear_lobe_label = "lobulo normal"
-            else:  # < 0.19
+            else:  # < 0.28
                 ear_lobe_label = "lobulo chico"
             
             measurements['ear_lobe_classification'] = ear_lobe_label
@@ -430,9 +428,9 @@ class ProfileAnthropometricPipeline:
             print(f"Nasal orifice proportion: {nasal_orifice_proportion:.3f}")
             
             # Classify nasal orifice triangulation
-            if nasal_orifice_proportion > 0.1:
+            if nasal_orifice_proportion > 0.27:
                 nasal_triangulation_label = "triangulacion de fosa"
-            else:  # <= 0.1
+            else:  # <= 0.27
                 nasal_triangulation_label = "sin triangulacion de fosa"
             
             measurements['nasal_triangulation_classification'] = nasal_triangulation_label
@@ -457,11 +455,11 @@ class ProfileAnthropometricPipeline:
             print(f"Tragus-antitragus proportion: {tragus_antitragus_proportion:.3f}")
             
             # Classify tragus-antitragus
-            if tragus_antitragus_proportion >= 0.2:
+            if tragus_antitragus_proportion >= 0.255:
                 tragus_antitragus_label = "grande"
-            elif 0.1 <= tragus_antitragus_proportion < 0.2:
+            elif 0.22 <= tragus_antitragus_proportion < 0.255:
                 tragus_antitragus_label = "normal"
-            else:  # < 0.1
+            else:  # < 0.22
                 tragus_antitragus_label = "corta"
             
             measurements['tragus_antitragus_classification'] = tragus_antitragus_label
@@ -489,16 +487,17 @@ class ProfileAnthropometricPipeline:
         point_3 = points.get("3", None)
         point_4 = points.get("4", None)
         point_5 = points.get("5", None)
+        point_33 = points.get("33", None)
         
-        if not (point_22 and point_18):
-            print("Warning: Cannot calculate angular measurements without points 22 and 18")
+        if not (point_24 and point_18):
+            print("Warning: Cannot calculate angular measurements without points 24 and 18")
             return
         
-        # Reference vector (22 to 18)
-        vector_22_18 = np.array([point_18[0] - point_22[0], point_18[1] - point_22[1]])
+        # Reference vector (24 to 18)
+        vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
         
         # Determine head direction based on the reference vector (infallible method)
-        head_direction = "right" if vector_22_18[0] > 0 else "left"
+        head_direction = "right" if vector_24_18[0] > 0 else "left"
         print(f"Head direction determined via vector analysis: {head_direction}")
         measurements['head_direction'] = head_direction
         
@@ -507,7 +506,7 @@ class ProfileAnthropometricPipeline:
             vector_18_17 = np.array([point_17[0] - point_18[0], point_17[1] - point_18[1]])
             
             # Calculate the perpendicular slope (negative reciprocal)
-            ref_slope = vector_22_18[1] / vector_22_18[0] if vector_22_18[0] != 0 else float('inf')
+            ref_slope = vector_24_18[1] / vector_24_18[0] if vector_24_18[0] != 0 else float('inf')
             perp_slope = -1/ref_slope if ref_slope != 0 else float('inf')
             
             # Create a perpendicular vector at point 18
@@ -535,18 +534,16 @@ class ProfileAnthropometricPipeline:
                 angle_degrees = 180 + angle_degrees
             
             measurements['nose_tip_angle'] = angle_degrees
-            print(f"Reference line slope (22-18): {ref_slope:.2f}")
+            print(f"Reference line slope (24-18): {ref_slope:.2f}")
             print(f"Perpendicular line slope: {perp_slope:.2f}")
             print(f"Nose tip angle: {angle_degrees:.2f} degrees")
             
             # Classify nose tip
-            if angle_degrees >= 26:
-                nose_tip_label = "punta muy hacia arriba"
-            elif angle_degrees >= 19:
+            if angle_degrees >= 27:
                 nose_tip_label = "punta de nariz hacia arriba"
-            elif 0 <= angle_degrees < 19:
+            elif 12 <= angle_degrees < 27:
                 nose_tip_label = "punta de nariz promedio"
-            else:
+            else:  # < 12
                 nose_tip_label = "punta hacia abajo"
             
             measurements['nose_tip_classification'] = nose_tip_label
@@ -569,13 +566,13 @@ class ProfileAnthropometricPipeline:
                 measurements['nose_angle_19_17'] = angle_19_17
                 print(f"Nose angle (19-17): {angle_19_17:.2f} degrees")
         
-        # Forehead angle (24 to 22) - with proper left/right handling
-        if point_24 and point_22:
-            vector_22_24 = np.array([point_24[0] - point_22[0], point_24[1] - point_22[1]])
+        # Forehead angle (24 to 33) - with proper left/right handling
+        if point_24 and point_33:
+            vector_24_33 = np.array([point_33[0] - point_24[0], point_33[1] - point_24[1]])
             
             # Normalize both vectors for dot product calculation
-            v1_u = vector_22_18 / np.linalg.norm(vector_22_18)
-            v2_u = vector_22_24 / np.linalg.norm(vector_22_24)
+            v1_u = vector_24_18 / np.linalg.norm(vector_24_18)
+            v2_u = vector_24_33 / np.linalg.norm(vector_24_33)
             
             # Calculate angle using dot product formula
             cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
@@ -584,12 +581,12 @@ class ProfileAnthropometricPipeline:
             
             # Adjust angle based on head direction (from your original logic)
             if head_direction == "left":
-                if vector_22_24[0] < vector_22_18[0]:  # Turning right
+                if vector_24_33[0] < vector_24_18[0]:  # Turning right
                     angle_degrees = abs(angle_degrees)
                 else:  # Turning left
                     angle_degrees = -angle_degrees
             else:  # Right side of face
-                if vector_22_24[0] < vector_22_18[0]:  # Turning right
+                if vector_24_33[0] < vector_24_18[0]:  # Turning right
                     angle_degrees = -angle_degrees
                 else:  # Turning left
                     angle_degrees = abs(angle_degrees)
@@ -601,7 +598,7 @@ class ProfileAnthropometricPipeline:
                 angle_degrees = 180 - angle_degrees
             
             measurements['forehead_angle'] = angle_degrees
-            print(f"Forehead angle (24-22): {angle_degrees:.2f} degrees")
+            print(f"Forehead angle (24-33): {angle_degrees:.2f} degrees")
             
             # Classify forehead using np.select logic from original
             if angle_degrees > 15:
@@ -619,7 +616,7 @@ class ProfileAnthropometricPipeline:
             vector_18_11 = np.array([point_11[0] - point_18[0], point_11[1] - point_18[1]])
             
             # Normalize both vectors for dot product calculation
-            v1_u = vector_22_18 / np.linalg.norm(vector_22_18)
+            v1_u = vector_24_18 / np.linalg.norm(vector_24_18)
             v2_u = vector_18_11 / np.linalg.norm(vector_18_11)
             
             # Calculate angle using dot product formula
@@ -630,13 +627,13 @@ class ProfileAnthropometricPipeline:
             # Determine which side of face and adjust angle accordingly (from your original logic)
             if point_17 and point_17[0] < point_18[0]:  # Left side of face
                 # On left side, positive angles mean turning right
-                if vector_18_11[0] < vector_22_18[0]:  # Turning right
+                if vector_18_11[0] < vector_24_18[0]:  # Turning right
                     angle_degrees = abs(angle_degrees)
                 else:  # Turning left
                     angle_degrees = -angle_degrees
             else:  # Right side of face
                 # On right side, positive angles mean turning left
-                if vector_18_11[0] < vector_22_18[0]:  # Turning right
+                if vector_18_11[0] < vector_24_18[0]:  # Turning right
                     angle_degrees = -angle_degrees
                 else:  # Turning left
                     angle_degrees = abs(angle_degrees)
@@ -662,9 +659,9 @@ class ProfileAnthropometricPipeline:
             print(f"Chin classification: {chin_label}")
         
         # Implantation angles with head direction consideration
-        if all([point_22, point_18, point_4, point_5, point_1, point_3]):
+        if all([point_24, point_18, point_4, point_5, point_1, point_3]):
             implantation_results = self.calculate_implantation_angles(
-                point_22, point_18, point_4, point_5, point_1, point_3, head_direction
+                point_24, point_18, point_4, point_5, point_1, point_3, head_direction
             )
             
             if implantation_results:
@@ -683,27 +680,27 @@ class ProfileAnthropometricPipeline:
                 print(f"Superior implantation classification: {classification_superior}")
                 print(f"Inferior implantation angle: {angle_inferior:.2f} degrees")
                 print(f"Inferior implantation classification: {classification_inferior}")
-                print(f"Vector intersection angle (22_18 and 1_3): {angle_intersection:.2f} degrees")
+                print(f"Vector intersection angle (24_18 and 1_3): {angle_intersection:.2f} degrees")
     
-    def calculate_implantation_angles(self, point_22, point_18, point_4, point_5, point_1, point_3, head_direction=None):
+    def calculate_implantation_angles(self, point_24, point_18, point_4, point_5, point_1, point_3, head_direction=None):
         """
-        Calculate both superior and inferior implantation angles relative to the line from 22 to 18.
-        Also calculates intersection angle between vectors 22_18 and 1_3.
+        Calculate both superior and inferior implantation angles relative to the line from 24 to 18.
+        Also calculates intersection angle between vectors 24_18 and 1_3.
         Takes into account head direction for proper angle adjustment.
         Returns angles and classifications for both superior and inferior positions.
         """
-        if not all([point_22, point_18, point_4, point_5, point_1, point_3]):
+        if not all([point_24, point_18, point_4, point_5, point_1, point_3]):
             return None
         
         # Calculate vectors
-        vector_22_18 = np.array([point_18[0] - point_22[0], point_18[1] - point_22[1]])
-        vector_18_4 = np.array([point_4[0] - point_18[0], point_4[1] - point_18[1]])
+        vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
         vector_22_4 = np.array([point_4[0] - point_22[0], point_4[1] - point_22[1]])
+        vector_24_4 = np.array([point_4[0] - point_24[0], point_4[1] - point_24[1]])
         vector_18_5 = np.array([point_5[0] - point_18[0], point_5[1] - point_18[1]])
         vector_1_3 = np.array([point_1[0] - point_3[0], point_1[1] - point_3[1]])
         
         # Calculate slopes
-        ref_slope = vector_22_18[1] / vector_22_18[0] if vector_22_18[0] != 0 else float('inf')
+        ref_slope = vector_24_18[1] / vector_24_18[0] if vector_24_18[0] != 0 else float('inf')
         perp_slope = -1/ref_slope if ref_slope != 0 else float('inf')
         
         # Create perpendicular vector at point 18
@@ -722,8 +719,8 @@ class ProfileAnthropometricPipeline:
         angle_radians_inferior = np.arccos(cos_angle_inferior)
         angle_degrees_inferior = np.degrees(angle_radians_inferior)
         
-        # Calculate intersection angle between vectors 22_18 and 1_3
-        v1_u_intersection = vector_22_18 / np.linalg.norm(vector_22_18)
+        # Calculate intersection angle between vectors 24_18 and 1_3
+        v1_u_intersection = vector_24_18 / np.linalg.norm(vector_24_18)
         v2_u_intersection = vector_1_3 / np.linalg.norm(vector_1_3)
         cos_angle_intersection = np.clip(np.dot(v1_u_intersection, v2_u_intersection), -1.0, 1.0)
         angle_radians_intersection = np.arccos(cos_angle_intersection)
@@ -731,7 +728,7 @@ class ProfileAnthropometricPipeline:
         
         # Detect face direction if not provided
         if head_direction is None:
-            head_direction = "right" if vector_22_18[0] > 0 else "left"
+            head_direction = "right" if vector_24_18[0] > 0 else "left"
         
         # Adjust angles based on head direction (from your original logic)
         if head_direction in ["left", "right"]:
@@ -841,7 +838,7 @@ class ProfileAnthropometricPipeline:
             summary_lines.append("=== FACIAL THIRDS ===")
             summary_lines.append(f"Superior (34-22): {measurements['tercio_superior_distance']:.2f} ({measurements['tercio_superior_normalized']:.3f})")
             if 'tercio_medio_distance' in measurements:
-                summary_lines.append(f"Middle (22-16): {measurements['tercio_medio_distance']:.2f} ({measurements['tercio_medio_normalized']:.3f})")
+                summary_lines.append(f"Middle (22-18): {measurements['tercio_medio_distance']:.2f} ({measurements['tercio_medio_normalized']:.3f})")
             if 'tercio_inferior_distance' in measurements:
                 summary_lines.append(f"Inferior (18-10): {measurements['tercio_inferior_distance']:.2f} ({measurements['tercio_inferior_normalized']:.3f})")
             summary_lines.append("")
