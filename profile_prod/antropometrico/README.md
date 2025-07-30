@@ -143,29 +143,28 @@ The system detects 30 anatomical landmarks:
 ### 2. Nose Analysis
 - **Distance (18-17)**: Nasal protrusion measurement
 - **Classifications**:
-  - `nariz protruyente` (proportion > 0.165)
-  - `nariz normal` (0.14 ≤ proportion ≤ 0.165)
-  - `nariz corta` (proportion < 0.14)
+  - `nariz protruyente` (proportion > 0.2)
+  - `nariz normal` (0.17 ≤ proportion ≤ 0.2)
+  - `nariz corta` (proportion < 0.17)
 - **Tip Angle**: Angular measurement of nose tip orientation
 - **Tip Classifications**:
-  - `punta muy hacia arriba` (≥ 26°)
-  - `punta de nariz hacia arriba` (≥ 19°)
-  - `punta de nariz promedio` (0° to 19°)
-  - `punta hacia abajo` (< 0°)
+  - `punta de nariz hacia arriba` (≥ 27°)
+  - `punta de nariz promedio` (12° to 27°)
+  - `punta hacia abajo` (< 12°)
 
 ### 3. Facial Thirds
 - **Superior Third (34-22)**: Upper facial region
-- **Middle Third (22-16)**: Mid-facial region
+- **Middle Third (22-18)**: Mid-facial region
 - **Inferior Third (18-10)**: Lower facial region
 
 ### 4. Mandible Analysis
 - **Distance (3-9)**: Mandibular width measurement
 - **Classifications**:
-  - `Mandibula Sanguinea` (proportion ≥ 0.75)
-  - `Mandibula intermedia sanguineo/bilosa` (0.65-0.75)
-  - `Mandibula Bilosa` (0.20-0.65)
-  - `Mandibula intermedia bilosa/nerviosa` (0.10-0.20)
-  - `Mandibula Nerviosa` (< 0.10)
+  - `Mandibula Sanguinea` (proportion ≥ 0.8)
+  - `Mandibula intermedia sanguineo/bilosa` (0.75-0.8)
+  - `Mandibula Bilosa` (0.40-0.75)
+  - `Mandibula intermedia bilosa/nerviosa` (0.35-0.40)
+  - `Mandibula Nerviosa` (< 0.35)
   - `Mandibula Linfatica` (point 9 missing)
 
 ### 5. Angular Analysis
@@ -230,10 +229,9 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 6. **Normalization**: Clamped to -90° to +90° range
 
 **Classification Thresholds:**
-- `punta muy hacia arriba`: angle ≥ 26°
-- `punta de nariz hacia arriba`: 19° ≤ angle < 26°
-- `punta de nariz promedio`: 0° ≤ angle < 19°
-- `punta hacia abajo`: angle < 0°
+- `punta de nariz hacia arriba`: angle ≥ 27°
+- `punta de nariz promedio`: 12° ≤ angle < 27°
+- `punta hacia abajo`: angle < 12°
 
 #### 5.5 Implantation Angle Calculations
 
@@ -271,17 +269,17 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 ### 6. Ear Analysis
 - **Ear Width (2-6)**: Basic ear width measurement
 - **Ear Length (4-5)**: Proportion to face length
-  - `oreja larga` (proportion > 0.33)
-  - `oreja normal` (0.20-0.33)
-  - `oreja corta` (< 0.20)
+  - `oreja larga` (proportion > 0.432)
+  - `oreja normal` (0.38-0.432)
+  - `oreja corta` (< 0.38)
 - **Ear Lobe (3-5)**: Proportion to ear length
-  - `lobulo grande` (proportion > 0.25)
-  - `lobulo normal` (0.19-0.25)
-  - `lobulo chico` (< 0.19)
+  - `lobulo grande` (proportion > 0.31)
+  - `lobulo normal` (0.28-0.31)
+  - `lobulo chico` (< 0.28)
 - **Tragus-Antitragus (7-8)**: Proportion to ear width
-  - `grande` (proportion ≥ 0.2)
-  - `normal` (0.1-0.2)
-  - `corta` (< 0.1)
+  - `grande` (proportion ≥ 0.255)
+  - `normal` (0.22-0.255)
+  - `corta` (< 0.22)
 
 ### 7. Implantation Analysis
 **Note**: Detailed mathematical calculations are provided in Section 5.5 above.
@@ -296,8 +294,8 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 - **Orifice Distance (26-17)**: Nasal opening measurement
 - **Reference Distance (18-30)**: Nasal baseline
 - **Classifications**:
-  - `triangulacion de fosa` (proportion > 0.1)
-  - `sin triangulacion de fosa` (proportion ≤ 0.1)
+  - `triangulacion de fosa` (proportion > 0.27)
+  - `sin triangulacion de fosa` (proportion ≤ 0.27)
 
 ## Technical Specifications
 
