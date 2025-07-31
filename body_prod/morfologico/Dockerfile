@@ -28,6 +28,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY models/ ./models/
 
+# Create YOLOv8 models directory
+RUN mkdir -p /app/models
+
 # Create necessary directories
 RUN mkdir -p /app/temp /app/results
 

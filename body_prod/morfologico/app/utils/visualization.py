@@ -43,9 +43,8 @@ def create_body_analysis_visualization(
         
         # Extract analysis data
         body_analysis = results.get('body_type_analysis', {})
-        gender_analysis = results.get('gender_analysis', {})
         metrics = results.get('analysis_metrics', {})
-        insights = results.get('morphological_insights', {})
+        anatomical_parts = results.get('anatomical_parts_analysis', {})
         
         # 1. Original Image (top-left)
         ax1 = fig.add_subplot(gs[0, 0])
@@ -53,8 +52,27 @@ def create_body_analysis_visualization(
         ax1.set_title('Original Image', fontsize=14, fontweight='bold')
         ax1.axis('off')
         
-        # Draw bounding box if provided
-        if bbox is not None:
+        # Draw anatomical parts bounding boxes if available
+        if anatomical_parts and 'part_predictions' in anatomical_parts:
+            part_predictions = anatomical_parts['part_predictions']
+            colors = ['red', 'blue', 'green', 'orange', 'purple']
+            
+            for i, (part_name, part_data) in enumerate(part_predictions.items()):
+                if 'bbox' in part_data:
+                    x1, y1, x2, y2 = part_data['bbox']
+                    color = colors[i % len(colors)]
+                    
+                    # Draw rectangle
+                    rect = Rectangle((x1, y1), x2-x1, y2-y1, 
+                                   linewidth=2, edgecolor=color, facecolor='none', alpha=0.8)
+                    ax1.add_patch(rect)
+                    
+                    # Add label
+                    ax1.text(x1, y1-5, f"{part_name}", color=color, fontsize=8, 
+                           fontweight='bold', bbox=dict(boxstyle="round,pad=0.2", 
+                           facecolor='white', alpha=0.8))
+        elif bbox is not None:
+            # Fallback to original bbox if no anatomical parts
             x1, y1, x2, y2 = bbox
             rect = Rectangle((x1, y1), x2-x1, y2-y1, 
                            linewidth=3, edgecolor='red', facecolor='none')
@@ -83,21 +101,18 @@ def create_body_analysis_visualization(
         ax3 = fig.add_subplot(gs[0, 2:])
         _plot_body_type_analysis(ax3, body_analysis)
         
-        # 4. Gender Analysis (middle-left)
+        
+        # 4. Confidence Metrics (middle-left)
         ax4 = fig.add_subplot(gs[1, 0])
-        _plot_gender_analysis(ax4, gender_analysis)
+        _plot_confidence_metrics(ax4, body_analysis, metrics)
         
-        # 5. Confidence Metrics (middle-center)
-        ax5 = fig.add_subplot(gs[1, 1])
-        _plot_confidence_metrics(ax5, body_analysis, gender_analysis, metrics)
+        # 5. Final Prediction (middle-center, spanning 3 columns)
+        ax5 = fig.add_subplot(gs[1, 1:])
+        _plot_final_prediction(ax5, body_analysis, anatomical_parts)
         
-        # 6. Top Predictions (middle-right, spanning 2 columns)
-        ax6 = fig.add_subplot(gs[1, 2:])
-        _plot_top_predictions(ax6, body_analysis)
-        
-        # 7. Morphological Insights (bottom, spanning all columns)
-        ax7 = fig.add_subplot(gs[2, :])
-        _plot_morphological_insights(ax7, insights, results.get('classification_summary', {}))
+        # 6. Anatomical Parts Summary (bottom, spanning all columns)
+        ax6 = fig.add_subplot(gs[2, :])
+        _plot_anatomical_parts_summary(ax6, anatomical_parts)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight', 
@@ -157,50 +172,17 @@ def _plot_body_type_analysis(ax, body_analysis: Dict[str, Any]):
         bars[0].set_color('#FF6B6B')
         bars[0].set_alpha(0.8)
 
-def _plot_gender_analysis(ax, gender_analysis: Dict[str, Any]):
-    """Plot gender classification results"""
-    if not gender_analysis:
-        ax.text(0.5, 0.5, 'No gender analysis available', 
-               ha='center', va='center', transform=ax.transAxes)
-        ax.set_title('Gender Analysis', fontsize=12, fontweight='bold')
-        ax.axis('off')
-        return
-    
-    probs = gender_analysis.get('all_probabilities', {})
-    if not probs:
-        ax.text(0.5, 0.5, 'No probabilities available', 
-               ha='center', va='center', transform=ax.transAxes)
-        ax.set_title('Gender Analysis', fontsize=12, fontweight='bold')
-        ax.axis('off')
-        return
-    
-    # Create pie chart
-    labels = list(probs.keys())
-    values = list(probs.values())
-    colors = ['#FFB6C1', '#87CEEB']  # Light pink and light blue
-    
-    wedges, texts, autotexts = ax.pie(values, labels=labels, autopct='%1.1f%%', 
-                                     colors=colors, startangle=90)
-    
-    ax.set_title('Gender Classification', fontsize=12, fontweight='bold')
-    
-    # Enhance text
-    for autotext in autotexts:
-        autotext.set_color('white')
-        autotext.set_fontweight('bold')
 
 def _plot_confidence_metrics(ax, body_analysis: Dict[str, Any], 
-                           gender_analysis: Dict[str, Any], 
                            metrics: Dict[str, Any]):
     """Plot confidence metrics"""
     # Prepare data
     body_conf = body_analysis.get('confidence', 0)
-    gender_conf = gender_analysis.get('confidence', 0)
     overall_conf = metrics.get('overall_confidence', 0)
     
-    categories = ['Body Type', 'Gender', 'Overall']
-    confidences = [body_conf, gender_conf, overall_conf]
-    colors = ['#FF9999', '#66B2FF', '#99FF99']
+    categories = ['Body Type', 'Overall']
+    confidences = [body_conf, overall_conf]
+    colors = ['#FF9999', '#99FF99']
     
     # Create bar plot
     bars = ax.bar(categories, confidences, color=colors, alpha=0.7)
@@ -221,82 +203,57 @@ def _plot_confidence_metrics(ax, body_analysis: Dict[str, Any],
     ax.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='Threshold')
     ax.legend()
 
-def _plot_top_predictions(ax, body_analysis: Dict[str, Any]):
-    """Plot top 3 body type predictions"""
-    top_3 = body_analysis.get('top_3_predictions', [])
+def _plot_final_prediction(ax, body_analysis: Dict[str, Any], anatomical_parts: Dict[str, Any]):
+    """Plot final weighted prediction result"""
+    ax.axis('off')
     
-    if not top_3:
-        ax.text(0.5, 0.5, 'No top predictions available', 
-               ha='center', va='center', transform=ax.transAxes)
-        ax.set_title('Top 3 Predictions', fontsize=12, fontweight='bold')
-        ax.axis('off')
-        return
+    predicted_class = body_analysis.get('predicted_class', 'Unknown')
+    confidence = body_analysis.get('confidence', 0.0)
+    parts_count = anatomical_parts.get('total_parts', 0)
+    voting_strategy = anatomical_parts.get('voting_strategy', 'unknown')
     
-    # Extract data
-    classes = [pred['class'].split('/')[-1] if '/' in pred['class'] else pred['class'] 
-              for pred in top_3]
-    confidences = [pred['confidence'] for pred in top_3]
-    ranks = [f"#{pred['rank']}" for pred in top_3]
+    # Create summary text
+    text_content = [
+        "🎯 FINAL PREDICTION",
+        f"Body Type: {predicted_class}",
+        f"Confidence: {confidence:.3f}",
+        f"Parts Used: {parts_count}/5",
+        f"Method: {voting_strategy}"
+    ]
     
-    # Create horizontal bar plot
-    colors = ['#FFD700', '#C0C0C0', '#CD7F32']  # Gold, Silver, Bronze
-    bars = ax.barh(range(len(classes)), confidences, color=colors[:len(classes)])
+    # Display text
+    full_text = '\n'.join(text_content)
+    ax.text(0.5, 0.5, full_text, transform=ax.transAxes, 
+           fontsize=14, verticalalignment='center', horizontalalignment='center',
+           bbox=dict(boxstyle="round,pad=0.5", facecolor='lightgreen', alpha=0.8))
     
-    # Customize plot
-    ax.set_yticks(range(len(classes)))
-    ax.set_yticklabels([f"{rank} {cls}" for rank, cls in zip(ranks, classes)], fontsize=10)
-    ax.set_xlabel('Confidence', fontsize=12)
-    ax.set_title('Top 3 Body Type Predictions', fontsize=12, fontweight='bold')
-    ax.grid(True, alpha=0.3, axis='x')
-    ax.set_xlim(0, max(confidences) * 1.1 if confidences else 1)
-    
-    # Add value labels
-    for i, (bar, conf) in enumerate(zip(bars, confidences)):
-        ax.text(conf + 0.01, i, f'{conf:.3f}', 
-               va='center', fontsize=9, fontweight='bold')
+    ax.set_title('Weighted Average Result', fontsize=12, fontweight='bold')
 
-def _plot_morphological_insights(ax, insights: Dict[str, Any], 
-                               summary: Dict[str, Any]):
-    """Plot morphological insights as text summary"""
+def _plot_anatomical_parts_summary(ax, anatomical_parts: Dict[str, Any]):
+    """Plot anatomical parts analysis summary"""
     ax.axis('off')
     
     # Create text summary
     text_content = []
     
-    # Classification summary
-    if summary:
-        primary = summary.get('primary_classification', 'Unknown')
-        gender = summary.get('gender', 'Unknown')
-        confidence_level = summary.get('confidence_level', 'unknown')
+    # Add anatomical parts summary if available
+    if anatomical_parts and anatomical_parts.get('parts_detected'):
+        text_content.append("🦴 ANATOMICAL PARTS ANALYSIS")
+        parts_detected = anatomical_parts.get('parts_detected', [])
+        total_parts = anatomical_parts.get('total_parts', 0)
+        text_content.append(f"• Parts Detected: {total_parts}/5 ({', '.join(parts_detected)})")
         
-        text_content.append(f"🎯 CLASSIFICATION SUMMARY")
-        text_content.append(f"Primary Type: {primary} | Gender: {gender} | Confidence: {confidence_level.title()}")
-        text_content.append("")
-    
-    # Morphological insights
-    if insights:
-        text_content.append("🔬 MORPHOLOGICAL INSIGHTS")
+        voting_strategy = anatomical_parts.get('voting_strategy', 'unknown')
+        text_content.append(f"• Voting Strategy: {voting_strategy}")
         
-        body_comp = insights.get('body_composition', '')
-        if body_comp:
-            text_content.append(f"• Body Composition: {body_comp}")
-        
-        metabolic = insights.get('metabolic_tendency', '')
-        if metabolic:
-            text_content.append(f"• Metabolic Tendency: {metabolic}")
-        
-        physical = insights.get('physical_characteristics', '')
-        if physical:
-            text_content.append(f"• Physical Characteristics: {physical}")
-        
-        health = insights.get('health_considerations', '')
-        if health:
-            text_content.append(f"• Health Considerations: {health}")
-        
-        analysis_note = insights.get('analysis_note', '')
-        if analysis_note:
-            text_content.append("")
-            text_content.append(f"📝 Note: {analysis_note}")
+        # Show individual part predictions if available
+        part_predictions = anatomical_parts.get('part_predictions', {})
+        if part_predictions:
+            text_content.append("• Individual Parts:")
+            for part_name, pred in part_predictions.items():
+                body_type = pred.get('predicted_body_type', 'Unknown')
+                confidence = pred.get('confidence', 0.0)
+                text_content.append(f"  - {part_name}: {body_type} ({confidence:.2f})")
     
     # Display text
     if text_content:
@@ -305,11 +262,11 @@ def _plot_morphological_insights(ax, insights: Dict[str, Any],
                fontsize=11, verticalalignment='top', 
                bbox=dict(boxstyle="round,pad=0.5", facecolor='lightgray', alpha=0.8))
     else:
-        ax.text(0.5, 0.5, 'No morphological insights available', 
+        ax.text(0.5, 0.5, 'No anatomical parts data available', 
                ha='center', va='center', transform=ax.transAxes,
                fontsize=12, style='italic')
     
-    ax.set_title('Morphological Analysis Summary', fontsize=14, fontweight='bold')
+    ax.set_title('Anatomical Parts Analysis', fontsize=14, fontweight='bold')
 
 def create_simple_body_visualization(
     image: np.ndarray,
@@ -334,7 +291,6 @@ def create_simple_body_visualization(
         
         # Extract data
         body_analysis = results.get('body_type_analysis', {})
-        gender_analysis = results.get('gender_analysis', {})
         
         # 1. Original image
         axes[0].imshow(image)
@@ -359,19 +315,16 @@ def create_simple_body_visualization(
             axes[1].text(0.5, 0.5, 'No body type data', ha='center', va='center')
             axes[1].set_title('Body Type Classification', fontsize=14, fontweight='bold')
         
-        # 3. Gender classification
-        if gender_analysis and gender_analysis.get('all_probabilities'):
-            probs = gender_analysis['all_probabilities']
-            labels = list(probs.keys())
-            values = list(probs.values())
-            colors = ['#FFB6C1', '#87CEEB']
-            
-            axes[2].pie(values, labels=labels, autopct='%1.1f%%', 
-                       colors=colors, startangle=90)
-            axes[2].set_title('Gender Classification', fontsize=14, fontweight='bold')
-        else:
-            axes[2].text(0.5, 0.5, 'No gender data', ha='center', va='center')
-            axes[2].set_title('Gender Classification', fontsize=14, fontweight='bold')
+        # 3. Analysis Summary
+        axes[2].axis('off')
+        predicted_class = body_analysis.get('predicted_class', 'Unknown')
+        confidence = body_analysis.get('confidence', 0.0)
+        
+        summary_text = f"Predicted Body Type:\n{predicted_class}\n\nConfidence: {confidence:.3f}"
+        axes[2].text(0.5, 0.5, summary_text, ha='center', va='center', 
+                    transform=axes[2].transAxes, fontsize=16, fontweight='bold',
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor='lightgreen', alpha=0.8))
+        axes[2].set_title('Analysis Summary', fontsize=14, fontweight='bold')
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight',

@@ -79,8 +79,7 @@ async def health_check():
         "model_loaded": pipeline.model is not None,
         "device": str(pipeline.device),
         "classes": {
-            "body_types": len(pipeline.body_type_classes),
-            "genders": len(pipeline.gender_classes)
+            "body_types": len(pipeline.body_type_classes)
         }
     }
 
@@ -91,14 +90,16 @@ async def model_info():
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
     return {
-        "model_architecture": "LightweightHierarchicalModel",
+        "model_architecture": "AnatomicalPartClassifier",
         "backbone": "ResNet18",
-        "input_size": [224, 224],
+        "input_size": [128, 128],
         "device": str(pipeline.device),
         "body_type_classes": pipeline.body_type_classes,
-        "gender_classes": pipeline.gender_classes,
+        "anatomical_parts": list(pipeline.ANATOMICAL_PARTS.keys()) if hasattr(pipeline, 'ANATOMICAL_PARTS') else [],
         "total_parameters": pipeline.get_model_parameters(),
-        "model_path": "/app/models/lightweight_body_classifier.pth"
+        "model_path": "/app/models/best_body_classifier_no_cabeza.pth",
+        "model_type": "anatomical_parts_no_cabeza",
+        "pose_detection": "YOLOv8n-pose"
     }
 
 @app.post("/analyze-body-morphology")
@@ -187,7 +188,7 @@ async def classify_body_type(
         confidence_threshold: Minimum confidence for predictions
     
     Returns:
-        Body type and gender classification results
+        Body type classification results
     """
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")

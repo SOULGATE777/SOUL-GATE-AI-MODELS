@@ -8,6 +8,9 @@ torch==2.1.0
 torchvision==0.16.0
 torchaudio==2.1.0
 
+# YOLO for pose detection (NEW for anatomical parts)
+ultralytics==8.0.196
+
 # Computer vision and image processing
 opencv-python==4.8.1.78
 Pillow==10.1.0
