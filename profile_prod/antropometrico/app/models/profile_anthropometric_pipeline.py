@@ -694,7 +694,6 @@ class ProfileAnthropometricPipeline:
         
         # Calculate vectors
         vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
-        vector_22_4 = np.array([point_4[0] - point_22[0], point_4[1] - point_22[1]])
         vector_24_4 = np.array([point_4[0] - point_24[0], point_4[1] - point_24[1]])
         vector_18_5 = np.array([point_5[0] - point_18[0], point_5[1] - point_18[1]])
         vector_1_3 = np.array([point_1[0] - point_3[0], point_1[1] - point_3[1]])
@@ -707,7 +706,7 @@ class ProfileAnthropometricPipeline:
         perp_vector = np.array([1, perp_slope])
         
         # Calculate superior angle (point 4)
-        v1_u_superior = vector_22_4 / np.linalg.norm(vector_22_4)
+        v1_u_superior = vector_24_4 / np.linalg.norm(vector_24_4)
         v2_u = perp_vector / np.linalg.norm(perp_vector)
         cos_angle_superior = np.clip(np.dot(v1_u_superior, v2_u), -1.0, 1.0)
         angle_radians_superior = np.arccos(cos_angle_superior)
