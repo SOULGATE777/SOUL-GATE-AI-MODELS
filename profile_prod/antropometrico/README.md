@@ -170,7 +170,7 @@ The system detects 30 anatomical landmarks:
 ### 5. Angular Analysis
 
 #### 5.1 Mathematical Foundation
-All angular measurements use the reference vector from point 22 to point 18 as the baseline. The system determines head direction using vector analysis: `head_direction = "right" if vector_22_18[0] > 0 else "left"`.
+All angular measurements use the reference vector from point 24 to point 18 as the baseline. The system determines head direction using vector analysis: `head_direction = "right" if vector_24_18[0] > 0 else "left"`.
 
 **Key Implementation Details:**
 - **Vector Normalization**: All vectors are normalized using `vector / np.linalg.norm(vector)` before angle calculations
@@ -181,7 +181,7 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 
 #### 5.2 Forehead Angle Calculation (Points 24-22)
 **Mathematical Process:**
-1. **Reference Vector**: `vector_22_18 = [point_18[0] - point_22[0], point_18[1] - point_22[1]]`
+1. **Reference Vector**: `vector_24_18 = [point_18[0] - point_24[0], point_18[1] - point_24[1]]`
 2. **Measurement Vector**: `vector_22_24 = [point_24[0] - point_22[0], point_24[1] - point_22[1]]`
 3. **Angle Calculation**: Uses dot product formula between normalized vectors
    - `cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)`
@@ -198,7 +198,7 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 
 #### 5.3 Chin Angle Calculation (Points 18-11)
 **Mathematical Process:**
-1. **Reference Vector**: `vector_22_18` (same as above)
+1. **Reference Vector**: `vector_24_18` (same as above)
 2. **Measurement Vector**: `vector_18_11 = [point_11[0] - point_18[0], point_11[1] - point_18[1]]`
 3. **Angle Calculation**: Dot product between normalized vectors
 4. **Face Side Detection**: Uses point 17 position relative to point 18
@@ -216,9 +216,9 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 
 #### 5.4 Nose Tip Angle Calculation (Points 18-17)
 **Mathematical Process:**
-1. **Reference Vector**: `vector_22_18` (baseline)
+1. **Reference Vector**: `vector_24_18` (baseline)
 2. **Perpendicular Calculation**:
-   - `ref_slope = vector_22_18[1] / vector_22_18[0]`
+   - `ref_slope = vector_24_18[1] / vector_24_18[0]`
    - `perp_slope = -1/ref_slope` (negative reciprocal)
    - `perp_vector = [1, perp_slope]`
 3. **Measurement Vector**: `vector_18_17 = [point_17[0] - point_18[0], point_17[1] - point_18[1]]`
@@ -256,9 +256,9 @@ All angular measurements use the reference vector from point 22 to point 18 as t
 - `implantacion baja`: angle ≤ -10°
 - `implantacion estandard`: angle > -10°
 
-##### Vector Intersection Angle (Vectors 22-18 and 1-3)
+##### Vector Intersection Angle (Vectors 24-18 and 1-3)
 **Mathematical Process:**
-1. **Vector 1**: `vector_22_18` (reference line)
+1. **Vector 1**: `vector_24_18` (reference line)
 2. **Vector 2**: `vector_1_3 = [point_1[0] - point_3[0], point_1[1] - point_3[1]]`
 3. **Angle Calculation**: Direct dot product between normalized vectors
 4. **Classification**:
