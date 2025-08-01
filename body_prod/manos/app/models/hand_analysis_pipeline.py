@@ -164,22 +164,22 @@ class HandAnalysisPipeline:
                 'condition': 'R mayor que G y B por mas de 20%'
             },
             'amarillo/nervioso': {
-                'r_range': (0, 215),
+                'r_range': (0, 245),
                 'g_range': (80, 255),
                 'b_range': (0, 160),
-                'condition': 'R y G dentro del 20% de cada uno, B mas del 20% menor que el mayor de los 2 de R o G'
+                'condition': 'R y G dentro del 35% de cada uno, B mas del 20% menor que el mayor de los 2 de R o G'
             },
             'blanco/linfatico': {
                 'r_range': (180, 255),
-                'g_range': (180, 255),
-                'b_range': (165, 255),
-                'condition': 'mínimo 2 de los 3 arriba de 155'
+                'g_range': (150, 255),
+                'b_range': (105, 255),
+                'condition': 'mínimo 2 de los 3 arriba de 150'
             },
             'bilioso/cafe_o_oscuro': {
                 'r_range': (0, 210),
                 'g_range': (0, 180),
                 'b_range': (0, 255),
-                'condition': 'mínimo 2 de los 3 valores abajo de 155'
+                'condition': 'mínimo 2 de los 3 valores menor de 175'
             }
         }
         
@@ -270,23 +270,23 @@ class HandAnalysisPipeline:
                     condition_met = r > g * 1.2 and r > b * 1.2
                     
             elif color_type == 'amarillo/nervioso':
-                # R y G dentro del 20% de cada uno, B mas del 20% menor que el mayor de los 2 de R o G
+                # R y G dentro del 35% de cada uno, B mas del 20% menor que el mayor de los 2 de R o G
                 if r_in_range and g_in_range and b_in_range:
-                    rg_close = abs(r - g) <= max(r, g) * 0.2
+                    rg_close = abs(r - g) <= max(r, g) * 0.35
                     max_rg = max(r, g)
                     b_lower = b < max_rg * 0.8
                     condition_met = rg_close and b_lower
                     
             elif color_type == 'blanco/linfatico':
-                # mínimo 2 de los 3 arriba de 155
+                # mínimo 2 de los 3 arriba de 150
                 if r_in_range and g_in_range and b_in_range:
-                    high_values = sum([r > 155, g > 155, b > 155])
+                    high_values = sum([r > 150, g > 150, b > 150])
                     condition_met = high_values >= 2
                     
             elif color_type == 'bilioso/cafe_o_oscuro':
-                # mínimo 2 de los 3 valores abajo de 155
+                # mínimo 2 de los 3 valores menor de 175
                 if r_in_range and g_in_range and b_in_range:
-                    low_values = sum([r < 155, g < 155, b < 155])
+                    low_values = sum([r < 175, g < 175, b < 175])
                     condition_met = low_values >= 2
             
             if condition_met:
@@ -377,18 +377,20 @@ class HandAnalysisPipeline:
                 if color_analysis is not None:
                     results['colorimetry'] = color_analysis
                     
-                    # Extract key colors for classification
-                    average_color = color_analysis['average_color_rgb']
-                    main_color = color_analysis['dominant_colors'][0][0]  # Most dominant color
+                    # Extract top 3 dominant colors for classification (exclude average)
+                    top_3_colors = color_analysis['dominant_colors'][:3]
                     
-                    # Color Classification
-                    avg_classification = self.classify_color_type(average_color)
-                    main_classification = self.classify_color_type(main_color)
+                    # Color Classification for each of the top 3 dominant colors
+                    color_classifications = {}
+                    for i, (color, percentage) in enumerate(top_3_colors):
+                        classification = self.classify_color_type(color)
+                        color_classifications[f'dominant_color_{i+1}'] = {
+                            'rgb': color,
+                            'percentage': percentage,
+                            'classification': classification
+                        }
                     
-                    results['color_classification'] = {
-                        'average_color': avg_classification,
-                        'main_color': main_classification
-                    }
+                    results['color_classification'] = color_classifications
                     
                     logger.info(f"Colorimetry analysis completed: {color_analysis['total_pixels']} pixels analyzed")
                 else:
@@ -498,18 +500,20 @@ class HandAnalysisPipeline:
             if color_analysis is not None:
                 results['colorimetry'] = color_analysis
                 
-                # Extract key colors for classification
-                average_color = color_analysis['average_color_rgb']
-                main_color = color_analysis['dominant_colors'][0][0]  # Most dominant color
+                # Extract top 3 dominant colors for classification (exclude average)
+                top_3_colors = color_analysis['dominant_colors'][:3]
                 
-                # Color Classification
-                avg_classification = self.classify_color_type(average_color)
-                main_classification = self.classify_color_type(main_color)
+                # Color Classification for each of the top 3 dominant colors
+                color_classifications = {}
+                for i, (color, percentage) in enumerate(top_3_colors):
+                    classification = self.classify_color_type(color)
+                    color_classifications[f'dominant_color_{i+1}'] = {
+                        'rgb': color,
+                        'percentage': percentage,
+                        'classification': classification
+                    }
                 
-                results['color_classification'] = {
-                    'average_color': avg_classification,
-                    'main_color': main_classification
-                }
+                results['color_classification'] = color_classifications
                 
                 logger.info(f"Colorimetry analysis completed: {color_analysis['total_pixels']} pixels analyzed")
             else:

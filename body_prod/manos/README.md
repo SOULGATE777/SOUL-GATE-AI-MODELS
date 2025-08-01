@@ -143,12 +143,27 @@ The model should be a PyTorch checkpoint containing:
     "total_pixels": 15432
   },
   "color_classification": {
-    "average_color": {
-      "rosa/sanguineo-linfatico oscuro": 65.0,
-      "rojo/sanguineo": 35.0
+    "dominant_color_1": {
+      "rgb": [190, 145, 128],
+      "percentage": 35.2,
+      "classification": {
+        "rosa/sanguineo-linfatico oscuro": 50.0,
+        "rojo/sanguineo": 50.0
+      }
     },
-    "main_color": {
-      "rosa/sanguineo-linfatico oscuro": 100.0
+    "dominant_color_2": {
+      "rgb": [180, 138, 120],
+      "percentage": 28.7,
+      "classification": {
+        "rosa/sanguineo-linfatico oscuro": 100.0
+      }
+    },
+    "dominant_color_3": {
+      "rgb": [175, 135, 115],
+      "percentage": 22.1,
+      "classification": {
+        "bilioso/cafe_o_oscuro": 100.0
+      }
     }
   },
   "visualization_url": "/visualization/hand_analysis_uuid.png"

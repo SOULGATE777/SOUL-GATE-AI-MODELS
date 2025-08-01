@@ -106,9 +106,14 @@ def create_hand_analysis_visualization(image_path: str, results: Dict[Any, Any],
             # Color classification
             if results.get('color_classification'):
                 cc = results['color_classification']
-                color_text += "Average Color Type:\\n"
-                for color_type, percentage in cc['average_color'].items():
-                    color_text += f"  {color_type}: {percentage:.1f}%\\n"
+                color_text += "Top 3 Dominant Colors:\\n"
+                for i in range(1, 4):
+                    key = f'dominant_color_{i}'
+                    if key in cc:
+                        dom_color = cc[key]
+                        color_text += f"Color {i}: {dom_color['percentage']:.1f}%\\n"
+                        for color_type, pct in dom_color['classification'].items():
+                            color_text += f"  {color_type}: {pct:.1f}%\\n"
         else:
             color_text += "Colorimetry analysis\\nnot available"
         
@@ -185,9 +190,14 @@ def create_hand_analysis_visualization(image_path: str, results: Dict[Any, Any],
         if results.get('color_classification'):
             cc = results['color_classification']
             class_text = "COLOR CLASSIFICATION:\\n\\n"
-            class_text += "Main Color:\\n"
-            for color_type, percentage in cc['main_color'].items():
-                class_text += f"  {color_type}: {percentage:.1f}%\\n"
+            for i in range(1, 4):
+                key = f'dominant_color_{i}'
+                if key in cc:
+                    dom_color = cc[key]
+                    class_text += f"Dominant Color {i}:\\n"
+                    for color_type, pct in dom_color['classification'].items():
+                        class_text += f"  {color_type}: {pct:.1f}%\\n"
+                    class_text += "\\n"
             
             ax8.text(0.05, 0.95, class_text, transform=ax8.transAxes, fontsize=9,
                     verticalalignment='top', fontfamily='monospace')
@@ -215,10 +225,11 @@ def create_hand_analysis_visualization(image_path: str, results: Dict[Any, Any],
         # Color classification summary
         if results.get('color_classification'):
             cc = results['color_classification']
-            # Get most likely color type from average color
-            avg_colors = cc['average_color']
-            most_likely = max(avg_colors.items(), key=lambda x: x[1])
-            summary_text += f"• Most likely color type: {most_likely[0]} ({most_likely[1]:.1f}%)\\n"
+            # Get most likely color type from top dominant color
+            if 'dominant_color_1' in cc:
+                dom1_colors = cc['dominant_color_1']['classification']
+                most_likely = max(dom1_colors.items(), key=lambda x: x[1])
+                summary_text += f"• Most likely color type: {most_likely[0]} ({most_likely[1]:.1f}%)\\n"
         
         # Analysis metadata
         summary_text += f"\\n• Analysis ID: {results.get('analysis_id', 'N/A')}\\n"
