@@ -101,16 +101,30 @@ SG_prod/
 │   │   ├── docker-compose.yml     
 │   │   ├── requirements.txt      
 │   │   └── results/              
-│   └── antropometrico/           (Port 8004) ✅ COMPLETE
+│   ├── antropometrico/           (Port 8004) ✅ COMPLETE ✅ **UPDATED CALIBRATIONS**
+│   │   ├── app/                  
+│   │   │   ├── main.py          
+│   │   │   ├── models/          
+│   │   │   │   └── profile_anthropometric_pipeline.py
+│   │   │   └── utils/           
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/              
+│   │   │   └── profile_aware_point_detection_model.pth
+│   │   ├── Dockerfile           
+│   │   ├── docker-compose.yml   
+│   │   ├── requirements.txt     
+│   │   └── results/             
+│   └── preprocesamiento/        (Port 8010) ✅ **NEW COMPLETE**
 │       ├── app/                  
 │       │   ├── main.py          
 │       │   ├── models/          
-│       │   │   └── profile_anthropometric_pipeline.py
+│       │   │   └── profile_preprocessing_pipeline.py
 │       │   └── utils/           
 │       │       ├── visualization.py
 │       │       └── image_processing.py
 │       ├── models/              
-│       │   └── profile_aware_point_detection_model.pth
+│       │   └── profile_detection_model.pth
 │       ├── Dockerfile           
 │       ├── docker-compose.yml   
 │       ├── requirements.txt     
@@ -181,16 +195,17 @@ SG_prod/
 - **Image Quality Assessment**: Automatic evaluation of image suitability for analysis
 - **Smart Recommendations**: AI-powered suggestions for better image quality
 
-#### Morphological Facial Analysis (Port 8000) ✅ **COMPLETE**
+#### Morphological Facial Analysis (Port 8000) ✅ **COMPLETE** ✅ **OPTIMIZED MODELS**
 - **3-Model Ensemble Architecture**:
   - Facial landmark detection (Faster R-CNN)
   - Characteristic classification (CNN)
   - Anthropometric point detection
+- **Enhanced Model Performance**: Optimized model versions for improved accuracy and speed
 - **GPU Acceleration**: Full CUDA support
 - **Beautiful Visualizations**: Modern, clean annotations
 - **Production Ready**: Docker containerization
 
-#### Anthropometric Facial Analysis (Port 8001) ✅ **COMPLETE**
+#### Anthropometric Facial Analysis (Port 8001) ✅ **COMPLETE** ✅ **OPTIMIZED MODELS**
 - **Hybrid Detection System**:
   - 68 standard dlib facial landmarks
   - Custom Faster R-CNN for 3 key anthropometric points
@@ -200,6 +215,7 @@ SG_prod/
   - Eye relationship analysis
   - Mouth-pupil proportions
   - Eyebrow slope calculations
+- **Enhanced Model Performance**: Optimized model versions for improved accuracy and speed
 
 #### Espejo Mirror Analysis (Port 8008) ✅ **COMPLETE**
 - **Mirror Face Generation**: Creates left and right mirrored faces for comprehensive asymmetry analysis
@@ -214,9 +230,9 @@ SG_prod/
 - **Hybrid Class Splitting**: Proportion-based diagnosis refinement with confidence thresholds
 - **Comprehensive Reporting**: Detailed analysis reports with visualizations and dashboards
 
-### Profile Analysis (Ports 8003-8005) ✅ **ALL COMPLETE**
+### Profile Analysis (Ports 8003-8005, 8010) ✅ **ALL COMPLETE**
 
-#### Profile Morphological Analysis (Port 8003) ✅ **COMPLETE**
+#### Profile Morphological Analysis (Port 8003) ✅ **COMPLETE** ✅ **OPTIMIZED MODELS**
 - **3-Model Ensemble Architecture**:
   - Profile bounding box detection (Faster R-CNN) with 8 facial feature classes
   - Profile landmark classification (CNN) with 18 morphological tags
@@ -229,17 +245,20 @@ SG_prod/
   - Automatic left/right profile determination
   - Excluded problematic classes (hair coverage, objects)
   - Adaptive confidence thresholds
+- **Enhanced Model Performance**: Optimized model versions for improved accuracy and speed
 - **GPU Acceleration**: Full CUDA support with CPU fallback
 - **Clean API Responses**: No neural network profile predictions, inference from actual detected points
 
-#### Profile Anthropometric Analysis (Port 8004) ✅ **COMPLETE**
+#### Profile Anthropometric Analysis (Port 8004) ✅ **COMPLETE** ✅ **OPTIMIZED MODELS** ✅ **UPDATED CALIBRATIONS**
 - **Profile-Specific Point Detection**: Custom trained model for profile anthropometric points
 - **Advanced Profile Measurements**:
   - Nasal profile analysis (protrusion, angle, classification)
-  - Facial thirds in profile view
+  - Facial thirds in profile view with updated vector calculations
   - Mandible classification (Sanguinea, Bilosa, Nerviosa, Linfática)
   - Angular measurements (nose tip, forehead, chin angles)
   - Ear morphology analysis (width, trago-antitrago proportions)
+- **Enhanced Vector Analysis**: Updated reference calculations using 24-18 vector baseline
+- **Enhanced Model Performance**: Optimized model versions for improved accuracy and speed
 - **Side Detection**: Automatic left/right profile determination with vector analysis
 - **Spurious Prediction Filtering**: Intelligent filtering of minority-side predictions
 - **Profile-Specific Visualizations**: Detailed analysis plots with measurement overlays
@@ -262,7 +281,7 @@ SG_prod/
 
 ### Body Analysis (Ports 8006-8007, 8009) ✅ **ALL COMPLETE** ✅ **NEW!**
 
-#### Body Morphological Analysis (Port 8006) ✅ **NEW COMPLETE**
+#### Body Morphological Analysis (Port 8006) ✅ **NEW COMPLETE** ✅ **UPDATED MODEL**
 - **LightweightHierarchicalModel**: ResNet18-based architecture optimized for body type classification
 - **7 Body Type Classifications**:
   - Bilioso/NormalPocaGrasa (Normal Poca Grasa)
@@ -272,6 +291,7 @@ SG_prod/
   - Flematico/Gordograsacuelga (Gordo Grasa Cuelga)
   - Linfatico/Gordo (Gordo)
   - BiliosoSanguineo/NormalMusculoso (Normal Musculoso)
+- **Enhanced Model Architecture**: Updated morphological classification algorithms
 - **Gender Classification**: Hombre/Mujer prediction with confidence scores
 - **Morphological Insights**: Body composition, metabolic tendencies, physical characteristics
 - **Advanced Analysis**: Confidence metrics, prediction certainty levels, consistency assessment
@@ -297,7 +317,7 @@ SG_prod/
 - **Advanced Visualizations**: Multi-panel anthropometric dashboards with detailed reports
 - **GPU Acceleration**: Full CUDA support with CPU fallback
 
-#### Hand Analysis (Port 8009) ✅ **NEW COMPLETE**
+#### Hand Analysis (Port 8009) ✅ **NEW COMPLETE** ✅ **UPDATED COLORIMETRY**
 - **CNN Hand Classification**: ResNet50-based dorso/palma (back/palm) classification with 89%+ accuracy
 - **Advanced Colorimetry Analysis**: Multi-color-space palm skin analysis (HSV + YCrCb filtering)
 - **Traditional Color Classification**: 5 palm color types classification system:
@@ -306,6 +326,7 @@ SG_prod/
   - amarillo/nervioso (Yellow/nervous)
   - blanco/linfatico (White/lymphatic)
   - bilioso/cafe_o_oscuro (Bilious/brown or dark)
+- **Enhanced Colorimetry Calibrations**: Updated color analysis algorithms for improved accuracy
 - **K-means Color Clustering**: Dominant color extraction with percentage analysis
 - **Comprehensive Analysis**: CNN prediction + colorimetry + color type classification
 - **Intelligent Skin Detection**: Advanced skin masking with morphological operations
@@ -333,10 +354,10 @@ cd frontal_prod
 # Frontal Validacion (Port 8002) ✅
 cd validacion && docker compose up --build -d && cd ..
 
-# Frontal Morfologico (Port 8000) ✅
+# Frontal Morfologico (Port 8000) ✅ OPTIMIZED MODELS
 cd morfologico && docker compose up --build -d && cd ..
 
-# Frontal Antropometrico (Port 8001) ✅
+# Frontal Antropometrico (Port 8001) ✅ OPTIMIZED MODELS
 cd antropometrico && docker compose up --build -d && cd ..
 
 # Frontal Espejo (Port 8008) ✅
@@ -345,14 +366,17 @@ cd espejo && docker compose up --build -d && cd ..
 # Deploy Profile Modules ✅ ALL COMPLETE
 cd ../profile_prod
 
-# Profile Morfologico (Port 8003) ✅
+# Profile Morfologico (Port 8003) ✅ OPTIMIZED MODELS
 cd morfologico && docker compose up --build -d && cd ..
 
-# Profile Antropometrico (Port 8004) ✅
+# Profile Antropometrico (Port 8004) ✅ OPTIMIZED MODELS + UPDATED CALIBRATIONS
 cd antropometrico && docker compose up --build -d && cd ..
 
 # Profile Validacion (Port 8005) ✅
 cd validacion && docker compose up --build -d && cd ..
+
+# Profile Preprocessing (Port 8010) ✅ NEW!
+cd preprocesamiento && docker compose up --build -d && cd ..
 
 # Deploy Body Modules ✅ ALL COMPLETE ✅ NEW!
 cd ../body_prod
@@ -371,12 +395,13 @@ curl http://localhost:8000/health  # Frontal Morfologico ✅
 curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
 curl http://localhost:8003/health  # Profile Morfologico ✅
-curl http://localhost:8004/health  # Profile Antropometrico ✅
+curl http://localhost:8004/health  # Profile Antropometrico ✅ UPDATED
 curl http://localhost:8005/health  # Profile Validacion ✅
-curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
-curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
+curl http://localhost:8006/health  # Body Morfologico ✅ UPDATED MODEL
+curl http://localhost:8007/health  # Body Antropometrico ✅
 curl http://localhost:8008/health  # Frontal Espejo ✅
-curl http://localhost:8009/health  # Hand Analysis ✅ NEW!
+curl http://localhost:8009/health  # Hand Analysis ✅ UPDATED COLORIMETRY
+curl http://localhost:8010/health  # Profile Preprocessing ✅ NEW!
 ```
 
 ### Deploy Individual Body Modules ✅ **NEW**
@@ -413,11 +438,11 @@ curl http://localhost:8009/health
 
 ### Complete Active Services
 - **Frontal Validacion (Port 8002)**: http://localhost:8002/docs ✅ **COMPLETE**
-- **Frontal Morfologico (Port 8000)**: http://localhost:8000/docs ✅ **COMPLETE**
-- **Frontal Antropometrico (Port 8001)**: http://localhost:8001/docs ✅ **COMPLETE**
+- **Frontal Morfologico (Port 8000)**: http://localhost:8000/docs ✅ **OPTIMIZED MODELS**
+- **Frontal Antropometrico (Port 8001)**: http://localhost:8001/docs ✅ **OPTIMIZED MODELS**
 - **Frontal Espejo (Port 8008)**: http://localhost:8008/docs ✅ **COMPLETE**
-- **Profile Morfologico (Port 8003)**: http://localhost:8003/docs ✅ **COMPLETE**
-- **Profile Antropometrico (Port 8004)**: http://localhost:8004/docs ✅ **COMPLETE**
+- **Profile Morfologico (Port 8003)**: http://localhost:8003/docs ✅ **OPTIMIZED MODELS**
+- **Profile Antropometrico (Port 8004)**: http://localhost:8004/docs ✅ **OPTIMIZED MODELS** + **UPDATED CALIBRATIONS**
 - **Profile Validacion (Port 8005)**: http://localhost:8005/docs ✅ **COMPLETE**
 - **Body Morfologico (Port 8006)**: http://localhost:8006/docs ✅ **NEW COMPLETE**
 - **Body Antropometrico (Port 8007)**: http://localhost:8007/docs ✅ **NEW COMPLETE**
@@ -822,25 +847,26 @@ environment:
 ## Production Deployment
 
 ### System Requirements
-- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 10 modules)
-- **RAM**: 50GB+ system memory (for all 10 active modules)
-- **Storage**: 25GB+ for models and containers
+- **GPU**: NVIDIA GPU with 6GB+ VRAM (recommended for all 11 modules)
+- **RAM**: 55GB+ system memory (for all 11 active modules)
+- **Storage**: 30GB+ for models and containers
 - **CPU**: Multi-core processor for preprocessing
 
-### Port Allocation ✅ **ALL 10 PORTS OCCUPIED**
+### Port Allocation ✅ **ALL 11 PORTS OCCUPIED**
 - **Frontal Analysis**: 8000-8002, 8008 ✅ **ALL COMPLETE**
   - Morfológico: 8000 ✅
   - Antropométrico: 8001 ✅
   - Validación: 8002 ✅
   - Espejo: 8008 ✅
-- **Profile Analysis**: 8003-8005 ✅ **ALL COMPLETE**
+- **Profile Analysis**: 8003-8005, 8010 ✅ **ALL COMPLETE**
   - Morfológico: 8003 ✅
-  - Antropométrico: 8004 ✅
+  - Antropométrico: 8004 ✅ **UPDATED CALIBRATIONS**
   - Validación: 8005 ✅
-- **Body Analysis**: 8006-8007, 8009 ✅ **ALL COMPLETE** ✅ **NEW!**
-  - Morfológico: 8006 ✅ **NEW!**
-  - Antropométrico: 8007 ✅ **NEW!**
-  - Hand Analysis: 8009 ✅ **NEW!**
+  - Preprocessing: 8010 ✅ **NEW!**
+- **Body Analysis**: 8006-8007, 8009 ✅ **ALL COMPLETE** ✅ **UPDATED!**
+  - Morfológico: 8006 ✅ **UPDATED MODEL**
+  - Antropométrico: 8007 ✅
+  - Hand Analysis: 8009 ✅ **UPDATED COLORIMETRY**
 
 ### Independent Scaling ✅
 Each module can be scaled independently:
