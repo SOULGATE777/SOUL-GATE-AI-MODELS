@@ -48,33 +48,33 @@ class FacialAnalysisPipeline:
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Facial analysis pipeline using device: {self.device}")
         
-        # Define landmark classes
+        # Define landmark classes - updated to match 23-class model
         self.landmark_classes = [
-            'CjD', 'CjIz', 'CchD', 'CchIzq', 'OjD', 'OjIz', 'Nariz', 
-            'N', 'F', 'Bc', 'PmlD', 'PmlIz', 'TrExCjDr', 'TrExCjIz', 
-            'TrInCjDr', 'TrInCjIz', 'OD', 'OIz'
+            'cj_d', 'cj_i', 'cch_d', 'cch_i', 'oj_d', 'oj_i', 'nariz', 
+            'n', 'f', 'bc', 'pml_d', 'pml_i', 'tr_ex_cj_dr', 'tr_ex_cj_i', 
+            'tr_in_cj_d', 'tr_in_cj_i', 'o_d', 'o_i', 'ac_d', 'ac_i',
+            'entrecejo', 'parpado_dr', 'parpado_i'
         ]
         
-        # CORRECTED: Use the exact tag mapping from your trained model (54 tags)
+        # Use the exact tag mapping from classification model training (52 tags)
         self.tag_mapping = {
             "tag_0": "0", "tag_1": "1", "tag_2": "2", "tag_3": "3", "tag_4": "a_n", 
             "tag_5": "ab", "tag_6": "abierta", "tag_7": "adelgazamiento", "tag_8": "al", 
-            "tag_9": "ap", "tag_10": "ar", "tag_11": "bigote", "tag_12": "cabellos_sueltos", 
-            "tag_13": "carnosos", "tag_14": "crl", "tag_15": "cv", "tag_16": "delgada", 
-            "tag_17": "el", "tag_18": "fleco", "tag_19": "fr", "tag_20": "g", 
-            "tag_21": "grueso", "tag_22": "h", "tag_23": "hn", "tag_24": "i", 
-            "tag_25": "lineas_sonriza", "tag_26": "lineas_verticales", "tag_27": "ll", 
-            "tag_28": "lunar", "tag_29": "md", "tag_30": "md_a", "tag_31": "mercurial", 
-            "tag_32": "nd", "tag_33": "normal", "tag_34": "nrml", "tag_35": "nt", 
-            "tag_36": "on", "tag_37": "pc", "tag_38": "pg", "tag_39": "pl", 
-            "tag_40": "planos", "tag_41": "pliegue", "tag_42": "pm", "tag_43": "pn", 
-            "tag_44": "ptosis", "tag_45": "pursed", "tag_46": "rc", "tag_47": "rd", 
-            "tag_48": "salido", "tag_49": "sl", "tag_50": "solar", "tag_51": "sonriendo", 
-            "tag_52": "sp_sl", "tag_53": "uniceja"
+            "tag_9": "ap", "tag_10": "ar", "tag_11": "bigote", "tag_12": "carnosos", 
+            "tag_13": "crl", "tag_14": "cv", "tag_15": "delgada", "tag_16": "el", 
+            "tag_17": "fr", "tag_18": "g", "tag_19": "grueso", "tag_20": "h", 
+            "tag_21": "hn", "tag_22": "i", "tag_23": "lineas_sonriza", "tag_24": "lineas_verticales", 
+            "tag_25": "ll", "tag_26": "lunar", "tag_27": "md", "tag_28": "md_a", 
+            "tag_29": "mercurial", "tag_30": "nd", "tag_31": "normal", "tag_32": "nrml", 
+            "tag_33": "nt", "tag_34": "on", "tag_35": "pc", "tag_36": "pg", 
+            "tag_37": "pl", "tag_38": "planos", "tag_39": "pliegue", "tag_40": "pm", 
+            "tag_41": "pn", "tag_42": "ptosis", "tag_43": "pursed", "tag_44": "rc", 
+            "tag_45": "rd", "tag_46": "salido", "tag_47": "sl", "tag_48": "solar", 
+            "tag_49": "sonriendo", "tag_50": "sp_sl", "tag_51": "uniceja"
         }
         
-        # Initialize tags list for all 54 classes
-        self.tags = [f"tag_{i}" for i in range(54)]
+        # Initialize tags list for all 52 classes
+        self.tags = [f"tag_{i}" for i in range(52)]
         
         print(f"Initialized with {len(self.tags)} tags and {len(self.tag_mapping)} tag mappings")
         
@@ -122,22 +122,22 @@ class FacialAnalysisPipeline:
             checkpoint = torch.load(model_path, map_location=self.device)
             
             # Determine number of classes from model checkpoint
-            num_classes = 54  # We know it's 54 from your model info
+            num_classes = 52  # We know it's 52 from your model info
             
             if isinstance(checkpoint, dict):
                 if 'classifier.4.weight' in checkpoint:
                     detected_classes = checkpoint['classifier.4.weight'].shape[0]
                     print(f"Detected {detected_classes} classes from model checkpoint")
-                    if detected_classes != 54:
-                        print(f"Warning: Expected 54 classes but model has {detected_classes}")
+                    if detected_classes != 52:
+                        print(f"Warning: Expected 52 classes but model has {detected_classes}")
                     num_classes = detected_classes
                 elif 'state_dict' in checkpoint:
                     for key in checkpoint['state_dict']:
                         if key.endswith('classifier.4.weight'):
                             detected_classes = checkpoint['state_dict'][key].shape[0]
                             print(f"Detected {detected_classes} classes from model checkpoint")
-                            if detected_classes != 54:
-                                print(f"Warning: Expected 54 classes but model has {detected_classes}")
+                            if detected_classes != 52:
+                                print(f"Warning: Expected 52 classes but model has {detected_classes}")
                             num_classes = detected_classes
                             break
             

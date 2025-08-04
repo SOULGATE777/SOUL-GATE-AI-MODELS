@@ -705,24 +705,24 @@ class ProfileAnthropometricPipeline:
         # Create perpendicular vector at point 18
         perp_vector = np.array([1, perp_slope])
         
-        # Calculate superior angle (point 4)
+        # Calculate superior angle (point 4) - using 0-360° system
         v1_u_superior = vector_24_4 / np.linalg.norm(vector_24_4)
         v2_u = perp_vector / np.linalg.norm(perp_vector)
-        cos_angle_superior = np.clip(np.dot(v1_u_superior, v2_u), -1.0, 1.0)
-        angle_radians_superior = np.arccos(cos_angle_superior)
-        angle_degrees_superior = np.degrees(angle_radians_superior)
+        angle_degrees_superior = np.degrees(np.arctan2(np.cross(v1_u_superior, v2_u), np.dot(v1_u_superior, v2_u)))
+        if angle_degrees_superior < 0:
+            angle_degrees_superior += 360
         
-        # Calculate inferior angle (point 5)
+        # Calculate inferior angle (point 5) - using 0-360° system
         v1_u_inferior = vector_18_5 / np.linalg.norm(vector_18_5)
-        cos_angle_inferior = np.clip(np.dot(v1_u_inferior, v2_u), -1.0, 1.0)
-        angle_radians_inferior = np.arccos(cos_angle_inferior)
-        angle_degrees_inferior = np.degrees(angle_radians_inferior)
+        angle_degrees_inferior = np.degrees(np.arctan2(np.cross(v1_u_inferior, v2_u), np.dot(v1_u_inferior, v2_u)))
+        if angle_degrees_inferior < 0:
+            angle_degrees_inferior += 360
         
         # Calculate intersection angle between vectors 24_18 and 1_3
         v1_u_intersection = vector_24_18 / np.linalg.norm(vector_24_18)
         v2_u_intersection = vector_1_3 / np.linalg.norm(vector_1_3)
         cos_angle_intersection = np.clip(np.dot(v1_u_intersection, v2_u_intersection), -1.0, 1.0)
-        angle_radians_intersection = np.arccos(cos_angle_intersection)
+        angle_radians_intersection = np.arccos(abs(cos_angle_intersection))  # Use abs() to always get acute angle
         angle_degrees_intersection = np.degrees(angle_radians_intersection)
         
         # Detect face direction if not provided
@@ -731,21 +731,17 @@ class ProfileAnthropometricPipeline:
         
         # Adjust angles based on head direction (from your original logic)
         if head_direction in ["left", "right"]:
-            angle_degrees_superior = abs(angle_degrees_superior)
-            angle_degrees_inferior = abs(angle_degrees_inferior)
             angle_degrees_intersection = abs(angle_degrees_intersection)
         
-        # Normalize angles to 0 to 180 degrees
-        for angle_var in ['angle_degrees_superior', 'angle_degrees_inferior', 'angle_degrees_intersection']:
-            angle = locals()[angle_var]
-            if angle > 90:
-                locals()[angle_var] = 180 - angle
-            elif angle < 0:
-                locals()[angle_var] = abs(angle)
+        # Normalize intersection angle to 0 to 180 degrees (keep implantacion angles in 0-360°)
+        if angle_degrees_intersection > 90:
+            angle_degrees_intersection = 180 - angle_degrees_intersection
+        elif angle_degrees_intersection < 0:
+            angle_degrees_intersection = abs(angle_degrees_intersection)
         
-        # Classify angles (using your original thresholds)
-        classification_superior = "implantacion alta" if angle_degrees_superior <= -9 else "implantacion estandard"
-        classification_inferior = "implantacion baja" if angle_degrees_inferior <= -10 else "implantacion estandard"
+        # Classify angles (converted from negative thresholds to 0-360° system)
+        classification_superior = "implantacion alta" if angle_degrees_superior >= 351 else "implantacion estandard"
+        classification_inferior = "implantacion baja" if angle_degrees_inferior >= 350 else "implantacion estandard"
         
         # Classify intersection angle
         if angle_degrees_intersection > 90:
