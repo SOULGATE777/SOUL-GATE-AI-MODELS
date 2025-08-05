@@ -46,3 +46,18 @@ frontal_prod/*/results/*.jpeg
 frontal_prod/*/results/*.png
 frontal_prod/*/results/*.bmp
 frontal_prod/*/results/*.tiff
+
+# Model files (to prevent corruption during git operations)
+*.pth
+*.pt
+*.pkl
+*.h5
+*.onnx
+*.pb
+*.tflite
+*.joblib
+*.model
+*.dat
+models/
+*/models/
+**/models/
