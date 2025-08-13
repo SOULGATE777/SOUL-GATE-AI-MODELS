@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
-    libglib2.0-0 \
     libgtk-3-0 \
     libavcodec-dev \
     libavformat-dev \
@@ -21,9 +20,10 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
-    libatlas-base-dev \
+    libopenblas-dev \
     gfortran \
     wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
