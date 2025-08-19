@@ -51,20 +51,34 @@ SG_prod/
 │   │   ├── docker-compose.yml   
 │   │   ├── requirements.txt     
 │   │   └── results/             
-│   └── espejo/                   (Port 8008) ✅ COMPLETE
+│   ├── espejo/                   (Port 8008) ✅ COMPLETE
+│   │   ├── app/                  
+│   │   │   ├── main.py          
+│   │   │   ├── models/          
+│   │   │   │   └── espejo_pipeline.py
+│   │   │   └── utils/           
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/              
+│   │   │   ├── binary_region_classifier_best.pth
+│   │   │   ├── facial_points_detection_model.pth
+│   │   │   ├── frente_best_model.pth
+│   │   │   ├── rostro_menton_best_model.pth
+│   │   │   └── shape_predictor_68_face_landmarks.dat
+│   │   ├── Dockerfile           
+│   │   ├── docker-compose.yml   
+│   │   ├── requirements.txt     
+│   │   └── results/             
+│   └── rotacion/                 (Port 8012) ✅ **NEW COMPLETE**
 │       ├── app/                  
 │       │   ├── main.py          
 │       │   ├── models/          
-│       │   │   └── espejo_pipeline.py
+│       │   │   └── frontal_rotation_pipeline.py
 │       │   └── utils/           
 │       │       ├── visualization.py
 │       │       └── image_processing.py
 │       ├── models/              
-│       │   ├── binary_region_classifier_best.pth
-│       │   ├── facial_points_detection_model.pth
-│       │   ├── frente_best_model.pth
-│       │   ├── rostro_menton_best_model.pth
-│       │   └── shape_predictor_68_face_landmarks.dat
+│       │   └── improved_supervisely_head_rotation_model_MULTILABEL_CORRECTED.pth
 │       ├── Dockerfile           
 │       ├── docker-compose.yml   
 │       ├── requirements.txt     
@@ -115,16 +129,30 @@ SG_prod/
 │   │   ├── docker-compose.yml   
 │   │   ├── requirements.txt     
 │   │   └── results/             
-│   └── preprocesamiento/        (Port 8010) ✅ **NEW COMPLETE**
+│   ├── preprocesamiento/        (Port 8010) ✅ **NEW COMPLETE**
+│   │   ├── app/                  
+│   │   │   ├── main.py          
+│   │   │   ├── models/          
+│   │   │   │   └── profile_preprocessing_pipeline.py
+│   │   │   └── utils/           
+│   │   │       ├── visualization.py
+│   │   │       └── image_processing.py
+│   │   ├── models/              
+│   │   │   └── profile_detection_model.pth
+│   │   ├── Dockerfile           
+│   │   ├── docker-compose.yml   
+│   │   ├── requirements.txt     
+│   │   └── results/             
+│   └── rotacion/                 (Port 8011) ✅ **NEW COMPLETE**
 │       ├── app/                  
 │       │   ├── main.py          
 │       │   ├── models/          
-│       │   │   └── profile_preprocessing_pipeline.py
+│       │   │   └── profile_rotation_pipeline.py
 │       │   └── utils/           
 │       │       ├── visualization.py
 │       │       └── image_processing.py
 │       ├── models/              
-│       │   └── profile_detection_model.pth
+│       │   └── best_profile_classifier_multilabel.pth
 │       ├── Dockerfile           
 │       ├── docker-compose.yml   
 │       ├── requirements.txt     
@@ -179,7 +207,7 @@ SG_prod/
 
 ## Features
 
-### Frontal Analysis (Ports 8000-8002, 8008) ✅ **ALL COMPLETE**
+### Frontal Analysis (Ports 8000-8002, 8008, 8012) ✅ **ALL COMPLETE**
 
 #### Facial Feature Validation (Port 8002) ✅ **COMPLETE**
 - **YOLO-Based Detection**: Custom trained YOLOv8 model for 17 facial feature classes
@@ -230,7 +258,22 @@ SG_prod/
 - **Hybrid Class Splitting**: Proportion-based diagnosis refinement with confidence thresholds
 - **Comprehensive Reporting**: Detailed analysis reports with visualizations and dashboards
 
-### Profile Analysis (Ports 8003-8005, 8010) ✅ **ALL COMPLETE**
+#### Frontal Rotation Assessment (Port 8012) ✅ **NEW COMPLETE**
+- **Multi-label CNN Classification**: EfficientNet-B0 based model for frontal face rotation assessment
+- **Rotation Categories**:
+  - Aceptable: Suitable frontal orientation for analysis
+  - Upward Tilt: Face tilted upward or camera positioned too low
+  - Downward Tilt: Face tilted downward or camera positioned too high
+  - Horizontal: Horizontal face orientation issues
+  - Diagonal: Diagonal face tilt problems
+- **Viability Assessment**: Determines suitability for anthropometric and morphological analysis
+- **Pattern-Aware Predictions**: Respects annotation patterns (aceptable is standalone)
+- **Comprehensive Visualizations**: 4-panel analysis with confidence scores, recommendations, and detailed reports
+- **Quality Enhancement**: Optional image preprocessing and enhancement
+- **Batch Processing**: Support for analyzing multiple frontal images simultaneously
+- **GPU Acceleration**: Optimized for CUDA with CPU fallback
+
+### Profile Analysis (Ports 8003-8005, 8010-8011) ✅ **ALL COMPLETE**
 
 #### Profile Morphological Analysis (Port 8003) ✅ **COMPLETE** ✅ **OPTIMIZED MODELS**
 - **3-Model Ensemble Architecture**:
@@ -278,6 +321,20 @@ SG_prod/
 - **Advanced Visualizations**: Multi-panel dashboard with quality metrics, occlusion detection, and recommendations
 - **NMS Filtering**: Per-class non-maximum suppression for clean detections
 - **GPU Acceleration**: Full CUDA support with CPU fallback
+
+#### Profile Rotation Assessment (Port 8011) ✅ **NEW COMPLETE**
+- **Multi-label CNN Classification**: EfficientNet-B0 based model for profile rotation assessment
+- **Profile Rotation Categories**:
+  - Aceptable: Suitable profile orientation for analysis
+  - Upward/Downward Tilt: Profile head tilted in various directions
+  - Camera Position Issues: Camera too high/low or positioned incorrectly
+  - Frontal/Back Rotation: Profile rotated toward or away from camera
+- **Viability Assessment**: Determines suitability for anthropometric and morphological analysis
+- **Pattern-Aware Predictions**: Respects annotation patterns (aceptable is standalone)
+- **Comprehensive Visualizations**: 4-panel analysis with confidence scores, recommendations, and detailed reports
+- **Quality Enhancement**: Optional image preprocessing and enhancement
+- **Batch Processing**: Support for analyzing multiple profile images simultaneously
+- **GPU Acceleration**: Optimized for CUDA with CPU fallback
 
 ### Body Analysis (Ports 8006-8007, 8009) ✅ **ALL COMPLETE** ✅ **NEW!**
 
@@ -341,7 +398,7 @@ SG_prod/
 - NVIDIA GPU with drivers (recommended)
 - NVIDIA Container Toolkit (for GPU support)
 
-### Deploy All Complete Modules ✅ **ALL 10 MODULES**
+### Deploy All Complete Modules ✅ **ALL 12 MODULES**
 
 ```bash
 # Clone the repository
@@ -363,6 +420,9 @@ cd antropometrico && docker compose up --build -d && cd ..
 # Frontal Espejo (Port 8008) ✅
 cd espejo && docker compose up --build -d && cd ..
 
+# Frontal Rotation (Port 8012) ✅ NEW!
+cd rotacion && docker compose up --build -d && cd ..
+
 # Deploy Profile Modules ✅ ALL COMPLETE
 cd ../profile_prod
 
@@ -378,6 +438,9 @@ cd validacion && docker compose up --build -d && cd ..
 # Profile Preprocessing (Port 8010) ✅ NEW!
 cd preprocesamiento && docker compose up --build -d && cd ..
 
+# Profile Rotation (Port 8011) ✅ NEW!
+cd rotacion && docker compose up --build -d && cd ..
+
 # Deploy Body Modules ✅ ALL COMPLETE ✅ NEW!
 cd ../body_prod
 
@@ -390,7 +453,7 @@ cd antropometrico && docker compose up --build -d && cd ..
 # Hand Analysis (Port 8009) ✅ NEW!
 cd manos && docker compose up --build -d && cd ..
 
-# Check all active services ✅ ALL 10 MODULES
+# Check all active services ✅ ALL 12 MODULES
 curl http://localhost:8000/health  # Frontal Morfologico ✅
 curl http://localhost:8001/health  # Frontal Antropometrico ✅
 curl http://localhost:8002/health  # Frontal Validacion ✅
@@ -402,6 +465,8 @@ curl http://localhost:8007/health  # Body Antropometrico ✅
 curl http://localhost:8008/health  # Frontal Espejo ✅
 curl http://localhost:8009/health  # Hand Analysis ✅ UPDATED COLORIMETRY
 curl http://localhost:8010/health  # Profile Preprocessing ✅ NEW!
+curl http://localhost:8011/health  # Profile Rotation ✅ NEW!
+curl http://localhost:8012/health  # Frontal Rotation ✅ NEW!
 ```
 
 ### Deploy Individual Body Modules ✅ **NEW**
@@ -434,7 +499,21 @@ docker compose up --build -d
 curl http://localhost:8009/health
 ```
 
-## API Documentation ✅ **ALL 10 SERVICES ACTIVE**
+#### Frontal Rotation Assessment Module ✅ **NEW COMPLETE**
+```bash
+cd frontal_prod/rotacion
+docker compose up --build -d
+curl http://localhost:8012/health
+```
+
+#### Profile Rotation Assessment Module ✅ **NEW COMPLETE**
+```bash
+cd profile_prod/rotacion
+docker compose up --build -d
+curl http://localhost:8011/health
+```
+
+## API Documentation ✅ **ALL 12 SERVICES ACTIVE**
 
 ### Complete Active Services
 - **Frontal Validacion (Port 8002)**: http://localhost:8002/docs ✅ **COMPLETE**
@@ -447,6 +526,8 @@ curl http://localhost:8009/health
 - **Body Morfologico (Port 8006)**: http://localhost:8006/docs ✅ **NEW COMPLETE**
 - **Body Antropometrico (Port 8007)**: http://localhost:8007/docs ✅ **NEW COMPLETE**
 - **Hand Analysis (Port 8009)**: http://localhost:8009/docs ✅ **NEW COMPLETE**
+- **Profile Rotation (Port 8011)**: http://localhost:8011/docs ✅ **NEW COMPLETE**
+- **Frontal Rotation (Port 8012)**: http://localhost:8012/docs ✅ **NEW COMPLETE**
 
 ## API Endpoints
 
@@ -590,16 +671,76 @@ curl -X POST "http://localhost:8009/batch-analyze" \
   -F "confidence_threshold=0.5"
 ```
 
+### Profile Rotation Assessment Module (Port 8011) ✅ **NEW COMPLETE**
+
+#### Complete Profile Rotation Analysis
+```bash
+curl -X POST "http://localhost:8011/analyze-profile-rotation" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@profile_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_visualization=true" \
+  -F "enhance_image=true"
+```
+
+#### Simple Rotation Classification
+```bash
+curl -X POST "http://localhost:8011/classify-rotation" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@profile_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
+#### Viability Assessment Only
+```bash
+curl -X POST "http://localhost:8011/assess-viability" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@profile_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
+### Frontal Rotation Assessment Module (Port 8012) ✅ **NEW COMPLETE**
+
+#### Complete Frontal Rotation Analysis
+```bash
+curl -X POST "http://localhost:8012/analyze-frontal-rotation" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@frontal_face_image.jpg" \
+  -F "confidence_threshold=0.5" \
+  -F "include_visualization=true" \
+  -F "enhance_image=true"
+```
+
+#### Simple Rotation Classification
+```bash
+curl -X POST "http://localhost:8012/classify-rotation" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@frontal_face_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
+#### Viability Assessment Only
+```bash
+curl -X POST "http://localhost:8012/assess-viability" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@frontal_face_image.jpg" \
+  -F "confidence_threshold=0.5"
+```
+
 #### Health Checks
 ```bash
 curl http://localhost:8006/health  # Body Morfologico
 curl http://localhost:8007/health  # Body Antropometrico
 curl http://localhost:8008/health  # Frontal Espejo
 curl http://localhost:8009/health  # Hand Analysis
+curl http://localhost:8011/health  # Profile Rotation
+curl http://localhost:8012/health  # Frontal Rotation
 curl http://localhost:8006/model-info  # Body Type Model Info
 curl http://localhost:8007/model-info  # Pose Detection Model Info
 curl http://localhost:8008/model-info  # Espejo Model Info
 curl http://localhost:8009/model-info  # Hand Analysis Model Info
+curl http://localhost:8011/model-info  # Profile Rotation Model Info
+curl http://localhost:8012/model-info  # Frontal Rotation Model Info
 ```
 
 ## Response Formats
@@ -803,6 +944,22 @@ curl http://localhost:8009/model-info  # Hand Analysis Model Info
 - **Input Size**: 224x224 pixels (auto-resized from any input)
 - **Output**: CNN predictions + colorimetry analysis + color type classification
 
+### Profile Rotation Assessment Model ✅ **NEW**
+- **Architecture**: EfficientNet-B0 with multi-label classification head
+- **Classifications**: 7 profile rotation classes including 'aceptable'
+- **Features**: Multi-label predictions, pattern-aware inference, viability assessment
+- **Input Size**: 224x224 pixels (auto-resized from any input)
+- **Output**: Multi-label rotation predictions with confidence scores and recommendations
+- **Pattern Recognition**: Respects annotation patterns (aceptable is standalone)
+
+### Frontal Rotation Assessment Model ✅ **NEW**
+- **Architecture**: EfficientNet-B0 with multi-label classification head
+- **Classifications**: 5 frontal face rotation classes including 'aceptable'
+- **Features**: Multi-label predictions, pattern-aware inference, viability assessment
+- **Input Size**: 224x224 pixels (auto-resized from any input)
+- **Output**: Multi-label rotation predictions with confidence scores and recommendations
+- **Pattern Recognition**: Respects annotation patterns (aceptable is standalone)
+
 ### Body Model Classifications ✅ **NEW**
 
 #### Body Type Categories (7 Classes)
@@ -888,6 +1045,8 @@ curl http://localhost:8005/health  # Profile Validacion ✅
 curl http://localhost:8006/health  # Body Morfologico ✅ NEW!
 curl http://localhost:8007/health  # Body Antropometrico ✅ NEW!
 curl http://localhost:8009/health  # Hand Analysis ✅ NEW!
+curl http://localhost:8011/health  # Profile Rotation ✅ NEW!
+curl http://localhost:8012/health  # Frontal Rotation ✅ NEW!
 
 # Container status
 docker ps
@@ -898,24 +1057,26 @@ nvidia-smi
 
 ## Architecture Status ✅ **PROJECT EXPANDED**
 
-### Current Status ✅ **ALL 10 MODULES OPERATIONAL**
-- ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico, espejo (Ports 8000-8002, 8008) ✅ **ALL COMPLETE**
-- ✅ **Profile Analysis Complete**: morfologico, antropometrico, validacion (Ports 8003-8005) ✅ **ALL COMPLETE**
+### Current Status ✅ **ALL 12 MODULES OPERATIONAL**
+- ✅ **Frontal Analysis Complete**: validacion, morfologico, antropometrico, espejo, rotacion (Ports 8000-8002, 8008, 8012) ✅ **ALL COMPLETE**
+- ✅ **Profile Analysis Complete**: morfologico, antropometrico, validacion, preprocesamiento, rotacion (Ports 8003-8005, 8010-8011) ✅ **ALL COMPLETE**
 - ✅ **Body Analysis Complete**: morfologico, antropometrico, manos (Ports 8006-8007, 8009) ✅ **ALL COMPLETE** ✅ **NEW!**
 
 ### Complete AI Analysis Pipeline ✅ **EXPANDED**
-The SG_prod AI analysis production pipeline is now **EXPANDED** with all 10 modules operational:
+The SG_prod AI analysis production pipeline is now **EXPANDED** with all 12 modules operational:
 
 #### **Frontal Image Processing Pipeline** ✅
-1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
-2. **Frontal Morfologico** (Port 8000): Perform morphological analysis ✅
-3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
-4. **Frontal Espejo** (Port 8008): Mirror-based comprehensive analysis with decision tree classification ✅
+1. **Frontal Rotation** (Port 8012): Assess face orientation suitability for analysis ✅ **NEW!**
+2. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
+3. **Frontal Morfologico** (Port 8000): Perform morphological analysis ✅
+4. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
+5. **Frontal Espejo** (Port 8008): Mirror-based comprehensive analysis with decision tree classification ✅
 
 #### **Profile Image Processing Pipeline** ✅
-1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
-2. **Profile Morfologico** (Port 8003): Complete profile morphological analysis ✅
-3. **Profile Antropometrico** (Port 8004): Advanced anthropometric measurements ✅
+1. **Profile Rotation** (Port 8011): Assess profile orientation suitability for analysis ✅ **NEW!**
+2. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
+3. **Profile Morfologico** (Port 8003): Complete profile morphological analysis ✅
+4. **Profile Antropometrico** (Port 8004): Advanced anthropometric measurements ✅
 
 #### **Body Image Processing Pipeline** ✅ **NEW COMPLETE**
 1. **Body Morfologico** (Port 8006): Body type classification and morphological analysis ✅ **NEW!**
@@ -933,15 +1094,17 @@ The SG_prod AI analysis production pipeline is now **EXPANDED** with all 10 modu
 ### Recommended Analysis Pipeline
 
 #### For Frontal Images ✅ **COMPLETE WORKFLOW**
-1. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
-2. **Frontal Morfologico** (Port 8000): Perform morphological analysis if suitable ✅
-3. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
-4. **Frontal Espejo** (Port 8008): Mirror-based comprehensive analysis with decision tree classification ✅
+1. **Frontal Rotation** (Port 8012): Assess face orientation and suitability for analysis ✅ **NEW!**
+2. **Frontal Validacion** (Port 8002): Validate image quality and detect issues ✅
+3. **Frontal Morfologico** (Port 8000): Perform morphological analysis if suitable ✅
+4. **Frontal Antropometrico** (Port 8001): Conduct detailed measurements ✅
+5. **Frontal Espejo** (Port 8008): Mirror-based comprehensive analysis with decision tree classification ✅
 
 #### For Profile Images ✅ **COMPLETE WORKFLOW**
-1. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
-2. **Profile Morfologico** (Port 8003): Complete profile morphological analysis ✅
-3. **Profile Antropometrico** (Port 8004): Advanced anthropometric measurements ✅
+1. **Profile Rotation** (Port 8011): Assess profile orientation and suitability for analysis ✅ **NEW!**
+2. **Profile Validacion** (Port 8005): Profile quality validation and occlusion detection ✅
+3. **Profile Morfologico** (Port 8003): Complete profile morphological analysis ✅
+4. **Profile Antropometrico** (Port 8004): Advanced anthropometric measurements ✅
 
 #### For Body Images ✅ **NEW COMPLETE WORKFLOW**
 1. **Body Morfologico** (Port 8006): Body type classification and morphological insights ✅ **NEW!**

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  frontal-rotation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: frontal_rotation_api
+    ports:
+      - "8012:8012"
+    volumes:
+      - ./results:/app/results
+      - ./models:/app/models:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
