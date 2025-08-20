@@ -56,7 +56,6 @@ frontal_prod/*/results/*.tiff
 *.joblib
 *.model
 *.dat
-
 # Model files inside any models directory (but allow the Python code)
 **/models/*.pth
 **/models/*.pt
