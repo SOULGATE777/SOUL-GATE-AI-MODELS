@@ -11,7 +11,13 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     libgtk-3-0 \
+    libgl1 \
     libgl1-mesa-dri \
+    libglu1-mesa \
+    libglx0 \
+    libglapi-mesa \
+    libosmesa6 \
+    freeglut3-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
