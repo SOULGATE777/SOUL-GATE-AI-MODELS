@@ -488,6 +488,10 @@ class ProfileAnthropometricPipeline:
         point_4 = points.get("4", None)
         point_5 = points.get("5", None)
         point_33 = points.get("33", None)
+        point_9 = points.get("9", None)
+        point_37 = points.get("37", None)
+        point_38 = points.get("38", None)
+        point_39 = points.get("39", None)
         
         if not (point_24 and point_18):
             print("Warning: Cannot calculate angular measurements without points 24 and 18")
@@ -658,6 +662,80 @@ class ProfileAnthropometricPipeline:
             measurements['chin_classification'] = chin_label
             print(f"Chin classification: {chin_label}")
         
+        # Mandible angular analysis (24-18 vector vs 3-9 vector intersection)
+        if all([point_24, point_18, point_3, point_9]):
+            mandible_results = self.calculate_mandible_angular_analysis(
+                point_24, point_18, point_3, point_9, head_direction
+            )
+            
+            if mandible_results[0] is not None:
+                mandible_angle, ref_slope, mandible_slope = mandible_results
+                measurements['mandible_intersection_angle'] = mandible_angle
+                measurements['reference_vector_slope'] = ref_slope
+                measurements['mandible_vector_slope'] = mandible_slope
+                print(f"Mandible intersection angle (24_18 vs 3_9): {mandible_angle:.2f} degrees")
+                print(f"Reference slope: {ref_slope:.3f}, Mandible slope: {mandible_slope:.3f}")
+                
+                # Optional: Add classification based on angle ranges
+                if mandible_angle < 70:
+                    mandible_angle_class = "acute mandible angle"
+                elif 70 <= mandible_angle <= 110:
+                    mandible_angle_class = "normal mandible angle"  
+                else:
+                    mandible_angle_class = "obtuse mandible angle"
+                
+                measurements['mandible_angle_classification'] = mandible_angle_class
+                print(f"Mandible angle classification: {mandible_angle_class}")
+        
+        # Ear implantation angular analysis (24-18 vector vs 1-3 vector intersection)
+        if all([point_24, point_18, point_1, point_3]):
+            ear_implantation_results = self.calculate_ear_implantation_angular_analysis(
+                point_24, point_18, point_1, point_3, head_direction
+            )
+            
+            if ear_implantation_results[0] is not None:
+                ear_implantation_angle, ref_slope, ear_slope = ear_implantation_results
+                measurements['ear_implantation_intersection_angle'] = ear_implantation_angle
+                measurements['ear_implantation_vector_slope'] = ear_slope
+                print(f"Ear implantation intersection angle (24_18 vs 1_3): {ear_implantation_angle:.2f} degrees")
+                print(f"Reference slope: {ref_slope:.3f}, Ear implantation slope: {ear_slope:.3f}")
+                
+                # Optional: Add classification based on angle ranges
+                if ear_implantation_angle < 60:
+                    ear_implantation_class = "acute ear implantation"
+                elif 60 <= ear_implantation_angle <= 120:
+                    ear_implantation_class = "normal ear implantation"  
+                else:
+                    ear_implantation_class = "obtuse ear implantation"
+                
+                measurements['ear_implantation_angle_classification'] = ear_implantation_class
+                print(f"Ear implantation classification: {ear_implantation_class}")
+        
+        # Eye protrusion angular analysis (39-37 vector vs 38-37 vector intersection)
+        if all([point_37, point_38, point_39]):
+            eye_protrusion_results = self.calculate_eye_protrusion_angular_analysis(
+                point_39, point_37, point_38, point_37, head_direction
+            )
+            
+            if eye_protrusion_results[0] is not None:
+                eye_protrusion_angle, vector_39_37_slope, vector_38_37_slope = eye_protrusion_results
+                measurements['eye_protrusion_intersection_angle'] = eye_protrusion_angle
+                measurements['vector_39_37_slope'] = vector_39_37_slope
+                measurements['vector_38_37_slope'] = vector_38_37_slope
+                print(f"Eye protrusion intersection angle (39_37 vs 38_37): {eye_protrusion_angle:.2f} degrees")
+                print(f"Vector 39-37 slope: {vector_39_37_slope:.3f}, Vector 38-37 slope: {vector_38_37_slope:.3f}")
+                
+                # Optional: Add classification based on angle ranges
+                if eye_protrusion_angle < 15:
+                    eye_protrusion_class = "minimal eye protrusion"
+                elif 15 <= eye_protrusion_angle <= 35:
+                    eye_protrusion_class = "normal eye protrusion"  
+                else:
+                    eye_protrusion_class = "pronounced eye protrusion"
+                
+                measurements['eye_protrusion_angle_classification'] = eye_protrusion_class
+                print(f"Eye protrusion classification: {eye_protrusion_class}")
+        
         # Implantation angles with head direction consideration
         if all([point_24, point_18, point_4, point_5, point_1, point_3]):
             implantation_results = self.calculate_implantation_angles(
@@ -755,6 +833,141 @@ class ProfileAnthropometricPipeline:
                 angle_degrees_inferior, classification_inferior,
                 angle_degrees_intersection, classification_intersection)
     
+    def calculate_mandible_angular_analysis(self, point_24, point_18, point_3, point_9, head_direction=None):
+        """
+        Calculate the angle and slopes between reference vector (24-18) and mandible vector (3-9).
+        This represents the intersection angle if both vectors were extended.
+        
+        Args:
+            point_24: Reference start point (24)
+            point_18: Reference end point (18)
+            point_3: Mandible start point (3)
+            point_9: Mandible end point (9)
+            head_direction: Left/right profile direction
+            
+        Returns:
+            tuple: (angle_degrees, reference_slope, mandible_slope)
+        """
+        if not all([point_24, point_18, point_3, point_9]):
+            return None, None, None
+        
+        # Create the two vectors
+        vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
+        vector_3_9 = np.array([point_9[0] - point_3[0], point_9[1] - point_3[1]])
+        
+        # Calculate slopes (rise/run)
+        reference_slope = vector_24_18[1] / vector_24_18[0] if vector_24_18[0] != 0 else float('inf')
+        mandible_slope = vector_3_9[1] / vector_3_9[0] if vector_3_9[0] != 0 else float('inf')
+        
+        # Normalize both vectors
+        v1_u = vector_24_18 / np.linalg.norm(vector_24_18)
+        v2_u = vector_3_9 / np.linalg.norm(vector_3_9)
+        
+        # Calculate angle using dot product
+        cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+        angle_radians = np.arccos(abs(cos_angle))  # Use abs to always get acute angle
+        angle_degrees = np.degrees(angle_radians)
+        
+        # Ensure angle is between 0 and 180 degrees (intersection angle)
+        if angle_degrees > 90:
+            angle_degrees = 180 - angle_degrees
+        
+        print(f"Reference vector (24-18): [{vector_24_18[0]:.2f}, {vector_24_18[1]:.2f}], slope: {reference_slope:.3f}")
+        print(f"Mandible vector (3-9): [{vector_3_9[0]:.2f}, {vector_3_9[1]:.2f}], slope: {mandible_slope:.3f}")
+        print(f"Mandible intersection angle: {angle_degrees:.2f} degrees")
+        
+        return angle_degrees, reference_slope, mandible_slope
+    
+    def calculate_ear_implantation_angular_analysis(self, point_24, point_18, point_1, point_3, head_direction=None):
+        """
+        Calculate the angle and slopes between reference vector (24-18) and ear implantation vector (1-3).
+        This represents the intersection angle if both vectors were extended downwards.
+        
+        Args:
+            point_24: Reference start point (24)
+            point_18: Reference end point (18)
+            point_1: Ear implantation start point (1)
+            point_3: Ear implantation end point (3)
+            head_direction: Left/right profile direction
+            
+        Returns:
+            tuple: (angle_degrees, reference_slope, ear_implantation_slope)
+        """
+        if not all([point_24, point_18, point_1, point_3]):
+            return None, None, None
+        
+        # Create the two vectors
+        vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
+        vector_1_3 = np.array([point_3[0] - point_1[0], point_3[1] - point_1[1]])
+        
+        # Calculate slopes (rise/run)
+        reference_slope = vector_24_18[1] / vector_24_18[0] if vector_24_18[0] != 0 else float('inf')
+        ear_implantation_slope = vector_1_3[1] / vector_1_3[0] if vector_1_3[0] != 0 else float('inf')
+        
+        # Normalize both vectors
+        v1_u = vector_24_18 / np.linalg.norm(vector_24_18)
+        v2_u = vector_1_3 / np.linalg.norm(vector_1_3)
+        
+        # Calculate angle using dot product
+        cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+        angle_radians = np.arccos(abs(cos_angle))  # Use abs to always get acute angle
+        angle_degrees = np.degrees(angle_radians)
+        
+        # Ensure angle is between 0 and 180 degrees (intersection angle)
+        if angle_degrees > 90:
+            angle_degrees = 180 - angle_degrees
+        
+        print(f"Reference vector (24-18): [{vector_24_18[0]:.2f}, {vector_24_18[1]:.2f}], slope: {reference_slope:.3f}")
+        print(f"Ear implantation vector (1-3): [{vector_1_3[0]:.2f}, {vector_1_3[1]:.2f}], slope: {ear_implantation_slope:.3f}")
+        print(f"Ear implantation intersection angle: {angle_degrees:.2f} degrees")
+        
+        return angle_degrees, reference_slope, ear_implantation_slope
+    
+    def calculate_eye_protrusion_angular_analysis(self, point_39, point_37_1, point_38, point_37_2, head_direction=None):
+        """
+        Calculate the angle and slopes between vectors 39-37 and 38-37.
+        Both vectors point towards point 37, representing the eye opening angle.
+        
+        Args:
+            point_39: First vector start point (39)
+            point_37_1: First vector end point (37)
+            point_38: Second vector start point (38)
+            point_37_2: Second vector end point (37)
+            head_direction: Left/right profile direction
+            
+        Returns:
+            tuple: (angle_degrees, vector_39_37_slope, vector_38_37_slope)
+        """
+        if not all([point_39, point_37_1, point_38, point_37_2]):
+            return None, None, None
+        
+        # Create the two vectors pointing towards point 37
+        vector_39_37 = np.array([point_37_1[0] - point_39[0], point_37_1[1] - point_39[1]])
+        vector_38_37 = np.array([point_37_2[0] - point_38[0], point_37_2[1] - point_38[1]])
+        
+        # Calculate slopes (rise/run)
+        vector_39_37_slope = vector_39_37[1] / vector_39_37[0] if vector_39_37[0] != 0 else float('inf')
+        vector_38_37_slope = vector_38_37[1] / vector_38_37[0] if vector_38_37[0] != 0 else float('inf')
+        
+        # Normalize both vectors
+        v1_u = vector_39_37 / np.linalg.norm(vector_39_37)
+        v2_u = vector_38_37 / np.linalg.norm(vector_38_37)
+        
+        # Calculate angle using dot product
+        cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+        angle_radians = np.arccos(abs(cos_angle))  # Use abs to always get acute angle
+        angle_degrees = np.degrees(angle_radians)
+        
+        # For eye protrusion, we want the opening angle
+        if angle_degrees > 90:
+            angle_degrees = 180 - angle_degrees
+        
+        print(f"Vector 39-37: [{vector_39_37[0]:.2f}, {vector_39_37[1]:.2f}], slope: {vector_39_37_slope:.3f}")
+        print(f"Vector 38-37: [{vector_38_37[0]:.2f}, {vector_38_37[1]:.2f}], slope: {vector_38_37_slope:.3f}")
+        print(f"Eye protrusion opening angle: {angle_degrees:.2f} degrees")
+        
+        return angle_degrees, vector_39_37_slope, vector_38_37_slope
+    
     def create_visualization(self, original_image: np.ndarray, detected_points: List[Dict], 
                            actual_profile: str, measurements: Dict) -> str:
         """Create comprehensive visualization and return as base64 string"""
@@ -845,6 +1058,35 @@ class ProfileAnthropometricPipeline:
                 summary_lines.append(f"Distance (3-9): {measurements['mandibula_distance']:.2f}")
                 summary_lines.append(f"Proportion: {measurements['mandibula_normalized']:.3f}")
             summary_lines.append(f"Classification: {measurements['mandibula_classification']}")
+            if 'mandible_intersection_angle' in measurements:
+                summary_lines.append(f"Intersection Angle: {measurements['mandible_intersection_angle']:.1f}°")
+                summary_lines.append(f"Angle Classification: {measurements.get('mandible_angle_classification', 'N/A')}")
+                if 'reference_vector_slope' in measurements:
+                    summary_lines.append(f"Reference Vector Slope: {measurements['reference_vector_slope']:.3f}")
+                if 'mandible_vector_slope' in measurements:
+                    summary_lines.append(f"Mandible Vector Slope: {measurements['mandible_vector_slope']:.3f}")
+            summary_lines.append("")
+        
+        # Ear implantation angular analysis
+        if 'ear_implantation_intersection_angle' in measurements:
+            summary_lines.append("=== EAR IMPLANTATION ANGULAR ANALYSIS ===")
+            summary_lines.append(f"Intersection Angle (24-18 vs 1-3): {measurements['ear_implantation_intersection_angle']:.1f}°")
+            if 'ear_implantation_angle_classification' in measurements:
+                summary_lines.append(f"Angle Classification: {measurements['ear_implantation_angle_classification']}")
+            if 'ear_implantation_vector_slope' in measurements:
+                summary_lines.append(f"Ear Implantation Vector Slope: {measurements['ear_implantation_vector_slope']:.3f}")
+            summary_lines.append("")
+        
+        # Eye protrusion angular analysis
+        if 'eye_protrusion_intersection_angle' in measurements:
+            summary_lines.append("=== EYE PROTRUSION ANGULAR ANALYSIS ===")
+            summary_lines.append(f"Opening Angle (39-37 vs 38-37): {measurements['eye_protrusion_intersection_angle']:.1f}°")
+            if 'eye_protrusion_angle_classification' in measurements:
+                summary_lines.append(f"Angle Classification: {measurements['eye_protrusion_angle_classification']}")
+            if 'vector_39_37_slope' in measurements:
+                summary_lines.append(f"Vector 39-37 Slope: {measurements['vector_39_37_slope']:.3f}")
+            if 'vector_38_37_slope' in measurements:
+                summary_lines.append(f"Vector 38-37 Slope: {measurements['vector_38_37_slope']:.3f}")
             summary_lines.append("")
         
         # Angular measurements
@@ -917,6 +1159,12 @@ class ProfileAnthropometricPipeline:
         # Facial structure
         if 'mandibula_classification' in measurements:
             classifications['Mandible'] = measurements['mandibula_classification']
+        if 'mandible_angle_classification' in measurements:
+            classifications['Mandible Angle'] = measurements['mandible_angle_classification']
+        if 'ear_implantation_angle_classification' in measurements:
+            classifications['Ear Implantation Angle'] = measurements['ear_implantation_angle_classification']
+        if 'eye_protrusion_angle_classification' in measurements:
+            classifications['Eye Protrusion Angle'] = measurements['eye_protrusion_angle_classification']
         if 'forehead_classification' in measurements:
             classifications['Forehead'] = measurements['forehead_classification']
         if 'chin_classification' in measurements:

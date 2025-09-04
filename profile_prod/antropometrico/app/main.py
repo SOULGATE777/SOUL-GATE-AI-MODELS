@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 import os
 
-from app.models.profile_anthropometric_pipeline import ProfileAnthropometricPipeline
+from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,30 +31,46 @@ pipeline = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the analysis pipeline on startup"""
+    """Initialize the enhanced analysis pipeline on startup"""
     global pipeline
     
     try:
-        model_path = "/app/models/profile_aware_point_detection_model.pth"
+        # Primary model path (required)
+        point_model_path = "/app/models/best_point_detection_model_v2.pth"
         
-        if not os.path.exists(model_path):
-            logger.error(f"Model file not found at {model_path}")
-            raise FileNotFoundError(f"Model file not found at {model_path}")
+        # Fallback to older model name if new one doesn't exist
+        if not os.path.exists(point_model_path):
+            point_model_path = "/app/models/profile_aware_point_detection_model.pth"
+            
+        if not os.path.exists(point_model_path):
+            logger.error(f"Point detection model not found at {point_model_path}")
+            raise FileNotFoundError(f"Point detection model not found")
+        
+        # GNN model path (optional)
+        gnn_model_path = "/app/models/facial_landmark_gnn.pth"
+        if not os.path.exists(gnn_model_path):
+            logger.warning(f"GNN model not found at {gnn_model_path}, will use point detection only")
+            gnn_model_path = None
         
         # Determine device
         device = 'cuda' if os.environ.get('CUDA_VISIBLE_DEVICES', '') != '-1' else 'cpu'
         logger.info(f"Using device: {device}")
         
-        # Initialize pipeline
-        pipeline = ProfileAnthropometricPipeline(
-            model_path=model_path,
+        # Initialize enhanced pipeline
+        pipeline = EnhancedCompatibilityPipeline(
+            point_model_path=point_model_path,
+            gnn_model_path=gnn_model_path,
             device=device
         )
         
-        logger.info("Profile anthropometric pipeline initialized successfully!")
+        logger.info("Enhanced profile anthropometric pipeline initialized successfully!")
+        
+        # Log pipeline configuration
+        gnn_status = "with GNN validation" if gnn_model_path else "point detection only"
+        logger.info(f"Pipeline mode: {gnn_status}")
         
     except Exception as e:
-        logger.error(f"Failed to initialize pipeline: {str(e)}")
+        logger.error(f"Failed to initialize enhanced pipeline: {str(e)}")
         raise e
 
 @app.get("/")
@@ -84,7 +100,9 @@ async def health_check():
         "status": "healthy",
         "service": "profile-anthropometric",
         "model_loaded": pipeline is not None,
-        "device": str(pipeline.device) if pipeline else "unknown"
+        "device": str(pipeline.device) if pipeline else "unknown",
+        "gnn_enabled": pipeline.gnn_model is not None if pipeline else False,
+        "point_classes": len(pipeline.point_classes) if pipeline else 0
     }
 
 @app.post("/analyze-profile-anthropometric")
@@ -209,14 +227,15 @@ async def detect_profile_points(
         if image is None:
             raise HTTPException(status_code=400, detail="Could not decode image")
         
-        # Convert BGR to RGB and preprocess
+        # Convert BGR to RGB 
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        original_image, image_tensor = pipeline.preprocess_image(image_rgb)
         
-        # Detect points
-        detected_points = pipeline.detect_points(image_tensor)
+        # Use enhanced pipeline's point detection (includes preprocessing)
+        detected_points = pipeline.detect_points(
+            pipeline.preprocess_image(image_rgb)[1]  # Get tensor from preprocessing
+        )
         
-        # Filter spurious predictions
+        # Filter spurious predictions using enhanced logic
         filtered_points, actual_profile = pipeline.filter_spurious_predictions(detected_points)
         
         response = {
@@ -254,17 +273,25 @@ async def get_visualization(filename: str):
 
 @app.get("/model-info")
 async def get_model_info():
-    """Get information about the loaded model"""
+    """Get information about the loaded enhanced model"""
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
     return {
-        "model_type": "Profile Anthropometric Point Detection",
+        "model_type": "Enhanced Profile Anthropometric Point Detection",
+        "architecture": "ResNet50 + Profile Classification + Optional GNN",
         "device": str(pipeline.device),
         "point_classes": pipeline.point_classes,
         "num_classes": len(pipeline.point_classes),
         "heatmap_size": pipeline.heatmap_size,
-        "input_size": 224
+        "input_size": 224,
+        "gnn_enabled": pipeline.gnn_model is not None,
+        "features": [
+            "Profile-aware point detection",
+            "False positive filtering",
+            "Profile classification (left/right)",
+            "GNN validation" if pipeline.gnn_model is not None else "CNN-only mode"
+        ]
     }
 
 if __name__ == "__main__":
