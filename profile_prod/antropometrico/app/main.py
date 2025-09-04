@@ -10,7 +10,23 @@ import logging
 from typing import Optional
 import os
 
-from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
+# Try multiple import strategies for enhanced pipeline
+try:
+    from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
+except ImportError:
+    try:
+        # Fallback for production environment
+        import sys
+        import os
+        sys.path.append('/app')
+        from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
+    except ImportError:
+        try:
+            # Direct import fallback
+            sys.path.append('/app/app/models')
+            from enhanced_pipeline import EnhancedCompatibilityPipeline
+        except ImportError as e:
+            raise ImportError(f"Could not import EnhancedCompatibilityPipeline: {e}")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
