@@ -3,7 +3,7 @@ import numpy as np
 import math
 from scipy.spatial import ConvexHull
 
-def create_visualization(image, landmarks, model_predictions, proportions, slopes):
+def create_visualization(image, landmarks, model_predictions, proportions, slopes, calculated_c1=None):
     """
     Create a comprehensive visualization of the anthropometric analysis
     
@@ -13,6 +13,7 @@ def create_visualization(image, landmarks, model_predictions, proportions, slope
         model_predictions: Dictionary of model predictions
         proportions: Dictionary of calculated proportions
         slopes: Dictionary of calculated slopes
+        calculated_c1: Calculated point C1 (X from M2, Y from M9) or None
         
     Returns:
         numpy array: Annotated image
@@ -70,6 +71,20 @@ def create_visualization(image, landmarks, model_predictions, proportions, slope
         cv2.circle(img_vis, (int(extended_points[72][0]), int(extended_points[72][1])), 6, (0, 255, 0), 2)
         cv2.putText(img_vis, "72", (int(extended_points[72][0]) + 8, int(extended_points[72][1]) - 8), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    
+    # Highlight calculated point C1 if it exists
+    if calculated_c1 is not None:
+        cv2.circle(img_vis, (int(calculated_c1[0]), int(calculated_c1[1])), 7, (255, 215, 0), 3)  # Gold color, larger
+        cv2.putText(img_vis, "C1", (int(calculated_c1[0]) + 10, int(calculated_c1[1]) - 10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 215, 0), 2)
+        # Add lines to show the calculation components
+        if 2 in model_predictions and 9 in model_predictions:
+            # Draw line from M2 to C1 (horizontal component)
+            cv2.line(img_vis, (int(model_predictions[2][0]), int(model_predictions[2][1])), 
+                    (int(calculated_c1[0]), int(calculated_c1[1])), (255, 215, 0), 1)
+            # Draw line from M9 to C1 (vertical component)  
+            cv2.line(img_vis, (int(model_predictions[9][0]), int(model_predictions[9][1])), 
+                    (int(calculated_c1[0]), int(calculated_c1[1])), (255, 215, 0), 1)
     
     # Draw facial thirds lines
     _draw_facial_thirds(img_vis, extended_points)
@@ -331,10 +346,18 @@ def _get_extended_points_from_landmarks(landmarks, img_shape, model_predictions)
             (left_highest[1] + right_highest[1]) // 2
         )
     
-    # Point 69: Top of head
-    if 3 in model_predictions:
+    # Point 69: Top of head - use calculated point C1 (M9 Y + M2 X) to match main pipeline
+    if 9 in model_predictions and 2 in model_predictions:
+        # Create calculated point C1: X from model point 2, Y from model point 9
+        top_of_head = (
+            int(model_predictions[2][0]),  # X from point 2 (between eyebrows)
+            int(model_predictions[9][1])   # Y from model point 9 (M9)
+        )
+    elif 3 in model_predictions:
+        # Fallback to model point 3
         top_of_head = model_predictions[3]
     else:
+        # Final fallback to calculated estimate
         top_of_head = (
             between_eyebrows[0],
             between_eyebrows[1] - (face_height * 0.4)

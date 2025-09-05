@@ -111,7 +111,8 @@ async def analyze_anthropometric(
                 results['landmarks'], 
                 results['model_predictions'],
                 results['proportions'],
-                results['slopes']
+                results['slopes'],
+                results.get('calculated_c1')
             )
             
             # Save visualization
@@ -166,6 +167,9 @@ async def analyze_anthropometric(
         return JSONResponse(content=response)
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ DETAILED ERROR: {error_details}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.post("/analyze-eyebrows")

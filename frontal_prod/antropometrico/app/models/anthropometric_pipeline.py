@@ -157,16 +157,36 @@ class AnthropometricAnalyzer:
             )
             print("⚠️ Using inferred calculation for point 68 (between eyebrows)")
         
-        # Point 69: Top of head - use model prediction (point 3) if available
-        if 3 in model_predictions:
-            top_of_head = model_predictions[3]
-            print(f"✅ Using model point 3 for point 69 (top of head): {top_of_head}")
-        else:
+        # Point 69: Top of head - use calculated point C1 (M9 Y + M2 X) to avoid widow's peak issues
+        calculated_c1 = None
+        try:
+            if 9 in model_predictions and 2 in model_predictions:
+                # Create calculated point C1: X from model point 2, Y from model point 9
+                calculated_c1 = (
+                    int(model_predictions[2][0]),  # X from point 2 (between eyebrows)
+                    int(model_predictions[9][1])   # Y from model point 9 (M9)
+                )
+                top_of_head = calculated_c1
+                print(f"✅ Using calculated point C1 for point 69: X from M2({model_predictions[2][0]:.1f}) + Y from M9({model_predictions[9][1]:.1f}) = {top_of_head}")
+            elif 3 in model_predictions:
+                # Fallback to model point 3 if M9 or M2 not available
+                top_of_head = model_predictions[3]
+                print(f"⚠️ Fallback: Using model point 3 for point 69 (top of head): {top_of_head}")
+            else:
+                # Final fallback to calculated estimate
+                top_of_head = (
+                    int(between_eyebrows[0]),
+                    int(between_eyebrows[1] - (face_height * 0.4))
+                )
+                print("⚠️ Using inferred calculation for point 69 (top of head)")
+        except Exception as e:
+            print(f"❌ Error calculating C1: {e}")
+            # Safe fallback
             top_of_head = (
                 int(between_eyebrows[0]),
                 int(between_eyebrows[1] - (face_height * 0.4))
             )
-            print("⚠️ Using inferred calculation for point 69 (top of head)")
+            calculated_c1 = None
         
         # Pupil points: midpoint between eye landmarks
         left_pupil = (
@@ -193,7 +213,7 @@ class AnthropometricAnalyzer:
             extended_points = np.vstack([extended_points, [point_1]])
             print(f"✅ Model point 1 added as point 72: {point_1}")
         
-        return extended_points, point_1 is not None
+        return extended_points, point_1 is not None, calculated_c1
 
     def _calculate_proportions(self, extended_points):
         """Calculate facial proportions"""
@@ -551,7 +571,7 @@ class AnthropometricAnalyzer:
             model_predictions = self._predict_facial_points(img_processed, confidence_threshold)
             
             # Extend landmarks with model predictions
-            extended_points, has_point_1 = self._extend_landmarks_with_model(
+            extended_points, has_point_1, calculated_c1 = self._extend_landmarks_with_model(
                 landmarks, img_processed.shape, model_predictions
             )
             
@@ -568,7 +588,7 @@ class AnthropometricAnalyzer:
             # Create summary
             summary = self._create_analysis_summary(
                 proportions, slopes, model_predictions, eyebrow_proportions, 
-                eye_angles, eye_face_proportions, inner_outer_proportions
+                eye_angles, eye_face_proportions, inner_outer_proportions, calculated_c1
             )
             
             return {
@@ -582,7 +602,8 @@ class AnthropometricAnalyzer:
                 "eye_face_proportions": eye_face_proportions,
                 "inner_outer_proportions": inner_outer_proportions,
                 "summary": summary,
-                "image_processed": img_processed
+                "image_processed": img_processed,
+                "calculated_c1": calculated_c1
             }
             
         except Exception as e:
@@ -591,7 +612,7 @@ class AnthropometricAnalyzer:
 
     def _create_analysis_summary(self, proportions, slopes, model_predictions, 
                                eyebrow_proportions, eye_angles, eye_face_proportions, 
-                               inner_outer_proportions):
+                               inner_outer_proportions, calculated_c1=None):
         """Create comprehensive analysis summary with labels"""
         summary = {
             "facial_thirds": {
@@ -624,7 +645,9 @@ class AnthropometricAnalyzer:
                 "point_2_used": 2 in model_predictions,
                 "point_3_used": 3 in model_predictions,
                 "point_1_detected": 1 in model_predictions,
-                "total_model_points": len(model_predictions)
+                "total_model_points": len(model_predictions),
+                "calculated_c1_used": calculated_c1 is not None,
+                "c1_calculation": f"X from M2, Y from M9" if calculated_c1 is not None else None
             }
         }
         return summary
@@ -827,6 +850,9 @@ class AnthropometricAnalyzer:
         report.append(f"• Punto 1 detectado: {'✓' if summary.get('model_integration', {}).get('point_1_detected') else '✗'}")
         report.append(f"• Punto 2 usado (entre cejas): {'✓' if summary.get('model_integration', {}).get('point_2_used') else '✗'}")
         report.append(f"• Punto 3 usado (parte superior cabeza): {'✓' if summary.get('model_integration', {}).get('point_3_used') else '✗'}")
+        report.append(f"• Punto C1 calculado (X de M2, Y de M9): {'✓' if summary.get('model_integration', {}).get('calculated_c1_used') else '✗'}")
+        if summary.get('model_integration', {}).get('calculated_c1_used'):
+            report.append("  → C1 evita interferencia de entradas en el cabello")
         
         if model_preds:
             report.append("")
