@@ -10,23 +10,29 @@ import logging
 from typing import Optional
 import os
 
-# Try multiple import strategies for enhanced pipeline
+# Import enhanced pipeline with robust error handling
 try:
+    # First attempt: relative import (production Docker environment)
     from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
-except ImportError:
+except ImportError as e1:
     try:
-        # Fallback for production environment
+        # Second attempt: direct module import
         import sys
         import os
-        sys.path.append('/app')
-        from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
-    except ImportError:
-        try:
-            # Direct import fallback
-            sys.path.append('/app/app/models')
-            from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
-        except ImportError as e:
-            raise ImportError(f"Could not import EnhancedCompatibilityPipeline: {e}")
+        # Add the app directory to Python path
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        if app_dir not in sys.path:
+            sys.path.insert(0, app_dir)
+        # Try importing again
+        from models.enhanced_pipeline import EnhancedCompatibilityPipeline
+    except ImportError as e2:
+        # Log both errors for debugging
+        print(f"Import attempt 1 failed: {e1}")
+        print(f"Import attempt 2 failed: {e2}")
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Python path: {sys.path}")
+        print(f"App directory: {os.path.dirname(os.path.abspath(__file__))}")
+        raise ImportError(f"Could not import EnhancedCompatibilityPipeline. Tried multiple import strategies. Last error: {e2}")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
