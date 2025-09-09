@@ -7,8 +7,8 @@ import logging
 from typing import List, Optional
 import asyncio
 
-from .models.age_estimation_pipeline import AgeEstimationPipeline
-from .utils.image_processing import (
+from app.models.age_estimation_pipeline import AgeEstimationPipeline
+from app.utils.image_processing import (
     save_uploaded_file, cleanup_temp_files, 
     validate_image_format, ensure_results_directory,
     save_multiple_uploaded_files
