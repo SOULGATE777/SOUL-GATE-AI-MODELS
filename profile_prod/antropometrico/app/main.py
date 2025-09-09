@@ -24,7 +24,7 @@ except ImportError:
         try:
             # Direct import fallback
             sys.path.append('/app/app/models')
-            from enhanced_pipeline import EnhancedCompatibilityPipeline
+            from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
         except ImportError as e:
             raise ImportError(f"Could not import EnhancedCompatibilityPipeline: {e}")
 

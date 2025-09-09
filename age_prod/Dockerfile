@@ -1,19 +1,20 @@
-FROM python:3.10-slim
+FROM ubuntu:20.04
 
 # Prevent interactive prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install Python and system dependencies
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-dev \
+    python3-pip \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
     libgomp1 \
     libgtk-3-0 \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libgthread-2.0-0 \
+    libgl1-mesa-dev \
     libgstreamer1.0-0 \
     wget \
     curl \
@@ -21,6 +22,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     && rm -rf /var/lib/apt/lists/*
+
+# Set python3 as default python
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
 # Set working directory
 WORKDIR /app
