@@ -1,8 +1,6 @@
 # Generated runtime files
-*/results/
 */temp/
 */uploads/
-frontal_prod/results/
 frontal_prod/temp/
 frontal_prod/uploads/
 
@@ -58,6 +56,19 @@ frontal_prod/*/results/*.tiff
 *.joblib
 *.model
 *.dat
-models/
-*/models/
-**/models/
+
+# Model files inside any models directory (but allow the Python code)
+**/models/*.pth
+**/models/*.pt
+**/models/*.pkl
+**/models/*.h5
+**/models/*.onnx
+**/models/*.pb
+**/models/*.tflite
+**/models/*.joblib
+**/models/*.model
+**/models/*.dat
+
+# Results directory contents (but keep the directories)
+**/results/*
+!**/results/.gitkeep
