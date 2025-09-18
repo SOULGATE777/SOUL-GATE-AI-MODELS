@@ -1,0 +1,33 @@
+# FastAPI and web server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# MediaPipe for face/cranium detection
+mediapipe==0.10.7
+
+# Computer Vision
+opencv-python==4.8.1.78
+Pillow==10.0.1
+
+# Scientific Computing
+numpy==1.24.3
+scipy==1.11.4
+
+# Visualization
+matplotlib==3.7.2
+seaborn==0.12.2
+
+# Data handling
+pandas==2.0.3
+
+# Utilities
+pathlib2==2.3.7.post1
+tqdm==4.66.1
+python-dotenv==1.0.0
+
+# HTTP client (for health checks)
+requests==2.31.0
+
+# Logging
+loguru==0.7.2

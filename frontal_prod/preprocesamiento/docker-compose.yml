@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  frontal-preprocessing:
+    build: .
+    container_name: frontal-preprocessing-service
+    ports:
+      - "8014:8014"
+    volumes:
+      - ./results:/app/results
+      - ./models:/app/models:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8014/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # CPU-only version (uncomment if no GPU available)
+  # frontal-preprocessing-cpu:
+  #   build: .
+  #   container_name: frontal-preprocessing-service-cpu
+  #   ports:
+  #     - "8014:8014"
+  #   volumes:
+  #     - ./results:/app/results
+  #     - ./models:/app/models:ro
+  #   environment:
+  #     - CUDA_VISIBLE_DEVICES=-1
+  #     - PYTHONPATH=/app
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8014/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s

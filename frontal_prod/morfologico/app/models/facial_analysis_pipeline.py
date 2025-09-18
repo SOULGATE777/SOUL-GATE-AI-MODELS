@@ -231,26 +231,45 @@ class FacialAnalysisPipeline:
                     with torch.no_grad():
                         outputs = self.classification_model(region_tensor)
                         probs = torch.nn.functional.softmax(outputs, dim=1)
-                        confidence, pred = torch.max(probs, 1)
-                        tag_idx = pred.item()
-                        tag_confidence = confidence.item()
-                        
-                        # Get tag using correct index
-                        if tag_idx < len(self.tags):
-                            tag = self.tags[tag_idx]  # This gives us "tag_X"
-                        else:
-                            tag = f"tag_{tag_idx}"
-                            print(f"Warning: Model predicted index {tag_idx} but we only have {len(self.tags)} tags")
-                        
-                        # Get human-readable tag name
+
+                        # Get top 3 predictions instead of just top 1
+                        top3_probs, top3_indices = torch.topk(probs, k=3, dim=1)
+
+                        # Extract top 3 predictions for top_tags format
+                        top_tags = []
+                        for i in range(min(3, top3_probs.shape[1])):
+                            tag_idx = top3_indices[0][i].item()
+                            tag_confidence = top3_probs[0][i].item()
+
+                            # Get tag using correct index
+                            if tag_idx < len(self.tags):
+                                tag_id = self.tags[tag_idx]  # This gives us "tag_X"
+                            else:
+                                tag_id = f"tag_{tag_idx}"
+                                print(f"Warning: Model predicted index {tag_idx} but we only have {len(self.tags)} tags")
+
+                            # Get human-readable tag name
+                            tag_name_mapped = self.tag_mapping.get(tag_id, "Unknown")
+
+                            top_tags.append({
+                                'tag': tag_name_mapped,  # Human-readable name
+                                'confidence': float(tag_confidence),
+                                'rank': i + 1
+                            })
+
+                        # For backward compatibility, keep the original fields for the top prediction
+                        tag_idx = top3_indices[0][0].item()
+                        tag = self.tags[tag_idx] if tag_idx < len(self.tags) else f"tag_{tag_idx}"
                         tag_name = self.tag_mapping.get(tag, "Unknown")
+                        tag_confidence = top3_probs[0][0].item()
                 
                 except Exception as e:
                     print(f"Warning: Classification failed for region: {e}")
                     tag = "unknown"
                     tag_name = "Unknown"
                     tag_confidence = 0.0
-                
+                    top_tags = [{'tag': tag_name, 'confidence': tag_confidence, 'rank': 1}]
+
                 # Create result
                 result = {
                     'landmark_class': landmark_class,
@@ -258,6 +277,7 @@ class FacialAnalysisPipeline:
                     'tag_name': tag_name,
                     'score': float(score),
                     'tag_confidence': float(tag_confidence),
+                    'top_tags': top_tags,  # Add top 3 predictions in new format
                     'box': [float(x1*scale_x), float(y1*scale_y), float(x2*scale_x), float(y2*scale_y)]
                 }
                 
