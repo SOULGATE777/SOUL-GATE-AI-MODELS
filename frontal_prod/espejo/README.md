@@ -43,7 +43,7 @@ The espejo module implements a complete pipeline:
 Place the following models in the `/models` directory:
 
 1. **facial_points_detection_model.pth** - Custom Faster R-CNN for anthropometric points
-2. **binary_region_classifier_best.pth** - Binary FRENTE/rostro_menton classifier
+2. **faster_rcnn_detection_model.pth** - Faster R-CNN FRENTE/rostro_menton detection model
 3. **frente_best_model.pth** - FRENTE region shape classifier
 4. **rostro_menton_best_model.pth** - rostro_menton region shape classifier
 5. **shape_predictor_68_face_landmarks.dat** - dlib facial landmark detector
@@ -111,7 +111,7 @@ curl -X POST "http://localhost:8008/get-diagnosis" \
     },
     "left_side": {
       "frente_diagnosis": "luna",
-      "rostro_diagnosis": "pluton-venus",
+      "rostro_diagnosis": "luna_jupiter_combined",
       "confidence_scores": {...}
     }
   },
@@ -145,23 +145,22 @@ curl -X POST "http://localhost:8008/get-diagnosis" \
 ## Classification Classes
 
 ### FRENTE Classes
-- jupiter_aplio_base_ancha
-- marte_rectangular
+- neptuno_combined
+- solar_lunar_combined
 - mercurio_triangulo
-- neptuno_ovalo/capsula
-- solar/lunar_redonda
+- marte_rectangular
 - tierra_cuadrada
+- jupiter_aplio_base_ancha
 - venus_corazon_o_trapezoide_angosto
 
 ### rostro_menton Classes
-- jupiter/luna_redondo_ancho
-- marte/tierra_rectangulo
-- mercurio_triangular
-- pluton-venus
-- pluton_hexagonal
-- saturno_trapezoide_base_angosta
-- sol_neptuno_ovalo
+- sol_neptuno_combined
+- luna_jupiter_combined
 - venus_corazon
+- pluton_hexagonal
+- mercurio_triangular
+- marte_tierra_rectangulo
+- saturno_trapezoide_base_angosta
 
 ## Deployment
 

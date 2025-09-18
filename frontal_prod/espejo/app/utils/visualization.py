@@ -6,8 +6,8 @@ import matplotlib.patches as patches
 from matplotlib.patches import Rectangle
 import seaborn as sns
 
-def create_mirror_visualization(original_image: np.ndarray, mirror_images: Dict, 
-                               classification_results: Dict, proportions: Dict) -> np.ndarray:
+def create_mirror_visualization(original_image: np.ndarray, mirror_images: Dict,
+                               classification_results: Dict, proportions: Dict, detected_regions: Dict = None) -> np.ndarray:
     """
     Create comprehensive mirror analysis visualization
     
@@ -44,9 +44,9 @@ def create_mirror_visualization(original_image: np.ndarray, mirror_images: Dict,
         axes[2].set_title('Left Mirrored Face\nClassification Results', fontsize=12, fontweight='bold')
         axes[2].axis('off')
         
-        # Add region bounding boxes to mirror images
-        _add_region_bboxes_to_plot(axes[1], right_mirror_rgb.shape[:2])
-        _add_region_bboxes_to_plot(axes[2], left_mirror_rgb.shape[:2])
+        # Add region bounding boxes to mirror images (use actual detections if available)
+        _add_region_bboxes_to_plot(axes[1], right_mirror_rgb.shape[:2], detected_regions.get('right_mirrored') if detected_regions else None)
+        _add_region_bboxes_to_plot(axes[2], left_mirror_rgb.shape[:2], detected_regions.get('left_mirrored') if detected_regions else None)
         
         # Add proportion information to original image
         _add_proportion_text(axes[0], proportions)
@@ -77,7 +77,7 @@ def create_mirror_visualization(original_image: np.ndarray, mirror_images: Dict,
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         return error_img
 
-def create_analysis_dashboard(original_image: np.ndarray, analysis_results: Dict) -> np.ndarray:
+def create_analysis_dashboard(original_image: np.ndarray, analysis_results: Dict, detected_regions: Dict = None) -> np.ndarray:
     """
     Create comprehensive analysis dashboard
     
@@ -107,7 +107,7 @@ def create_analysis_dashboard(original_image: np.ndarray, analysis_results: Dict
         if 'mirror_images' in analysis_results:
             right_mirror_rgb = cv2.cvtColor(analysis_results['mirror_images']['right_mirrored'], cv2.COLOR_BGR2RGB)
             ax2.imshow(right_mirror_rgb)
-            _add_region_bboxes_to_plot(ax2, right_mirror_rgb.shape[:2])
+            _add_region_bboxes_to_plot(ax2, right_mirror_rgb.shape[:2], detected_regions.get('right_mirrored') if detected_regions else None)
         ax2.set_title('Right Mirrored Face', fontsize=12, fontweight='bold')
         ax2.axis('off')
         
@@ -115,7 +115,7 @@ def create_analysis_dashboard(original_image: np.ndarray, analysis_results: Dict
         if 'mirror_images' in analysis_results:
             left_mirror_rgb = cv2.cvtColor(analysis_results['mirror_images']['left_mirrored'], cv2.COLOR_BGR2RGB)
             ax3.imshow(left_mirror_rgb)
-            _add_region_bboxes_to_plot(ax3, left_mirror_rgb.shape[:2])
+            _add_region_bboxes_to_plot(ax3, left_mirror_rgb.shape[:2], detected_regions.get('left_mirrored') if detected_regions else None)
         ax3.set_title('Left Mirrored Face', fontsize=12, fontweight='bold')
         ax3.axis('off')
         
@@ -149,25 +149,52 @@ def create_analysis_dashboard(original_image: np.ndarray, analysis_results: Dict
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         return error_img
 
-def _add_region_bboxes_to_plot(ax, image_shape: Tuple[int, int]):
-    """Add region bounding boxes to matplotlib plot"""
+def _add_region_bboxes_to_plot(ax, image_shape: Tuple[int, int], detected_regions: Dict = None):
+    """Add region bounding boxes to matplotlib plot using actual detections"""
     height, width = image_shape
-    
-    # FRENTE region (forehead area) - upper 40% of image
-    frente_rect = Rectangle((width * 0.1, height * 0.05), 
-                           width * 0.8, height * 0.4, 
-                           linewidth=2, edgecolor='green', facecolor='none')
-    ax.add_patch(frente_rect)
-    ax.text(width * 0.12, height * 0.02, 'FRENTE', 
-           fontsize=10, color='green', fontweight='bold')
-    
-    # rostro_menton region (chin/jaw area) - lower 40% of image
-    rostro_rect = Rectangle((width * 0.15, height * 0.55), 
-                           width * 0.7, height * 0.4, 
-                           linewidth=2, edgecolor='red', facecolor='none')
-    ax.add_patch(rostro_rect)
-    ax.text(width * 0.17, height * 0.52, 'ROSTRO_MENTON', 
-           fontsize=10, color='red', fontweight='bold')
+
+    if detected_regions:
+        # Use actual Faster R-CNN detected regions
+        if detected_regions.get('frente'):
+            frente_bbox = detected_regions['frente']['bbox']
+            confidence = detected_regions['frente']['confidence']
+            x1, y1, x2, y2 = frente_bbox
+
+            frente_rect = Rectangle((x1, y1), x2-x1, y2-y1,
+                                   linewidth=2, edgecolor='green', facecolor='none')
+            ax.add_patch(frente_rect)
+            ax.text(x1, y1-5, f'FRENTE ({confidence:.2f})',
+                   fontsize=9, color='green', fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
+
+        if detected_regions.get('rostro_menton'):
+            rostro_bbox = detected_regions['rostro_menton']['bbox']
+            confidence = detected_regions['rostro_menton']['confidence']
+            x1, y1, x2, y2 = rostro_bbox
+
+            rostro_rect = Rectangle((x1, y1), x2-x1, y2-y1,
+                                   linewidth=2, edgecolor='red', facecolor='none')
+            ax.add_patch(rostro_rect)
+            ax.text(x1, y1-5, f'ROSTRO_MENTON ({confidence:.2f})',
+                   fontsize=9, color='red', fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
+    else:
+        # Fallback to hardcoded regions if no detections available
+        # FRENTE region (forehead area) - upper 40% of image
+        frente_rect = Rectangle((width * 0.1, height * 0.05),
+                               width * 0.8, height * 0.4,
+                               linewidth=2, edgecolor='green', facecolor='none', alpha=0.5)
+        ax.add_patch(frente_rect)
+        ax.text(width * 0.12, height * 0.02, 'FRENTE (FALLBACK)',
+               fontsize=10, color='green', fontweight='bold', alpha=0.7)
+
+        # rostro_menton region (chin/jaw area) - lower 40% of image
+        rostro_rect = Rectangle((width * 0.15, height * 0.55),
+                               width * 0.7, height * 0.4,
+                               linewidth=2, edgecolor='red', facecolor='none', alpha=0.5)
+        ax.add_patch(rostro_rect)
+        ax.text(width * 0.17, height * 0.52, 'ROSTRO_MENTON (FALLBACK)',
+               fontsize=10, color='red', fontweight='bold', alpha=0.7)
 
 def _add_proportion_text(ax, proportions: Dict):
     """Add proportion information to plot"""
@@ -399,11 +426,11 @@ def create_detailed_report_visualization(analysis_results: Dict) -> np.ndarray:
             
             ax1.imshow(right_mirror_rgb)
             ax1.set_title('Right Mirror + Regions', fontsize=12, fontweight='bold')
-            _add_region_bboxes_to_plot(ax1, right_mirror_rgb.shape[:2])
-            
+            _add_region_bboxes_to_plot(ax1, right_mirror_rgb.shape[:2], None)
+
             ax2.imshow(left_mirror_rgb)
             ax2.set_title('Left Mirror + Regions', fontsize=12, fontweight='bold')
-            _add_region_bboxes_to_plot(ax2, left_mirror_rgb.shape[:2])
+            _add_region_bboxes_to_plot(ax2, left_mirror_rgb.shape[:2], None)
         
         ax1.axis('off')
         ax2.axis('off')

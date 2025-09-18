@@ -13,117 +13,214 @@ from PIL import Image
 from sklearn.preprocessing import LabelEncoder
 import torchvision.transforms as transforms
 from typing import Dict, List, Tuple, Optional, Any
+import timm  # For EfficientNet
 
-class BinaryRegionClassifier(nn.Module):
-    """Binary classifier for FRENTE/rostro_menton regions"""
-    def __init__(self, input_size=224):
-        super(BinaryRegionClassifier, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(256, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-        )
-        self.feature_size = self._get_feature_size(input_size)
-        self.classifier = nn.Sequential(
-            nn.Dropout(0.5), nn.Linear(self.feature_size, 512), nn.ReLU(inplace=True),
-            nn.Dropout(0.5), nn.Linear(512, 128), nn.ReLU(inplace=True), 
-            nn.Linear(128, 2)
-        )
-    
-    def _get_feature_size(self, input_size):
-        with torch.no_grad():
-            x = torch.zeros(1, 3, input_size, input_size)
-            x = self.features(x)
-            return x.view(1, -1).size(1)
-    
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
+class FasterRCNNDetector:
+    """Faster R-CNN detector for FRENTE and rostro_menton regions"""
+    def __init__(self, model_path, device):
+        self.device = device
+        self.model = None
+        self.detection_classes = ['rostro_menton', 'FRENTE']
+        self.load_model(model_path)
+
+    def load_model(self, model_path):
+        """Load the trained Faster R-CNN model"""
+        try:
+            if os.path.exists(model_path):
+                # Load model checkpoint
+                checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+
+                # Create Faster R-CNN model
+                num_classes = len(self.detection_classes) + 1  # +1 for background
+                self.model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
+
+                # Replace the classifier head
+                in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+                self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+                # Load trained weights
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+                self.model.to(self.device)
+                self.model.eval()
+
+                print("✓ Faster R-CNN detection model loaded successfully")
+            else:
+                print(f"✗ Faster R-CNN model not found at {model_path}")
+        except Exception as e:
+            print(f"✗ Error loading Faster R-CNN model: {e}")
+            self.model = None
+
+    def detect_regions(self, image, confidence_threshold=0.5):
+        """Detect FRENTE and rostro_menton regions in image"""
+        if self.model is None:
+            return []
+
+        try:
+            # Preprocess image
+            if isinstance(image, np.ndarray):
+                # Convert BGR to RGB if needed
+                if len(image.shape) == 3 and image.shape[2] == 3:
+                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                else:
+                    image_rgb = image
+            else:
+                image_rgb = np.array(image)
+
+            orig_height, orig_width = image_rgb.shape[:2]
+
+            # Resize for detection (maintain aspect ratio)
+            target_size = 416
+            scale = min(target_size / orig_width, target_size / orig_height)
+            new_width = int(orig_width * scale)
+            new_height = int(orig_height * scale)
+
+            resized_image = cv2.resize(image_rgb, (new_width, new_height))
+
+            # Pad to target size
+            padded_image = np.zeros((target_size, target_size, 3), dtype=np.uint8)
+            padded_image[:new_height, :new_width] = resized_image
+
+            # Convert to tensor
+            image_tensor = torch.FloatTensor(padded_image / 255.0).permute(2, 0, 1).unsqueeze(0).to(self.device)
+
+            # Run detection
+            with torch.no_grad():
+                predictions = self.model(image_tensor)
+
+            # Extract predictions
+            prediction = predictions[0]
+            boxes = prediction['boxes'].cpu().numpy()
+            labels = prediction['labels'].cpu().numpy()
+            scores = prediction['scores'].cpu().numpy()
+
+            # Scale boxes back to original image size
+            detections = []
+            for box, label, score in zip(boxes, labels, scores):
+                if score > confidence_threshold and label > 0:  # Skip background class
+                    # Scale bbox back to original image size
+                    x1, y1, x2, y2 = box
+
+                    # Adjust for padding and scaling
+                    x1 = max(0, x1 / scale)
+                    y1 = max(0, y1 / scale)
+                    x2 = min(orig_width, x2 / scale)
+                    y2 = min(orig_height, y2 / scale)
+
+                    # Ensure valid bbox
+                    if x2 > x1 and y2 > y1:
+                        class_name = self.detection_classes[label - 1]  # -1 for background
+                        detections.append({
+                            'class': class_name,
+                            'confidence': float(score),
+                            'bbox': [int(x1), int(y1), int(x2), int(y2)]
+                        })
+
+            return detections
+
+        except Exception as e:
+            print(f"Error in region detection: {e}")
+            return []
 
 class FrenteShapeClassifier(nn.Module):
-    """Classifier for FRENTE region shapes"""
-    def __init__(self, num_classes, input_size=224):
+    """EfficientNet-B3 based classifier for FRENTE region shapes"""
+    def __init__(self, num_classes):
         super(FrenteShapeClassifier, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(256, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-        )
-        self.feature_size = self._get_feature_size(input_size)
+
+        # Load pretrained EfficientNet-B3 from timm
+        self.backbone = timm.create_model('efficientnet_b3', pretrained=True)
+
+        # Get the actual number of features from the classifier
+        backbone_features = self.backbone.classifier.in_features
+
+        # Remove the original classifier
+        self.backbone.classifier = nn.Identity()
+
+        # Enhanced classifier matching the training architecture
         self.classifier = nn.Sequential(
-            nn.Dropout(0.5), nn.Linear(self.feature_size, 512), nn.ReLU(inplace=True),
-            nn.Dropout(0.5), nn.Linear(512, 256), nn.ReLU(inplace=True), 
+            nn.BatchNorm1d(backbone_features),
+            nn.Dropout(0.4),
+
+            nn.Linear(backbone_features, 512),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(512),
+            nn.Dropout(0.3),
+
+            nn.Linear(512, 256),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.2),
+
             nn.Linear(256, num_classes)
         )
-    
-    def _get_feature_size(self, input_size):
-        with torch.no_grad():
-            x = torch.zeros(1, 3, input_size, input_size)
-            x = self.features(x)
-            return x.view(1, -1).size(1)
-    
+
     def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
+        # Extract features from EfficientNet backbone
+        features = self.backbone(x)
+
+        # Classification
+        output = self.classifier(features)
+        return output
 
 class RostroMentonShapeClassifier(nn.Module):
-    """Classifier for rostro_menton region shapes"""
-    def __init__(self, num_classes, input_size=224):
+    """Enhanced ResNet-based classifier for rostro_menton region shapes"""
+    def __init__(self, num_classes):
         super(RostroMentonShapeClassifier, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.Conv2d(256, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True), 
-            nn.MaxPool2d(2, 2),
-        )
-        self.feature_size = self._get_feature_size(input_size)
+
+        # Load pretrained ResNet-50
+        from torchvision.models import resnet50, ResNet50_Weights
+        self.backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+
+        # Remove original classifier
+        self.features = nn.Sequential(*list(self.backbone.children())[:-1])
+
+        # Add batch normalization after features (anti-overfitting)
+        self.bn_features = nn.BatchNorm1d(2048)
+
+        # HEAVILY REGULARIZED classifier with progressive dropout
         self.classifier = nn.Sequential(
-            nn.Dropout(0.5), nn.Linear(self.feature_size, 512), nn.ReLU(inplace=True),
-            nn.Dropout(0.5), nn.Linear(512, 256), nn.ReLU(inplace=True), 
-            nn.Linear(256, num_classes)
+            nn.Flatten(),
+            nn.Dropout(0.7),  # Strong dropout at input
+
+            # First layer - larger to capture more features
+            nn.Linear(2048, 512),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(512),
+            nn.Dropout(0.5),  # Medium dropout
+
+            # Second layer - intermediate
+            nn.Linear(512, 128),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(128),
+            nn.Dropout(0.4),  # Light dropout
+
+            # Final layer
+            nn.Linear(128, num_classes)
         )
-    
-    def _get_feature_size(self, input_size):
-        with torch.no_grad():
-            x = torch.zeros(1, 3, input_size, input_size)
-            x = self.features(x)
-            return x.view(1, -1).size(1)
-    
+
+        # Initialize weights
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.classifier.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
     def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
+        # Extract features using ResNet-50 backbone
+        features = self.features(x)
+
+        # Apply feature batch normalization (anti-overfitting)
+        features = features.view(features.size(0), -1)  # Flatten
+        features = self.bn_features(features)
+
+        # Classification with heavy regularization
+        output = self.classifier(features)
+
+        return output
 
 class EspejoAnalyzer:
     """
@@ -140,7 +237,7 @@ class EspejoAnalyzer:
         
         # Initialize models
         self.facial_points_model = None
-        self.binary_model = None
+        self.detection_model = None
         self.frente_model = None
         self.rostro_model = None
         self.detector = None
@@ -207,26 +304,20 @@ class EspejoAnalyzer:
     def _load_classification_models(self):
         """Load all classification models"""
         try:
-            # Load binary classification model
-            binary_model_path = "/app/models/binary_region_classifier_best.pth"
-            if os.path.exists(binary_model_path):
-                self.binary_model = BinaryRegionClassifier()
-                self.binary_model.load_state_dict(torch.load(binary_model_path, map_location=self.device, weights_only=True))
-                self.binary_model.to(self.device)
-                self.binary_model.eval()
-                
-                # Binary encoder
-                self.binary_encoder = LabelEncoder()
-                self.binary_encoder.classes_ = np.array(['FRENTE', 'rostro_menton'])
-                print("✓ Binary classification model loaded successfully")
+            # Load Faster R-CNN detection model
+            detection_model_path = "/app/models/faster_rcnn_detection_model.pth"
+            if os.path.exists(detection_model_path):
+                self.detection_model = FasterRCNNDetector(detection_model_path, self.device)
+            else:
+                print(f"✗ Detection model not found at {detection_model_path}")
             
             # Load FRENTE classification model
-            frente_model_path = "/app/models/frente_best_model.pth"
+            frente_model_path = "/app/models/frente_enhanced_classifier_3datasets.pth"
             if os.path.exists(frente_model_path):
                 self.frente_encoder = LabelEncoder()
                 self.frente_encoder.classes_ = np.array([
-                    'jupiter_aplio_base_ancha', 'marte_rectangular', 'mercurio_triangulo',
-                    'neptuno_ovalo/capsula', 'solar/lunar_redonda', 'tierra_cuadrada',
+                    'neptuno_combined', 'solar_lunar_combined', 'mercurio_triangulo',
+                    'marte_rectangular', 'tierra_cuadrada', 'jupiter_aplio_base_ancha',
                     'venus_corazon_o_trapezoide_angosto'
                 ])
                 
@@ -237,13 +328,13 @@ class EspejoAnalyzer:
                 print("✓ FRENTE classification model loaded successfully")
             
             # Load rostro_menton classification model
-            rostro_model_path = "/app/models/rostro_menton_best_model.pth"
+            rostro_model_path = "/app/models/rostro_classifier_mono.pth"
             if os.path.exists(rostro_model_path):
                 self.rostro_encoder = LabelEncoder()
                 self.rostro_encoder.classes_ = np.array([
-                    'jupiter/luna_redondo_ancho', 'marte/tierra_rectangulo',
-                    'mercurio_triangular', 'pluton-venus', 'pluton_hexagonal',
-                    'saturno_trapezoide_base_angosta', 'sol_neptuno_ovalo', 'venus_corazon'
+                    'sol_neptuno_combined', 'luna_jupiter_combined', 'venus_corazon',
+                    'pluton_hexagonal', 'mercurio_triangular', 'marte_tierra_rectangulo',
+                    'saturno_trapezoide_base_angosta'
                 ])
                 
                 self.rostro_model = RostroMentonShapeClassifier(num_classes=len(self.rostro_encoder.classes_))
@@ -448,6 +539,60 @@ class EspejoAnalyzer:
             mirrored_face = np.hstack((left_half, mirrored_left))
         return mirrored_face
     
+    def _detect_facial_regions(self, image, confidence_threshold=0.5):
+        """Detect FRENTE and rostro_menton regions using Faster R-CNN"""
+        if self.detection_model is None:
+            return {'frente': None, 'rostro_menton': None}
+
+        try:
+            detections = self.detection_model.detect_regions(image, confidence_threshold)
+
+            regions = {'frente': None, 'rostro_menton': None}
+
+            # Group detections by class and select best confidence
+            for detection in detections:
+                class_name = detection['class']
+                if class_name == 'FRENTE':
+                    if regions['frente'] is None or detection['confidence'] > regions['frente']['confidence']:
+                        regions['frente'] = detection
+                elif class_name == 'rostro_menton':
+                    if regions['rostro_menton'] is None or detection['confidence'] > regions['rostro_menton']['confidence']:
+                        regions['rostro_menton'] = detection
+
+            return regions
+
+        except Exception as e:
+            print(f"Error detecting facial regions: {e}")
+            return {'frente': None, 'rostro_menton': None}
+
+    def _extract_region_from_image(self, image, bbox, padding=10):
+        """Extract region from image using bounding box with padding"""
+        try:
+            if bbox is None:
+                return None
+
+            x1, y1, x2, y2 = bbox
+
+            # Add padding
+            height, width = image.shape[:2]
+            x1 = max(0, x1 - padding)
+            y1 = max(0, y1 - padding)
+            x2 = min(width, x2 + padding)
+            y2 = min(height, y2 + padding)
+
+            # Extract region
+            region = image[y1:y2, x1:x2]
+
+            # Ensure minimum size
+            if region.shape[0] < 50 or region.shape[1] < 50:
+                return None
+
+            return region
+
+        except Exception as e:
+            print(f"Error extracting region: {e}")
+            return None
+
     def _preprocess_image_for_classification(self, image, target_size=224):
         """Preprocess image for classification"""
         if isinstance(image, np.ndarray):
@@ -495,8 +640,8 @@ class EspejoAnalyzer:
         
         # Confidence-based exclusions
         exclusion_rules = {
-            'solar/lunar_redonda': 0.19,
-            'neptuno_ovalo/capsula': 0.20,
+            'solar_lunar_combined': 0.19,
+            'neptuno_combined': 0.20,
             'jupiter_aplio_base_ancha': 0.20,
             'venus_corazon_o_trapezoide_angosto': 0.50
         }
@@ -507,12 +652,12 @@ class EspejoAnalyzer:
                 applied_rules.append(f"Excluded {pred} (confidence {pred_dict[pred]:.1%} < {threshold:.1%})")
         
         # Apply proportion-based rules
-        if 'neptuno_ovalo/capsula' in pred_dict and 'neptuno_ovalo/capsula' not in excluded_preds:
+        if 'neptuno_combined' in pred_dict and 'neptuno_combined' not in excluded_preds:
             if face_proportion < 0.25:
-                excluded_preds.append('neptuno_ovalo/capsula')
+                excluded_preds.append('neptuno_combined')
                 applied_rules.append(f"neptuno + proportion {face_proportion:.3f} < 0.25 → excluded")
             elif face_proportion <= 0.4:
-                excluded_preds.append('neptuno_ovalo/capsula')
+                excluded_preds.append('neptuno_combined')
                 applied_rules.append(f"neptuno + proportion {face_proportion:.3f} ≤ 0.4 → excluded")
         
         # Return highest confidence remaining prediction
@@ -538,12 +683,12 @@ class EspejoAnalyzer:
         
         exclusion_rules = {
             'venus_corazon': 0.15,
-            'pluton-venus': 0.10,
             'pluton_hexagonal': 0.17,
-            'jupiter/luna_redondo_ancho': 0.10,
+            'luna_jupiter_combined': 0.10,
             'saturno_trapezoide_base_angosta': 0.17,
             'mercurio_triangular': 0.19,
-            'sol_neptuno_ovalo': 0.11
+            'sol_neptuno_combined': 0.11,
+            'marte_tierra_rectangulo': 0.15
         }
         
         for pred, threshold in exclusion_rules.items():
@@ -551,15 +696,8 @@ class EspejoAnalyzer:
                 excluded_preds.append(pred)
                 applied_rules.append(f"Excluded {pred} (confidence {pred_dict[pred]:.1%} < {threshold:.1%})")
         
-        # Apply complex logic rules
-        if all(pred in pred_dict for pred in ['venus_corazon', 'pluton-venus', 'pluton_hexagonal']):
-            applied_rules.append("All three (venus_corazon, pluton-venus, pluton_hexagonal) present → choosing pluton-venus")
-            return 'pluton-venus', applied_rules
-        
-        if 'pluton-venus' in pred_dict and 'venus_corazon' in pred_dict:
-            if pred_dict['venus_corazon'] > pred_dict['pluton-venus'] + 0.06:
-                applied_rules.append(f"venus_corazon ({pred_dict['venus_corazon']:.1%}) > pluton-venus ({pred_dict['pluton-venus']:.1%}) by >6% → choosing venus_corazon")
-                return 'venus_corazon', applied_rules
+        # Apply complex logic rules (pluton-venus logic removed as class no longer exists)
+        # Note: pluton-venus class was removed from new model, so related logic is simplified
         
         # Get remaining predictions after exclusions
         remaining_preds = {pred: prob for pred, prob in pred_dict.items() if pred not in excluded_preds}
@@ -569,15 +707,15 @@ class EspejoAnalyzer:
             return predictions[0], applied_rules
         
         # Apply anthropometric rules
-        if 'sol_neptuno_ovalo' in remaining_preds:
+        if 'sol_neptuno_combined' in remaining_preds:
             if face_proportion >= 1.17:
-                applied_rules.append(f"sol_neptuno_ovalo + proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
                 return 'neptuno', applied_rules
             elif face_proportion < 1.0:
-                applied_rules.append(f"sol_neptuno_ovalo + proportion {face_proportion:.3f} < 1.0 → jupiter")
+                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} < 1.0 → jupiter")
                 return 'jupiter', applied_rules
             else:
-                applied_rules.append(f"sol_neptuno_ovalo + proportion {face_proportion:.3f} < 1.17 → sol")
+                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} < 1.17 → sol")
                 return 'sol', applied_rules
         
         # Find highest confidence remaining prediction
@@ -592,53 +730,53 @@ class EspejoAnalyzer:
         applied_rules = []
         
         if region_type == 'FRENTE':
-            # Check for solar/lunar_redonda specifically
-            if final_diagnosis.lower() == 'solar/lunar_redonda':
+            # Check for solar_lunar_combined specifically
+            if final_diagnosis.lower() == 'solar_lunar_combined':
                 if forehead_proportion is not None:
                     if forehead_proportion < 0.35:
-                        applied_rules.append(f"solar/lunar_redonda + forehead proportion {forehead_proportion:.3f} < 0.35 → luna")
+                        applied_rules.append(f"solar_lunar_combined + forehead proportion {forehead_proportion:.3f} < 0.35 → luna")
                         return 'luna', applied_rules
                     else:
-                        applied_rules.append(f"solar/lunar_redonda + forehead proportion {forehead_proportion:.3f} ≥ 0.35 → solar")
+                        applied_rules.append(f"solar_lunar_combined + forehead proportion {forehead_proportion:.3f} ≥ 0.35 → solar")
                         return 'solar', applied_rules
                 else:
-                    applied_rules.append("solar/lunar_redonda detected but forehead proportion N/A → no splitting")
+                    applied_rules.append("solar_lunar_combined detected but forehead proportion N/A → no splitting")
                     return final_diagnosis, applied_rules
             
             applied_rules.append("No hybrid splitting needed for FRENTE")
             return final_diagnosis, applied_rules
         
         elif region_type == 'rostro_menton':
-            # Check for jupiter/luna_redondo_ancho specifically
-            if final_diagnosis.lower() == 'jupiter/luna_redondo_ancho':
+            # Check for luna_jupiter_combined specifically
+            if final_diagnosis.lower() == 'luna_jupiter_combined':
                 if face_proportion is not None:
                     if face_proportion >= 1.17:
-                        applied_rules.append(f"jupiter/luna_redondo_ancho + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                        applied_rules.append(f"luna_jupiter_combined + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
                         return 'neptuno', applied_rules
                     elif face_proportion < 0.99:
-                        applied_rules.append(f"jupiter/luna_redondo_ancho + face proportion {face_proportion:.3f} < 0.99 → luna")
+                        applied_rules.append(f"luna_jupiter_combined + face proportion {face_proportion:.3f} < 0.99 → luna")
                         return 'luna', applied_rules
                     else:
-                        applied_rules.append(f"jupiter/luna_redondo_ancho + face proportion {face_proportion:.3f} between 0.99-1.17 → jupiter")
+                        applied_rules.append(f"luna_jupiter_combined + face proportion {face_proportion:.3f} between 0.99-1.17 → jupiter")
                         return 'jupiter', applied_rules
                 else:
-                    applied_rules.append("jupiter/luna_redondo_ancho detected but face proportion N/A → no splitting")
+                    applied_rules.append("luna_jupiter_combined detected but face proportion N/A → no splitting")
                     return final_diagnosis, applied_rules
             
-            # Check for sol_neptuno_ovalo specifically
-            if final_diagnosis.lower() == 'sol_neptuno_ovalo':
+            # Check for sol_neptuno_combined specifically
+            if final_diagnosis.lower() == 'sol_neptuno_combined':
                 if face_proportion is not None:
                     if face_proportion >= 1.17:
-                        applied_rules.append(f"sol_neptuno_ovalo + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                        applied_rules.append(f"sol_neptuno_combined + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
                         return 'neptuno', applied_rules
                     elif face_proportion < 1.0:
-                        applied_rules.append(f"sol_neptuno_ovalo + face proportion {face_proportion:.3f} < 1.0 → jupiter")
+                        applied_rules.append(f"sol_neptuno_combined + face proportion {face_proportion:.3f} < 1.0 → jupiter")
                         return 'jupiter', applied_rules
                     else:
-                        applied_rules.append(f"sol_neptuno_ovalo + face proportion {face_proportion:.3f} between 1.0-1.17 → sol")
+                        applied_rules.append(f"sol_neptuno_combined + face proportion {face_proportion:.3f} between 1.0-1.17 → sol")
                         return 'sol', applied_rules
                 else:
-                    applied_rules.append("sol_neptuno_ovalo detected but face proportion N/A → no splitting")
+                    applied_rules.append("sol_neptuno_combined detected but face proportion N/A → no splitting")
                     return final_diagnosis, applied_rules
             
             applied_rules.append("No hybrid splitting needed for rostro_menton")
@@ -655,7 +793,8 @@ class EspejoAnalyzer:
                 'frente_final_diagnosis': None, 'frente_applied_rules': [],
                 'rostro_final_diagnosis': None, 'rostro_applied_rules': [],
                 'frente_split_diagnosis': None, 'frente_split_rules': [],
-                'rostro_split_diagnosis': None, 'rostro_split_rules': []
+                'rostro_split_diagnosis': None, 'rostro_split_rules': [],
+                'detected_regions': None
             },
             'left_mirrored': {
                 'frente_predictions': [], 'frente_probabilities': [],
@@ -663,7 +802,8 @@ class EspejoAnalyzer:
                 'frente_final_diagnosis': None, 'frente_applied_rules': [],
                 'rostro_final_diagnosis': None, 'rostro_applied_rules': [],
                 'frente_split_diagnosis': None, 'frente_split_rules': [],
-                'rostro_split_diagnosis': None, 'rostro_split_rules': []
+                'rostro_split_diagnosis': None, 'rostro_split_rules': [],
+                'detected_regions': None
             }
         }
         
@@ -679,72 +819,128 @@ class EspejoAnalyzer:
                 current_face_prop = right_face_prop if side == 'right_mirrored' else left_face_prop
                 current_forehead_prop = right_forehead_prop if side == 'right_mirrored' else left_forehead_prop
                 
-                # Preprocess image
-                image_tensor = self._preprocess_image_for_classification(image)
-                image_tensor = image_tensor.unsqueeze(0).to(self.device)
-                
+                # Detect facial regions using Faster R-CNN
+                detected_regions = self._detect_facial_regions(image, confidence_threshold=0.5)
+
+                # Store detected regions for visualization
+                results[side]['detected_regions'] = detected_regions
+
                 # FRENTE classification
-                with torch.no_grad():
-                    frente_output = self.frente_model(image_tensor)
-                    frente_prob = torch.softmax(frente_output, dim=1)
-                    frente_top3_probs, frente_top3_indices = torch.topk(frente_prob[0], min(3, len(self.frente_encoder.classes_)))
-                    
-                    frente_predictions = []
-                    frente_probabilities = []
-                    
-                    for i in range(len(frente_top3_indices)):
-                        class_name = self.frente_encoder.classes_[frente_top3_indices[i].item()]
-                        probability = frente_top3_probs[i].item()
-                        frente_predictions.append(class_name)
-                        frente_probabilities.append(probability)
-                    
-                    results[side]['frente_predictions'] = frente_predictions
-                    results[side]['frente_probabilities'] = frente_probabilities
-                    
-                    # Apply decision tree to FRENTE
-                    frente_diagnosis, frente_rules = self._apply_frente_decision_tree(
-                        frente_predictions, frente_probabilities, face_proportion
-                    )
-                    results[side]['frente_final_diagnosis'] = frente_diagnosis
-                    results[side]['frente_applied_rules'] = frente_rules
-                    
-                    # Apply hybrid class splitting to FRENTE
-                    frente_split_diagnosis, frente_split_rules = self._apply_hybrid_class_splitting(
-                        frente_diagnosis, current_face_prop, current_forehead_prop, 'FRENTE'
-                    )
-                    results[side]['frente_split_diagnosis'] = frente_split_diagnosis
-                    results[side]['frente_split_rules'] = frente_split_rules
-                    
-                    # rostro_menton classification
-                    rostro_output = self.rostro_model(image_tensor)
-                    rostro_prob = torch.softmax(rostro_output, dim=1)
-                    rostro_top3_probs, rostro_top3_indices = torch.topk(rostro_prob[0], min(3, len(self.rostro_encoder.classes_)))
-                    
-                    rostro_predictions = []
-                    rostro_probabilities = []
-                    
-                    for i in range(len(rostro_top3_indices)):
-                        class_name = self.rostro_encoder.classes_[rostro_top3_indices[i].item()]
-                        probability = rostro_top3_probs[i].item()
-                        rostro_predictions.append(class_name)
-                        rostro_probabilities.append(probability)
-                    
-                    results[side]['rostro_predictions'] = rostro_predictions
-                    results[side]['rostro_probabilities'] = rostro_probabilities
-                    
-                    # Apply decision tree to rostro_menton
-                    rostro_diagnosis, rostro_rules = self._apply_rostro_menton_decision_tree(
-                        rostro_predictions, rostro_probabilities, current_face_prop
-                    )
-                    results[side]['rostro_final_diagnosis'] = rostro_diagnosis
-                    results[side]['rostro_applied_rules'] = rostro_rules
-                    
-                    # Apply hybrid class splitting to rostro_menton
-                    rostro_split_diagnosis, rostro_split_rules = self._apply_hybrid_class_splitting(
-                        rostro_diagnosis, current_face_prop, current_forehead_prop, 'rostro_menton'
-                    )
-                    results[side]['rostro_split_diagnosis'] = rostro_split_diagnosis
-                    results[side]['rostro_split_rules'] = rostro_split_rules
+                frente_predictions = []
+                frente_probabilities = []
+
+                if detected_regions['frente'] is not None:
+                    # Extract FRENTE region
+                    frente_bbox = detected_regions['frente']['bbox']
+                    frente_region = self._extract_region_from_image(image, frente_bbox)
+
+                    if frente_region is not None:
+                        # Preprocess FRENTE region for classification
+                        frente_tensor = self._preprocess_image_for_classification(frente_region)
+                        frente_tensor = frente_tensor.unsqueeze(0).to(self.device)
+
+                        with torch.no_grad():
+                            frente_output = self.frente_model(frente_tensor)
+                            frente_prob = torch.softmax(frente_output, dim=1)
+                            frente_top3_probs, frente_top3_indices = torch.topk(frente_prob[0], min(3, len(self.frente_encoder.classes_)))
+
+                            for i in range(len(frente_top3_indices)):
+                                class_name = self.frente_encoder.classes_[frente_top3_indices[i].item()]
+                                probability = frente_top3_probs[i].item()
+                                frente_predictions.append(class_name)
+                                frente_probabilities.append(probability)
+
+                # Fallback to full image if no FRENTE region detected
+                if not frente_predictions:
+                    image_tensor = self._preprocess_image_for_classification(image)
+                    image_tensor = image_tensor.unsqueeze(0).to(self.device)
+
+                    with torch.no_grad():
+                        frente_output = self.frente_model(image_tensor)
+                        frente_prob = torch.softmax(frente_output, dim=1)
+                        frente_top3_probs, frente_top3_indices = torch.topk(frente_prob[0], min(3, len(self.frente_encoder.classes_)))
+
+                        for i in range(len(frente_top3_indices)):
+                            class_name = self.frente_encoder.classes_[frente_top3_indices[i].item()]
+                            probability = frente_top3_probs[i].item()
+                            frente_predictions.append(class_name)
+                            frente_probabilities.append(probability)
+
+                results[side]['frente_predictions'] = frente_predictions
+                results[side]['frente_probabilities'] = frente_probabilities
+
+                # Apply decision tree to FRENTE
+                frente_diagnosis, frente_rules = self._apply_frente_decision_tree(
+                    frente_predictions, frente_probabilities, face_proportion
+                )
+                results[side]['frente_final_diagnosis'] = frente_diagnosis
+                results[side]['frente_applied_rules'] = frente_rules
+
+                # Apply hybrid class splitting to FRENTE
+                frente_split_diagnosis, frente_split_rules = self._apply_hybrid_class_splitting(
+                    frente_diagnosis, current_face_prop, current_forehead_prop, 'FRENTE'
+                )
+                results[side]['frente_split_diagnosis'] = frente_split_diagnosis
+                results[side]['frente_split_rules'] = frente_split_rules
+
+                # rostro_menton classification
+                rostro_predictions = []
+                rostro_probabilities = []
+
+                if detected_regions['rostro_menton'] is not None:
+                    # Extract rostro_menton region
+                    rostro_bbox = detected_regions['rostro_menton']['bbox']
+                    rostro_region = self._extract_region_from_image(image, rostro_bbox)
+
+                    if rostro_region is not None:
+                        # Preprocess rostro_menton region for classification
+                        rostro_tensor = self._preprocess_image_for_classification(rostro_region)
+                        rostro_tensor = rostro_tensor.unsqueeze(0).to(self.device)
+
+                        with torch.no_grad():
+                            rostro_output = self.rostro_model(rostro_tensor)
+                            rostro_prob = torch.softmax(rostro_output, dim=1)
+                            rostro_top3_probs, rostro_top3_indices = torch.topk(rostro_prob[0], min(3, len(self.rostro_encoder.classes_)))
+
+                            for i in range(len(rostro_top3_indices)):
+                                class_name = self.rostro_encoder.classes_[rostro_top3_indices[i].item()]
+                                probability = rostro_top3_probs[i].item()
+                                rostro_predictions.append(class_name)
+                                rostro_probabilities.append(probability)
+
+                # Fallback to full image if no rostro_menton region detected
+                if not rostro_predictions:
+                    if 'image_tensor' not in locals():
+                        image_tensor = self._preprocess_image_for_classification(image)
+                        image_tensor = image_tensor.unsqueeze(0).to(self.device)
+
+                    with torch.no_grad():
+                        rostro_output = self.rostro_model(image_tensor)
+                        rostro_prob = torch.softmax(rostro_output, dim=1)
+                        rostro_top3_probs, rostro_top3_indices = torch.topk(rostro_prob[0], min(3, len(self.rostro_encoder.classes_)))
+
+                        for i in range(len(rostro_top3_indices)):
+                            class_name = self.rostro_encoder.classes_[rostro_top3_indices[i].item()]
+                            probability = rostro_top3_probs[i].item()
+                            rostro_predictions.append(class_name)
+                            rostro_probabilities.append(probability)
+
+                results[side]['rostro_predictions'] = rostro_predictions
+                results[side]['rostro_probabilities'] = rostro_probabilities
+
+                # Apply decision tree to rostro_menton
+                rostro_diagnosis, rostro_rules = self._apply_rostro_menton_decision_tree(
+                    rostro_predictions, rostro_probabilities, current_face_prop
+                )
+                results[side]['rostro_final_diagnosis'] = rostro_diagnosis
+                results[side]['rostro_applied_rules'] = rostro_rules
+
+                # Apply hybrid class splitting to rostro_menton
+                rostro_split_diagnosis, rostro_split_rules = self._apply_hybrid_class_splitting(
+                    rostro_diagnosis, current_face_prop, current_forehead_prop, 'rostro_menton'
+                )
+                results[side]['rostro_split_diagnosis'] = rostro_split_diagnosis
+                results[side]['rostro_split_rules'] = rostro_split_rules
                     
             except Exception as e:
                 print(f"Error classifying {side}: {e}")

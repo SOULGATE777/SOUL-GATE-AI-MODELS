@@ -98,13 +98,22 @@ async def analyze_espejo(
             unique_id = str(uuid.uuid4())[:8]
             filename = f"espejo_analysis_{timestamp}_{unique_id}.png"
             visualization_path = f"/app/results/{filename}"
-            
+
+            # Extract detected regions for visualization
+            detected_regions_for_viz = {}
+            if 'classification_results' in results:
+                if 'right_mirrored' in results['classification_results'] and 'detected_regions' in results['classification_results']['right_mirrored']:
+                    detected_regions_for_viz['right_mirrored'] = results['classification_results']['right_mirrored']['detected_regions']
+                if 'left_mirrored' in results['classification_results'] and 'detected_regions' in results['classification_results']['left_mirrored']:
+                    detected_regions_for_viz['left_mirrored'] = results['classification_results']['left_mirrored']['detected_regions']
+
             # Create visualization
             vis_image = create_mirror_visualization(
                 image_array,
                 results['mirror_images'],
                 results['classification_results'],
-                results['proportions']
+                results['proportions'],
+                detected_regions_for_viz
             )
             
             # Save visualization
@@ -119,7 +128,7 @@ async def analyze_espejo(
             dashboard_path = f"/app/results/{dashboard_filename}"
             
             # Create analysis dashboard
-            dashboard_image = create_analysis_dashboard(image_array, results)
+            dashboard_image = create_analysis_dashboard(image_array, results, detected_regions_for_viz)
             
             # Save dashboard
             os.makedirs("/app/results", exist_ok=True)
