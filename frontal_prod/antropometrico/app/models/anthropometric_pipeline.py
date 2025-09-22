@@ -397,6 +397,92 @@ class AnthropometricAnalyzer:
             'right_eye_slope': right_slope
         }
 
+    def _calculate_eyebrow_eyelid_distances(self, extended_points):
+        """Calculate eyebrow to eyelid distances as proportion to head height"""
+        # Get key landmarks for measurements
+        # Left eye: point 19 (eyebrow) to point 37 (eyelid)
+        left_eyebrow_point = extended_points[19]  # Left eyebrow point
+        left_eyelid_point = extended_points[37]   # Left upper eyelid point
+
+        # Right eye: point 24 (eyebrow) to point 44 (eyelid)
+        right_eyebrow_point = extended_points[24]  # Right eyebrow point
+        right_eyelid_point = extended_points[44]   # Right upper eyelid point
+
+        # Calculate head height for proportional measurements
+        point_69 = extended_points[69]  # top of head
+        point_9 = extended_points[8]    # chin
+        head_height = float(np.linalg.norm(point_69 - point_9))
+
+        # Calculate distances
+        left_eyebrow_eyelid_distance = float(np.linalg.norm(left_eyebrow_point - left_eyelid_point))
+        right_eyebrow_eyelid_distance = float(np.linalg.norm(right_eyebrow_point - right_eyelid_point))
+
+        # Calculate proportions relative to head height
+        left_eyebrow_eyelid_proportion = left_eyebrow_eyelid_distance / head_height if head_height > 0 else 0
+        right_eyebrow_eyelid_proportion = right_eyebrow_eyelid_distance / head_height if head_height > 0 else 0
+
+        print(f"📏 Eyebrow-Eyelid Distances - Left: {left_eyebrow_eyelid_distance:.1f}px ({left_eyebrow_eyelid_proportion:.4f}), Right: {right_eyebrow_eyelid_distance:.1f}px ({right_eyebrow_eyelid_proportion:.4f})")
+
+        return {
+            'left_eyebrow_eyelid_distance': left_eyebrow_eyelid_distance,
+            'right_eyebrow_eyelid_distance': right_eyebrow_eyelid_distance,
+            'left_eyebrow_eyelid_proportion': left_eyebrow_eyelid_proportion,
+            'right_eyebrow_eyelid_proportion': right_eyebrow_eyelid_proportion,
+            'head_height': head_height
+        }
+
+    def _calculate_mouth_measurements(self, extended_points):
+        """Calculate mouth measurements: cupid's bow arches and lips ratio"""
+        # Calculate head height for proportional measurements
+        point_69 = extended_points[69]  # top of head
+        point_9 = extended_points[8]    # chin
+        head_height = float(np.linalg.norm(point_69 - point_9))
+
+        # Cupid's bow arch measurements
+        # Left cupid's arch: point 50 to point 61
+        left_cupid_point_50 = extended_points[50]
+        left_cupid_point_61 = extended_points[61]
+        left_cupid_arch_distance = float(np.linalg.norm(left_cupid_point_50 - left_cupid_point_61))
+        left_cupid_arch_proportion = left_cupid_arch_distance / head_height if head_height > 0 else 0
+
+        # Right cupid's arch: point 52 to point 63
+        right_cupid_point_52 = extended_points[52]
+        right_cupid_point_63 = extended_points[63]
+        right_cupid_arch_distance = float(np.linalg.norm(right_cupid_point_52 - right_cupid_point_63))
+        right_cupid_arch_proportion = right_cupid_arch_distance / head_height if head_height > 0 else 0
+
+        # Lips ratio calculation
+        # Upper lip: point 51 to point 62
+        upper_lip_point_51 = extended_points[51]
+        upper_lip_point_62 = extended_points[62]
+        upper_lip_distance = float(np.linalg.norm(upper_lip_point_51 - upper_lip_point_62))
+
+        # Lower lip: point 66 to point 57
+        lower_lip_point_66 = extended_points[66]
+        lower_lip_point_57 = extended_points[57]
+        lower_lip_distance = float(np.linalg.norm(lower_lip_point_66 - lower_lip_point_57))
+
+        # Calculate lips ratio: upper lip / lower lip
+        lips_ratio = upper_lip_distance / lower_lip_distance if lower_lip_distance > 0 else 0
+
+        print(f"📏 Mouth Measurements:")
+        print(f"   Left cupid's arch (50-61): {left_cupid_arch_distance:.1f}px (proportion: {left_cupid_arch_proportion:.4f})")
+        print(f"   Right cupid's arch (52-63): {right_cupid_arch_distance:.1f}px (proportion: {right_cupid_arch_proportion:.4f})")
+        print(f"   Upper lip distance (51-62): {upper_lip_distance:.1f}px")
+        print(f"   Lower lip distance (66-57): {lower_lip_distance:.1f}px")
+        print(f"   Lips ratio (upper/lower): {lips_ratio:.4f}")
+
+        return {
+            'left_cupid_arch_distance': left_cupid_arch_distance,
+            'left_cupid_arch_proportion': left_cupid_arch_proportion,
+            'right_cupid_arch_distance': right_cupid_arch_distance,
+            'right_cupid_arch_proportion': right_cupid_arch_proportion,
+            'upper_lip_distance': upper_lip_distance,
+            'lower_lip_distance': lower_lip_distance,
+            'lips_ratio': lips_ratio,
+            'head_height': head_height
+        }
+
     def _get_eye_area_points(self, landmarks, eye_side):
         """Get points that define the eye area boundary"""
         dlib_points = np.array([(landmarks.part(i).x, landmarks.part(i).y) 
@@ -582,13 +668,15 @@ class AnthropometricAnalyzer:
             # NEW FEATURES: Calculate additional analysis
             eyebrow_proportions = self._calculate_eyebrow_proportions(extended_points)
             eye_angles = self._calculate_eye_angles(extended_points)
+            eyebrow_eyelid_distances = self._calculate_eyebrow_eyelid_distances(extended_points)
+            mouth_measurements = self._calculate_mouth_measurements(extended_points)
             eye_face_proportions = self._calculate_eye_face_proportions(landmarks, model_predictions)
             inner_outer_proportions = self._calculate_inner_outer_face_proportions(landmarks, model_predictions)
             
             # Create summary
             summary = self._create_analysis_summary(
-                proportions, slopes, model_predictions, eyebrow_proportions, 
-                eye_angles, eye_face_proportions, inner_outer_proportions, calculated_c1
+                proportions, slopes, model_predictions, eyebrow_proportions,
+                eye_angles, eyebrow_eyelid_distances, mouth_measurements, eye_face_proportions, inner_outer_proportions, calculated_c1
             )
             
             return {
@@ -599,6 +687,8 @@ class AnthropometricAnalyzer:
                 "slopes": slopes,
                 "eyebrow_proportions": eyebrow_proportions,
                 "eye_angles": eye_angles,
+                "eyebrow_eyelid_distances": eyebrow_eyelid_distances,
+                "mouth_measurements": mouth_measurements,
                 "eye_face_proportions": eye_face_proportions,
                 "inner_outer_proportions": inner_outer_proportions,
                 "summary": summary,
@@ -610,8 +700,8 @@ class AnthropometricAnalyzer:
             print(f"❌ Analysis error: {e}")
             return None
 
-    def _create_analysis_summary(self, proportions, slopes, model_predictions, 
-                               eyebrow_proportions, eye_angles, eye_face_proportions, 
+    def _create_analysis_summary(self, proportions, slopes, model_predictions,
+                               eyebrow_proportions, eye_angles, eyebrow_eyelid_distances, mouth_measurements, eye_face_proportions,
                                inner_outer_proportions, calculated_c1=None):
         """Create comprehensive analysis summary with labels"""
         summary = {
@@ -625,7 +715,11 @@ class AnthropometricAnalyzer:
                 "left_eye_angle": self._classify_eye_angle(eye_angles['left_eye_angle']),
                 "right_eye_angle": self._classify_eye_angle(eye_angles['right_eye_angle']),
                 "left_eye_face_proportion": f"{eye_face_proportions['left_eye_proportion']:.2f}%",
-                "right_eye_face_proportion": f"{eye_face_proportions['right_eye_proportion']:.2f}%"
+                "right_eye_face_proportion": f"{eye_face_proportions['right_eye_proportion']:.2f}%",
+                "left_eyebrow_eyelid_proportion": f"{eyebrow_eyelid_distances['left_eyebrow_eyelid_proportion']:.4f}",
+                "right_eyebrow_eyelid_proportion": f"{eyebrow_eyelid_distances['right_eyebrow_eyelid_proportion']:.4f}",
+                "left_eyebrow_eyelid_distance": f"{eyebrow_eyelid_distances['left_eyebrow_eyelid_distance']:.1f}px",
+                "right_eyebrow_eyelid_distance": f"{eyebrow_eyelid_distances['right_eyebrow_eyelid_distance']:.1f}px"
             },
             "eyebrow_analysis": {
                 "left_eyebrow_classification": self._classify_eyebrow_length(eyebrow_proportions['left_eyebrow_proportion']),
@@ -634,7 +728,14 @@ class AnthropometricAnalyzer:
                 "right_eyebrow_proportion": eyebrow_proportions['right_eyebrow_proportion']
             },
             "mouth_analysis": {
-                "mouth_to_eye_relation": self._label_proportion(proportions['mouth_to_eye_proportion'], 'relacion boca - pupilas')
+                "mouth_to_eye_relation": self._label_proportion(proportions['mouth_to_eye_proportion'], 'relacion boca - pupilas'),
+                "left_cupid_arch_proportion": f"{mouth_measurements['left_cupid_arch_proportion']:.4f}",
+                "right_cupid_arch_proportion": f"{mouth_measurements['right_cupid_arch_proportion']:.4f}",
+                "left_cupid_arch_distance": f"{mouth_measurements['left_cupid_arch_distance']:.1f}px",
+                "right_cupid_arch_distance": f"{mouth_measurements['right_cupid_arch_distance']:.1f}px",
+                "lips_ratio": f"{mouth_measurements['lips_ratio']:.4f}",
+                "upper_lip_distance": f"{mouth_measurements['upper_lip_distance']:.1f}px",
+                "lower_lip_distance": f"{mouth_measurements['lower_lip_distance']:.1f}px"
             },
             "face_area_analysis": {
                 "inner_outer_percentage": f"{inner_outer_proportions['inner_outer_percentage']:.2f}%",
@@ -783,6 +884,7 @@ class AnthropometricAnalyzer:
         report.append("")
         
         # Eye analysis
+        eyebrow_eyelid_dists = analysis_results.get('eyebrow_eyelid_distances', {})
         report.append("ANÁLISIS OCULAR:")
         report.append(f"• Proporción interna ojos: {proportions.get('eye_distance_proportion', 0):.4f} - {summary.get('eye_analysis', {}).get('internal_proportion', 'N/A')}")
         report.append(f"• Proporción externa ojos: {proportions.get('outter_eye_distance_proportion', 0):.4f}")
@@ -790,6 +892,8 @@ class AnthropometricAnalyzer:
         report.append(f"• Ángulo ojo derecho: {eye_angles.get('right_eye_angle', 0):.2f}° - {summary.get('eye_analysis', {}).get('right_eye_angle', 'N/A')}")
         report.append(f"• Proporción ojo izquierdo/cara: {summary.get('eye_analysis', {}).get('left_eye_face_proportion', 'N/A')}")
         report.append(f"• Proporción ojo derecho/cara: {summary.get('eye_analysis', {}).get('right_eye_face_proportion', 'N/A')}")
+        report.append(f"• Distancia ceja-párpado izquierdo: {summary.get('eye_analysis', {}).get('left_eyebrow_eyelid_distance', 'N/A')} (proporción: {summary.get('eye_analysis', {}).get('left_eyebrow_eyelid_proportion', 'N/A')})")
+        report.append(f"• Distancia ceja-párpado derecho: {summary.get('eye_analysis', {}).get('right_eyebrow_eyelid_distance', 'N/A')} (proporción: {summary.get('eye_analysis', {}).get('right_eyebrow_eyelid_proportion', 'N/A')})")
         report.append("")
         
         # Eyebrow analysis
@@ -799,11 +903,21 @@ class AnthropometricAnalyzer:
         report.append("")
         
         # Face measurements
+        mouth_measurements = analysis_results.get('mouth_measurements', {})
         report.append("MEDIDAS FACIALES:")
         report.append(f"• Ancho facial: {proportions.get('head_width_proportion', 0):.4f}")
         report.append(f"• Longitud boca: {proportions.get('mouth_length_proportion', 0):.4f}")
         report.append(f"• Relación boca-pupila: {proportions.get('mouth_to_eye_proportion', 0):.4f} - {summary.get('mouth_analysis', {}).get('mouth_to_eye_relation', 'N/A')}")
         report.append(f"• Relación mentón-ancho cara: {proportions.get('chin_to_face_width_proportion', 0):.4f}")
+        report.append("")
+
+        # Mouth analysis
+        report.append("ANÁLISIS BUCAL:")
+        report.append(f"• Arco cupido izquierdo (50-61): {summary.get('mouth_analysis', {}).get('left_cupid_arch_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('left_cupid_arch_proportion', 'N/A')})")
+        report.append(f"• Arco cupido derecho (52-63): {summary.get('mouth_analysis', {}).get('right_cupid_arch_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('right_cupid_arch_proportion', 'N/A')})")
+        report.append(f"• Labio superior (51-62): {summary.get('mouth_analysis', {}).get('upper_lip_distance', 'N/A')}")
+        report.append(f"• Labio inferior (66-57): {summary.get('mouth_analysis', {}).get('lower_lip_distance', 'N/A')}")
+        report.append(f"• Proporción labios (superior/inferior): {summary.get('mouth_analysis', {}).get('lips_ratio', 'N/A')}")
         report.append("")
         
         # Area analysis

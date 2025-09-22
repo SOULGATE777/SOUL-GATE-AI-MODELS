@@ -91,7 +91,13 @@ def create_visualization(image, landmarks, model_predictions, proportions, slope
     
     # Draw eye angle indicators
     _draw_eye_angles(img_vis, extended_points)
-    
+
+    # Draw eyebrow-to-eyelid distance measurements
+    _draw_eyebrow_eyelid_distances(img_vis, extended_points)
+
+    # Draw mouth measurements (cupid's bow arches and lips)
+    _draw_mouth_measurements(img_vis, extended_points)
+
     # Add enhanced text overlay with new features
     _add_enhanced_text_overlay(img_vis, proportions, model_predictions)
     
@@ -119,6 +125,8 @@ def create_detailed_report_image(image, analysis_results):
     model_preds = analysis_results.get('model_predictions', {})
     eyebrow_props = analysis_results.get('eyebrow_proportions', {})
     eye_angles = analysis_results.get('eye_angles', {})
+    eyebrow_eyelid_dists = analysis_results.get('eyebrow_eyelid_distances', {})
+    mouth_measurements = analysis_results.get('mouth_measurements', {})
     eye_face_props = analysis_results.get('eye_face_proportions', {})
     inner_outer_props = analysis_results.get('inner_outer_proportions', {})
     
@@ -140,6 +148,8 @@ def create_detailed_report_image(image, analysis_results):
         f"• Distancia externa: {proportions.get('outter_eye_distance_proportion', 0):.4f}",
         f"• Ángulo ojo izq: {eye_angles.get('left_eye_angle', 0):.2f}°",
         f"• Ángulo ojo der: {eye_angles.get('right_eye_angle', 0):.2f}°",
+        f"• Dist ceja-párpado izq: {eyebrow_eyelid_dists.get('left_eyebrow_eyelid_proportion', 0):.4f}",
+        f"• Dist ceja-párpado der: {eyebrow_eyelid_dists.get('right_eyebrow_eyelid_proportion', 0):.4f}",
         f"• Área ojo izq/cara: {eye_face_props.get('left_eye_proportion', 0):.3f}%",
         f"• Área ojo der/cara: {eye_face_props.get('right_eye_proportion', 0):.3f}%",
         "",
@@ -148,6 +158,13 @@ def create_detailed_report_image(image, analysis_results):
         f"• Proporción ceja der: {eyebrow_props.get('right_eyebrow_proportion', 0):.3f}",
         f"• Longitud ceja izq: {eyebrow_props.get('left_eyebrow_length', 0):.1f}px",
         f"• Longitud ceja der: {eyebrow_props.get('right_eyebrow_length', 0):.1f}px",
+        "",
+        "ANÁLISIS BUCAL:",
+        f"• Arco cupido izq: {mouth_measurements.get('left_cupid_arch_proportion', 0):.4f}",
+        f"• Arco cupido der: {mouth_measurements.get('right_cupid_arch_proportion', 0):.4f}",
+        f"• Proporción labios: {mouth_measurements.get('lips_ratio', 0):.4f}",
+        f"• Labio superior: {mouth_measurements.get('upper_lip_distance', 0):.1f}px",
+        f"• Labio inferior: {mouth_measurements.get('lower_lip_distance', 0):.1f}px",
         "",
         "MEDIDAS FACIALES:",
         f"• Ancho facial: {proportions.get('head_width_proportion', 0):.4f}",
@@ -426,10 +443,120 @@ def _draw_eye_angles(img, extended_points):
     right_outer = extended_points[36]
     left_inner = extended_points[42]
     left_outer = extended_points[45]
-    
+
     # Draw subtle angle lines
     cv2.line(img, tuple(map(int, right_outer)), tuple(map(int, right_inner)), (200, 200, 0), 1)
     cv2.line(img, tuple(map(int, left_outer)), tuple(map(int, left_inner)), (200, 200, 0), 1)
+
+def _draw_eyebrow_eyelid_distances(img, extended_points):
+    """Draw eyebrow-to-eyelid distance measurement lines"""
+    # Left eye: point 19 (eyebrow) to point 37 (eyelid)
+    left_eyebrow_point = extended_points[19]
+    left_eyelid_point = extended_points[37]
+
+    # Right eye: point 24 (eyebrow) to point 44 (eyelid)
+    right_eyebrow_point = extended_points[24]
+    right_eyelid_point = extended_points[44]
+
+    # Draw measurement lines with distinct colors
+    line_color_left = (255, 128, 0)   # Orange for left eye
+    line_color_right = (0, 128, 255)  # Blue for right eye
+    line_thickness = 2
+
+    # Draw left eyebrow-to-eyelid line
+    cv2.line(img, tuple(map(int, left_eyebrow_point)), tuple(map(int, left_eyelid_point)),
+             line_color_left, line_thickness)
+
+    # Draw right eyebrow-to-eyelid line
+    cv2.line(img, tuple(map(int, right_eyebrow_point)), tuple(map(int, right_eyelid_point)),
+             line_color_right, line_thickness)
+
+    # Highlight the measurement points with circles
+    cv2.circle(img, tuple(map(int, left_eyebrow_point)), 3, line_color_left, -1)
+    cv2.circle(img, tuple(map(int, left_eyelid_point)), 3, line_color_left, -1)
+    cv2.circle(img, tuple(map(int, right_eyebrow_point)), 3, line_color_right, -1)
+    cv2.circle(img, tuple(map(int, right_eyelid_point)), 3, line_color_right, -1)
+
+    # Add point labels
+    cv2.putText(img, "19", tuple(map(int, left_eyebrow_point + np.array([5, -5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_left, 1)
+    cv2.putText(img, "37", tuple(map(int, left_eyelid_point + np.array([5, 5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_left, 1)
+    cv2.putText(img, "24", tuple(map(int, right_eyebrow_point + np.array([-15, -5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_right, 1)
+    cv2.putText(img, "44", tuple(map(int, right_eyelid_point + np.array([-15, 5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_right, 1)
+
+def _draw_mouth_measurements(img, extended_points):
+    """Draw mouth measurement lines for cupid's bow arches and lips ratio"""
+    # Cupid's bow arch measurements
+    # Left cupid's arch: point 50 to point 61
+    left_cupid_point_50 = extended_points[50]
+    left_cupid_point_61 = extended_points[61]
+
+    # Right cupid's arch: point 52 to point 63
+    right_cupid_point_52 = extended_points[52]
+    right_cupid_point_63 = extended_points[63]
+
+    # Lips ratio measurements
+    # Upper lip: point 51 to point 62
+    upper_lip_point_51 = extended_points[51]
+    upper_lip_point_62 = extended_points[62]
+
+    # Lower lip: point 66 to point 57
+    lower_lip_point_66 = extended_points[66]
+    lower_lip_point_57 = extended_points[57]
+
+    # Define colors for different measurements
+    cupid_left_color = (255, 0, 128)    # Pink for left cupid's arch
+    cupid_right_color = (128, 0, 255)   # Purple for right cupid's arch
+    upper_lip_color = (0, 255, 128)     # Green for upper lip
+    lower_lip_color = (255, 128, 0)     # Orange for lower lip
+    line_thickness = 2
+
+    # Draw cupid's bow arch lines
+    cv2.line(img, tuple(map(int, left_cupid_point_50)), tuple(map(int, left_cupid_point_61)),
+             cupid_left_color, line_thickness)
+    cv2.line(img, tuple(map(int, right_cupid_point_52)), tuple(map(int, right_cupid_point_63)),
+             cupid_right_color, line_thickness)
+
+    # Draw lips ratio lines
+    cv2.line(img, tuple(map(int, upper_lip_point_51)), tuple(map(int, upper_lip_point_62)),
+             upper_lip_color, line_thickness)
+    cv2.line(img, tuple(map(int, lower_lip_point_66)), tuple(map(int, lower_lip_point_57)),
+             lower_lip_color, line_thickness)
+
+    # Highlight measurement points with circles
+    # Cupid's bow points
+    cv2.circle(img, tuple(map(int, left_cupid_point_50)), 2, cupid_left_color, -1)
+    cv2.circle(img, tuple(map(int, left_cupid_point_61)), 2, cupid_left_color, -1)
+    cv2.circle(img, tuple(map(int, right_cupid_point_52)), 2, cupid_right_color, -1)
+    cv2.circle(img, tuple(map(int, right_cupid_point_63)), 2, cupid_right_color, -1)
+
+    # Lips ratio points
+    cv2.circle(img, tuple(map(int, upper_lip_point_51)), 2, upper_lip_color, -1)
+    cv2.circle(img, tuple(map(int, upper_lip_point_62)), 2, upper_lip_color, -1)
+    cv2.circle(img, tuple(map(int, lower_lip_point_66)), 2, lower_lip_color, -1)
+    cv2.circle(img, tuple(map(int, lower_lip_point_57)), 2, lower_lip_color, -1)
+
+    # Add point labels
+    cv2.putText(img, "50", tuple(map(int, left_cupid_point_50 + np.array([-8, -8]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_left_color, 1)
+    cv2.putText(img, "61", tuple(map(int, left_cupid_point_61 + np.array([3, -5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_left_color, 1)
+    cv2.putText(img, "52", tuple(map(int, right_cupid_point_52 + np.array([3, -8]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_right_color, 1)
+    cv2.putText(img, "63", tuple(map(int, right_cupid_point_63 + np.array([-15, -5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_right_color, 1)
+
+    cv2.putText(img, "51", tuple(map(int, upper_lip_point_51 + np.array([-5, 8]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, upper_lip_color, 1)
+    cv2.putText(img, "62", tuple(map(int, upper_lip_point_62 + np.array([3, 8]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, upper_lip_color, 1)
+    cv2.putText(img, "66", tuple(map(int, lower_lip_point_66 + np.array([-5, 12]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, lower_lip_color, 1)
+    cv2.putText(img, "57", tuple(map(int, lower_lip_point_57 + np.array([3, 12]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, lower_lip_color, 1)
 
 def _add_enhanced_text_overlay(img, proportions, model_predictions):
     """Add enhanced text overlay with new features"""

@@ -107,8 +107,8 @@ async def analyze_anthropometric(
             
             # Create visualization
             vis_image = create_visualization(
-                image_array, 
-                results['landmarks'], 
+                image_array,
+                results['landmarks'],
                 results['model_predictions'],
                 results['proportions'],
                 results['slopes'],
@@ -155,7 +155,16 @@ async def analyze_anthropometric(
                     "left_eye_angle": analyzer._classify_eye_angle(results['eye_angles']['left_eye_angle']),
                     "right_eye_angle": analyzer._classify_eye_angle(results['eye_angles']['right_eye_angle'])
                 },
+                "eyebrow_eyelid_distances": results['eyebrow_eyelid_distances'],
                 "face_proportions": results['eye_face_proportions']
+            },
+            "mouth_analysis": {
+                "cupid_arches": {
+                    "left_cupid_arch": results['mouth_measurements']['left_cupid_arch_proportion'],
+                    "right_cupid_arch": results['mouth_measurements']['right_cupid_arch_proportion']
+                },
+                "lips_ratio": results['mouth_measurements']['lips_ratio'],
+                "measurements": results['mouth_measurements']
             },
             "face_area_analysis": results['inner_outer_proportions'],
             "analysis_summary": results['summary'],
@@ -229,6 +238,7 @@ async def analyze_eyes(
                 "left_eye": analyzer._classify_eye_angle(results['eye_angles']['left_eye_angle']),
                 "right_eye": analyzer._classify_eye_angle(results['eye_angles']['right_eye_angle'])
             },
+            "eyebrow_eyelid_distances": results['eyebrow_eyelid_distances'],
             "eye_face_proportions": results['eye_face_proportions'],
             "internal_eye_proportion": results['proportions']['eye_distance_proportion'],
             "summary": results['summary']['eye_analysis']
@@ -272,6 +282,45 @@ async def analyze_face_areas(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Face area analysis failed: {str(e)}")
+
+@app.post("/analyze-mouth")
+async def analyze_mouth(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5)
+):
+    """
+    Analyze mouth measurements including cupid's bow arches and lips ratio
+    """
+    try:
+        if analyzer is None:
+            raise HTTPException(status_code=500, detail="Analyzer not initialized")
+
+        image_array = await process_uploaded_image(file)
+        results = analyzer.analyze_face(image_array, confidence_threshold)
+
+        if not results:
+            return JSONResponse(content={"error": "No face detected"})
+
+        mouth_analysis = {
+            "cupid_arches": {
+                "left_cupid_arch_proportion": results['mouth_measurements']['left_cupid_arch_proportion'],
+                "right_cupid_arch_proportion": results['mouth_measurements']['right_cupid_arch_proportion'],
+                "left_cupid_arch_distance": results['mouth_measurements']['left_cupid_arch_distance'],
+                "right_cupid_arch_distance": results['mouth_measurements']['right_cupid_arch_distance']
+            },
+            "lips_ratio": {
+                "ratio": results['mouth_measurements']['lips_ratio'],
+                "upper_lip_distance": results['mouth_measurements']['upper_lip_distance'],
+                "lower_lip_distance": results['mouth_measurements']['lower_lip_distance']
+            },
+            "mouth_to_eye_proportion": results['proportions']['mouth_to_eye_proportion'],
+            "summary": results['summary']['mouth_analysis']
+        }
+
+        return JSONResponse(content=mouth_analysis)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Mouth analysis failed: {str(e)}")
 
 @app.post("/get-detailed-report")
 async def get_detailed_report(
@@ -323,7 +372,11 @@ async def get_detailed_report(
                         "classification": results['summary']['facial_thirds']['tercer_tercio']
                     }
                 },
-                "eye_analysis": results['eye_angles'],
+                "eye_analysis": {
+                    "eye_angles": results['eye_angles'],
+                    "eyebrow_eyelid_distances": results['eyebrow_eyelid_distances']
+                },
+                "mouth_analysis": results['mouth_measurements'],
                 "eyebrow_analysis": results['eyebrow_proportions'],
                 "face_proportions": results['proportions'],
                 "area_analysis": results['inner_outer_proportions'],
@@ -595,7 +648,8 @@ async def get_api_info():
         "endpoints": {
             "/analyze-anthropometric": "Complete facial analysis with all features",
             "/analyze-eyebrows": "Focused eyebrow analysis",
-            "/analyze-eyes": "Eye angle and proportion analysis", 
+            "/analyze-eyes": "Eye angle and proportion analysis",
+            "/analyze-mouth": "Mouth measurements including cupid's bow arches and lips ratio",
             "/analyze-face-areas": "Face area proportion analysis",
             "/get-detailed-report": "Generate comprehensive report",
             "/detect-landmarks": "Detect facial landmarks only",
@@ -610,6 +664,8 @@ async def get_api_info():
         "new_features": {
             "eyebrow_length_analysis": "Classifies eyebrow length relative to eye length",
             "eye_angle_analysis": "Measures and classifies eye angles",
+            "eyebrow_eyelid_distances": "Measures proportional distances from eyebrow to eyelid (points 19-37, 24-44)",
+            "mouth_measurements": "Analyzes cupid's bow arches (points 50-61, 52-63) and lips ratio (51-62/66-57)",
             "face_area_proportions": "Analyzes inner/outer face area ratios",
             "comprehensive_reporting": "Detailed text and JSON reports",
             "enhanced_model_integration": "Uses all 13 custom model points",
