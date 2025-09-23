@@ -674,56 +674,138 @@ class EspejoAnalyzer:
         return top_pred, applied_rules
     
     def _apply_rostro_menton_decision_tree(self, predictions, probabilities, face_proportion):
-        """Apply decision tree rules for rostro_menton region"""
+        """Apply decision tree rules for rostro_menton region with updated calibration"""
         applied_rules = []
         pred_dict = {pred: prob for pred, prob in zip(predictions, probabilities)}
-        
-        # Apply exclusion rules
-        excluded_preds = []
-        
-        exclusion_rules = {
-            'venus_corazon': 0.15,
-            'pluton_hexagonal': 0.17,
+
+        # Check for solo diagnosis rules first (high confidence = exclusive diagnosis)
+        solo_diagnosis_rules = {
+            'saturno_trapezoide_base_angosta': 0.60,
+            'venus_corazon': 0.65,
             'luna_jupiter_combined': 0.10,
-            'saturno_trapezoide_base_angosta': 0.17,
-            'mercurio_triangular': 0.19,
-            'sol_neptuno_combined': 0.11,
-            'marte_tierra_rectangulo': 0.15
+            'mercurio_triangular': 0.35,
+            'pluton_hexagonal': 0.45,
+            'marte_tierra_rectangulo': 0.88,
+            'sol_neptuno_combined': 0.10
         }
-        
+
+        for pred, threshold in solo_diagnosis_rules.items():
+            if pred in pred_dict and pred_dict[pred] >= threshold:
+                applied_rules.append(f"Solo diagnosis: {pred} (confidence {pred_dict[pred]:.1%} ≥ {threshold:.1%})")
+
+                # Apply proportion-based splitting for solo diagnosis
+                final_diagnosis = self._apply_proportion_based_splitting(pred, face_proportion, applied_rules)
+                return final_diagnosis, applied_rules
+
+        # Apply exclusion rules (updated thresholds)
+        excluded_preds = []
+
+        exclusion_rules = {
+            'venus_corazon': 0.35,
+            'pluton_hexagonal': 0.15,
+            'luna_jupiter_combined': 0.03,
+            'saturno_trapezoide_base_angosta': 0.23,
+            'mercurio_triangular': 0.17,
+            'sol_neptuno_combined': 0.04,
+            'marte_tierra_rectangulo': 0.30
+        }
+
         for pred, threshold in exclusion_rules.items():
             if pred in pred_dict and pred_dict[pred] < threshold:
                 excluded_preds.append(pred)
                 applied_rules.append(f"Excluded {pred} (confidence {pred_dict[pred]:.1%} < {threshold:.1%})")
-        
-        # Apply complex logic rules (pluton-venus logic removed as class no longer exists)
-        # Note: pluton-venus class was removed from new model, so related logic is simplified
-        
+
         # Get remaining predictions after exclusions
         remaining_preds = {pred: prob for pred, prob in pred_dict.items() if pred not in excluded_preds}
-        
+
         if not remaining_preds:
             applied_rules.append("All predictions excluded, returning highest confidence")
-            return predictions[0], applied_rules
-        
-        # Apply anthropometric rules
-        if 'sol_neptuno_combined' in remaining_preds:
-            if face_proportion >= 1.17:
-                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
-                return 'neptuno', applied_rules
-            elif face_proportion < 1.0:
-                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} < 1.0 → jupiter")
-                return 'jupiter', applied_rules
-            else:
-                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} < 1.17 → sol")
-                return 'sol', applied_rules
-        
-        # Find highest confidence remaining prediction
+            final_diagnosis = self._apply_proportion_based_splitting(predictions[0], face_proportion, applied_rules)
+            return final_diagnosis, applied_rules
+
+        # Apply inclusive criteria - if multiple diagnoses meet thresholds, use highest confidence
+        # But first check for proportion-based overrides
         top_remaining = max(remaining_preds.items(), key=lambda x: x[1])
         top_pred, top_prob = top_remaining
-        
-        applied_rules.append(f"Returning highest confidence remaining prediction: {top_pred}")
-        return top_pred, applied_rules
+
+        # Apply proportion-based splitting
+        final_diagnosis = self._apply_proportion_based_splitting(top_pred, face_proportion, applied_rules)
+
+        applied_rules.append(f"Final diagnosis after decision tree: {final_diagnosis}")
+        return final_diagnosis, applied_rules
+
+    def _apply_proportion_based_splitting(self, prediction, face_proportion, applied_rules):
+        """Apply proportion-based diagnosis splitting based on face height/width ratio"""
+        if face_proportion is None:
+            applied_rules.append(f"No proportion available, keeping original diagnosis: {prediction}")
+            return prediction
+
+        # Sol_neptuno_combined proportion rules
+        if prediction == 'sol_neptuno_combined':
+            if face_proportion >= 1.17:
+                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                return 'neptuno'
+            elif face_proportion < 1.0:
+                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} < 1.0 → jupiter")
+                return 'jupiter'
+            else:
+                applied_rules.append(f"sol_neptuno_combined + proportion {face_proportion:.3f} < 1.17 → sol")
+                return 'sol'
+
+        # Mercurio_triangular proportion rules
+        elif prediction == 'mercurio_triangular':
+            if face_proportion >= 1.17:
+                applied_rules.append(f"mercurio_triangular + proportion {face_proportion:.3f} ≥ 1.17 → mercurio_largo")
+                return 'mercurio_largo'
+            else:
+                applied_rules.append(f"mercurio_triangular + proportion {face_proportion:.3f} < 1.17 → mercurio")
+                return 'mercurio'
+
+        # Luna_jupiter_combined proportion rules
+        elif prediction == 'luna_jupiter_combined':
+            if face_proportion >= 1.17:
+                applied_rules.append(f"luna_jupiter_combined + proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
+                return 'neptuno'
+            elif face_proportion < 0.99:
+                applied_rules.append(f"luna_jupiter_combined + proportion {face_proportion:.3f} < 0.99 → luna")
+                return 'luna'
+            else:
+                applied_rules.append(f"luna_jupiter_combined + proportion {face_proportion:.3f} between 0.99-1.17 → jupiter")
+                return 'jupiter'
+
+        # Marte_tierra_rectangulo proportion rules
+        elif prediction == 'marte_tierra_rectangulo':
+            if face_proportion < 0.99:
+                applied_rules.append(f"marte_tierra_rectangulo + proportion {face_proportion:.3f} < 0.99 → tierra")
+                return 'tierra'
+            else:
+                applied_rules.append(f"marte_tierra_rectangulo + proportion {face_proportion:.3f} ≥ 0.99 → marte")
+                return 'marte'
+
+        # Saturno_trapezoide_base_angosta proportion rules
+        elif prediction == 'saturno_trapezoide_base_angosta':
+            if face_proportion < 0.99:
+                applied_rules.append(f"saturno_trapezoide_base_angosta + proportion {face_proportion:.3f} < 0.99 → saturno_tierra")
+                return 'saturno_tierra'
+            elif face_proportion > 1.17:
+                applied_rules.append(f"saturno_trapezoide_base_angosta + proportion {face_proportion:.3f} > 1.17 → urano")
+                return 'urano'
+            else:
+                applied_rules.append(f"saturno_trapezoide_base_angosta + proportion {face_proportion:.3f} between 0.99-1.17 → saturno_trapezoide_base_angosta")
+                return 'saturno_trapezoide_base_angosta'
+
+        # Venus_corazon proportion rules
+        elif prediction == 'venus_corazon':
+            if face_proportion < 0.99:
+                applied_rules.append(f"venus_corazon + proportion {face_proportion:.3f} < 0.99 → luna")
+                return 'luna'
+            else:
+                applied_rules.append(f"venus_corazon + proportion {face_proportion:.3f} ≥ 0.99 → venus_corazon")
+                return 'venus_corazon'
+
+        # Default case - no proportion rule applies
+        applied_rules.append(f"No proportion rule for {prediction}, keeping original diagnosis")
+        return prediction
     
     def _apply_hybrid_class_splitting(self, final_diagnosis, face_proportion, forehead_proportion, region_type):
         """Apply hybrid class splitting"""
@@ -747,38 +829,15 @@ class EspejoAnalyzer:
             return final_diagnosis, applied_rules
         
         elif region_type == 'rostro_menton':
-            # Check for luna_jupiter_combined specifically
-            if final_diagnosis.lower() == 'luna_jupiter_combined':
-                if face_proportion is not None:
-                    if face_proportion >= 1.17:
-                        applied_rules.append(f"luna_jupiter_combined + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
-                        return 'neptuno', applied_rules
-                    elif face_proportion < 0.99:
-                        applied_rules.append(f"luna_jupiter_combined + face proportion {face_proportion:.3f} < 0.99 → luna")
-                        return 'luna', applied_rules
-                    else:
-                        applied_rules.append(f"luna_jupiter_combined + face proportion {face_proportion:.3f} between 0.99-1.17 → jupiter")
-                        return 'jupiter', applied_rules
-                else:
-                    applied_rules.append("luna_jupiter_combined detected but face proportion N/A → no splitting")
-                    return final_diagnosis, applied_rules
-            
-            # Check for sol_neptuno_combined specifically
-            if final_diagnosis.lower() == 'sol_neptuno_combined':
-                if face_proportion is not None:
-                    if face_proportion >= 1.17:
-                        applied_rules.append(f"sol_neptuno_combined + face proportion {face_proportion:.3f} ≥ 1.17 → neptuno")
-                        return 'neptuno', applied_rules
-                    elif face_proportion < 1.0:
-                        applied_rules.append(f"sol_neptuno_combined + face proportion {face_proportion:.3f} < 1.0 → jupiter")
-                        return 'jupiter', applied_rules
-                    else:
-                        applied_rules.append(f"sol_neptuno_combined + face proportion {face_proportion:.3f} between 1.0-1.17 → sol")
-                        return 'sol', applied_rules
-                else:
-                    applied_rules.append("sol_neptuno_combined detected but face proportion N/A → no splitting")
-                    return final_diagnosis, applied_rules
-            
+            # Use the new proportion-based splitting function for all rostro_menton diagnoses
+            # This handles all the complex proportion rules including the new calibrations
+            split_diagnosis = self._apply_proportion_based_splitting(final_diagnosis, face_proportion, applied_rules)
+
+            # If the diagnosis changed, it means splitting was applied
+            if split_diagnosis != final_diagnosis:
+                applied_rules.append(f"Hybrid splitting applied: {final_diagnosis} → {split_diagnosis}")
+                return split_diagnosis, applied_rules
+
             applied_rules.append("No hybrid splitting needed for rostro_menton")
             return final_diagnosis, applied_rules
         

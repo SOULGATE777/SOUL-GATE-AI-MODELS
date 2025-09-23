@@ -132,15 +132,66 @@ curl -X POST "http://localhost:8008/get-diagnosis" \
 
 ## Decision Tree Rules
 
+The decision tree applies two-stage classification: confidence-based filtering followed by proportion-based diagnosis refinement.
+
 ### FRENTE Region Rules
 - **Exclusion Rules**: confidence-based filtering
 - **Proportion Rules**: neptuno exclusion based on face proportion
 - **Hybrid Splitting**: solar/lunar split using forehead proportion (threshold: 0.35)
 
-### rostro_menton Region Rules
-- **Exclusion Rules**: confidence thresholds per class
-- **Complex Logic**: multi-class conflict resolution
-- **Anthropometric Rules**: proportion-based diagnosis (face proportion thresholds: 0.99, 1.17)
+### rostro_menton Region Rules (Updated Calibration)
+
+#### Solo Diagnosis Rules (High Confidence = Exclusive Diagnosis)
+- `saturno_trapezoide_base_angosta` ≥ 60% → solo diagnosis
+- `venus_corazon` ≥ 65% → solo diagnosis
+- `luna_jupiter_combined` ≥ 10% → solo diagnosis
+- `mercurio_triangular` ≥ 35% → solo diagnosis
+- `pluton_hexagonal` ≥ 45% → solo diagnosis
+- `marte_tierra_rectangulo` ≥ 88% → solo diagnosis
+- `sol_neptuno_combined` ≥ 10% → solo diagnosis
+
+#### Exclusion Rules (Updated Thresholds)
+- `venus_corazon` < 35% → exclude
+- `pluton_hexagonal` < 15% → exclude
+- `luna_jupiter_combined` < 3% → exclude
+- `saturno_trapezoide_base_angosta` < 23% → exclude
+- `mercurio_triangular` < 17% → exclude
+- `sol_neptuno_combined` < 4% → exclude
+- `marte_tierra_rectangulo` < 30% → exclude
+
+#### Proportion-Based Diagnosis (Face Height/Width Ratio)
+- **sol_neptuno_combined**:
+  - Ratio ≥ 1.17 → neptuno
+  - Ratio < 1.0 → jupiter
+  - Ratio < 1.17 → sol
+
+- **mercurio_triangular**:
+  - Ratio ≥ 1.17 → mercurio_largo
+  - Ratio < 1.17 → mercurio
+
+- **luna_jupiter_combined**:
+  - Ratio ≥ 1.17 → neptuno
+  - Ratio < 0.99 → luna
+  - Ratio 0.99-1.17 → jupiter
+
+- **marte_tierra_rectangulo**:
+  - Ratio < 0.99 → tierra
+  - Ratio ≥ 0.99 → marte
+
+- **saturno_trapezoide_base_angosta**:
+  - Ratio < 0.99 → saturno_tierra
+  - Ratio > 1.17 → urano
+  - Ratio 0.99-1.17 → saturno_trapezoide_base_angosta
+
+- **venus_corazon**:
+  - Ratio < 0.99 → luna
+  - Ratio ≥ 0.99 → venus_corazon
+
+#### Processing Order
+1. Check solo diagnosis rules first (highest priority)
+2. Apply exclusion rules to filter low-confidence predictions
+3. Apply proportion-based splitting to remaining predictions
+4. Use inclusive criteria (multiple diagnoses allowed if thresholds met)
 
 ## Classification Classes
 
