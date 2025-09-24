@@ -276,7 +276,7 @@ class AnthropometricAnalyzer:
             "distance_68_34_proportion": distance_68_34 / head_height,
             "distance_34_9_proportion": distance_34_9 / head_height,  
             "head_width_proportion": head_width / head_height,
-            "mouth_length_proportion": mouth_length / head_height,
+            "mouth_length_proportion": mouth_length / head_width,
             "1_right_eyebrow": first_third_r_eyebrow / head_height,
             "2_right_eyebrow": second_third_r_eyebrow / head_height,
             "3_right_eyebrow": third_third_r_eyebrow / head_height,
