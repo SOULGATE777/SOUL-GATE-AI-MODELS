@@ -55,21 +55,29 @@ def create_body_analysis_visualization(
         # Draw anatomical parts bounding boxes if available
         if anatomical_parts and 'part_predictions' in anatomical_parts:
             part_predictions = anatomical_parts['part_predictions']
-            colors = ['red', 'blue', 'green', 'orange', 'purple']
-            
+            colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta']
+
             for i, (part_name, part_data) in enumerate(part_predictions.items()):
                 if 'bbox' in part_data:
                     x1, y1, x2, y2 = part_data['bbox']
                     color = colors[i % len(colors)]
-                    
+
+                    # Make leg boxes more prominent to show improvement
+                    linewidth = 3 if 'leg' in part_name else 2
+                    alpha = 0.9 if 'leg' in part_name else 0.8
+
                     # Draw rectangle
-                    rect = Rectangle((x1, y1), x2-x1, y2-y1, 
-                                   linewidth=2, edgecolor=color, facecolor='none', alpha=0.8)
+                    rect = Rectangle((x1, y1), x2-x1, y2-y1,
+                                   linewidth=linewidth, edgecolor=color, facecolor='none', alpha=alpha)
                     ax1.add_patch(rect)
-                    
-                    # Add label
-                    ax1.text(x1, y1-5, f"{part_name}", color=color, fontsize=8, 
-                           fontweight='bold', bbox=dict(boxstyle="round,pad=0.2", 
+
+                    # Add label with improvement indication
+                    label_text = f"{part_name}"
+                    if 'leg' in part_name and part_data.get('applied_intelligent_sizing', False):
+                        label_text += " [IMPROVED]"  # Indicate intelligent sizing applied
+
+                    ax1.text(x1, y1-5, label_text, color=color, fontsize=8,
+                           fontweight='bold', bbox=dict(boxstyle="round,pad=0.2",
                            facecolor='white', alpha=0.8))
         elif bbox is not None:
             # Fallback to original bbox if no anatomical parts
@@ -112,7 +120,7 @@ def create_body_analysis_visualization(
         
         # 6. Anatomical Parts Summary (bottom, spanning all columns)
         ax6 = fig.add_subplot(gs[2, :])
-        _plot_anatomical_parts_summary(ax6, anatomical_parts)
+        _plot_anatomical_parts_summary(ax6, anatomical_parts, metrics)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight', 
@@ -214,10 +222,10 @@ def _plot_final_prediction(ax, body_analysis: Dict[str, Any], anatomical_parts: 
     
     # Create summary text
     text_content = [
-        "🎯 FINAL PREDICTION",
+        "FINAL PREDICTION",
         f"Body Type: {predicted_class}",
         f"Confidence: {confidence:.3f}",
-        f"Parts Used: {parts_count}/5",
+        f"Parts Used: {parts_count}/7",
         f"Method: {voting_strategy}"
     ]
     
@@ -229,8 +237,8 @@ def _plot_final_prediction(ax, body_analysis: Dict[str, Any], anatomical_parts: 
     
     ax.set_title('Weighted Average Result', fontsize=12, fontweight='bold')
 
-def _plot_anatomical_parts_summary(ax, anatomical_parts: Dict[str, Any]):
-    """Plot anatomical parts analysis summary"""
+def _plot_anatomical_parts_summary(ax, anatomical_parts: Dict[str, Any], analysis_metrics: Dict[str, Any] = None):
+    """Plot anatomical parts analysis summary with improvements"""
     ax.axis('off')
     
     # Create text summary
@@ -238,10 +246,10 @@ def _plot_anatomical_parts_summary(ax, anatomical_parts: Dict[str, Any]):
     
     # Add anatomical parts summary if available
     if anatomical_parts and anatomical_parts.get('parts_detected'):
-        text_content.append("🦴 ANATOMICAL PARTS ANALYSIS")
+        text_content.append("ANATOMICAL PARTS ANALYSIS")
         parts_detected = anatomical_parts.get('parts_detected', [])
         total_parts = anatomical_parts.get('total_parts', 0)
-        text_content.append(f"• Parts Detected: {total_parts}/5 ({', '.join(parts_detected)})")
+        text_content.append(f"• Parts Detected: {total_parts}/7 ({', '.join(parts_detected)})")
         
         voting_strategy = anatomical_parts.get('voting_strategy', 'unknown')
         text_content.append(f"• Voting Strategy: {voting_strategy}")
@@ -253,7 +261,12 @@ def _plot_anatomical_parts_summary(ax, anatomical_parts: Dict[str, Any]):
             for part_name, pred in part_predictions.items():
                 body_type = pred.get('predicted_body_type', 'Unknown')
                 confidence = pred.get('confidence', 0.0)
-                text_content.append(f"  - {part_name}: {body_type} ({confidence:.2f})")
+                intelligent_sizing = pred.get('applied_intelligent_sizing', False)
+
+                part_text = f"  - {part_name}: {body_type} ({confidence:.2f})"
+                if intelligent_sizing:
+                    part_text += " [IMPROVED]"
+                text_content.append(part_text)
     
     # Display text
     if text_content:
@@ -266,7 +279,12 @@ def _plot_anatomical_parts_summary(ax, anatomical_parts: Dict[str, Any]):
                ha='center', va='center', transform=ax.transAxes,
                fontsize=12, style='italic')
     
-    ax.set_title('Anatomical Parts Analysis', fontsize=14, fontweight='bold')
+    # Add improvement indicators to title
+    title_text = 'Anatomical Parts Analysis'
+    if analysis_metrics and analysis_metrics.get('intelligent_leg_cropping_applied', False):
+        title_text += ' (IMPROVED)'
+
+    ax.set_title(title_text, fontsize=14, fontweight='bold')
 
 def create_simple_body_visualization(
     image: np.ndarray,

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms, models
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet18, ResNet18_Weights, resnet34, ResNet34_Weights
 import cv2
 import numpy as np
 import os
@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from ultralytics import YOLO
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 logger = logging.getLogger(__name__)
 
@@ -90,18 +90,48 @@ class LightweightHierarchicalModel(nn.Module):
         }
 
 
+class ComprehensiveAnatomicalClassifierResNet34(nn.Module):
+    """CNN classifier using ResNet-34 backbone for comprehensive anatomical data."""
+
+    def __init__(self, num_classes: int, pretrained: bool = True):
+        super(ComprehensiveAnatomicalClassifierResNet34, self).__init__()
+
+        # Load pre-trained ResNet-34
+        if pretrained:
+            self.backbone = resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
+        else:
+            self.backbone = resnet34(weights=None)
+
+        # Replace classifier head with enhanced regularization for ensemble readiness
+        in_features = self.backbone.fc.in_features  # 512 for ResNet-34
+        self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.7),  # Strong regularization
+            nn.Linear(in_features, 512),
+            nn.ReLU(),
+            nn.BatchNorm1d(512),  # Added batch normalization
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.4),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x):
+        return self.backbone(x)
+
 class AnatomicalPartClassifier(nn.Module):
-    """CNN classifier for individual anatomical parts using ResNet-18 backbone."""
-    
+    """CNN classifier for individual anatomical parts using ResNet-18 backbone - LEGACY."""
+
     def __init__(self, num_classes: int, pretrained: bool = True):
         super(AnatomicalPartClassifier, self).__init__()
-        
+
         # Load pre-trained ResNet-18
         if pretrained:
             self.backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         else:
             self.backbone = resnet18(weights=None)
-        
+
         # Replace classifier head
         in_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Sequential(
@@ -111,41 +141,57 @@ class AnatomicalPartClassifier(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(256, num_classes)
         )
-        
+
     def forward(self, x):
         return self.backbone(x)
 
 class BodyAnalysisPipeline:
-    """Production pipeline for anatomical parts-based body morphological analysis - NO CABEZA VERSION"""
-    
-    def __init__(self, model_path: str = "/app/models/best_body_classifier_no_cabeza.pth"):
+    """Production pipeline for anatomical parts-based body morphological analysis - IMPROVED VERSION"""
+
+    def __init__(self, model_path: str = "/app/models/best_comprehensive_ensemble_resnet34_fixed.pth"):
         self.model_path = model_path
         self.yolo_model_path = "/app/models/yolov8n-pose.pt"
         self.device = self._get_device()
         self.part_size = (128, 128)
-        
-        # NEW: Body type mapping from your anatomical parts model
+
+        # Updated body type mapping (6 classes)
         self.body_type_mapping = {
-            0: 'Delgado',
-            1: 'Gordo',
-            2: 'Gordograsacuelga', 
-            3: 'Musculoso',
-            4: 'MusculosoGordo',
-            5: 'NormalPocaGrasa'
+            'delgado': 0,
+            'gordo': 1,
+            'gordograsacuelga': 2,
+            'musculoso': 3,
+            'musculosogordo': 4,
+            'normalpocagrasa': 5
         }
-        
+
+        # Reverse mapping for index to body type
+        self.idx_to_body_type = {v: k for k, v in self.body_type_mapping.items()}
+
         # For backward compatibility, map to old format for API
-        self.body_type_classes = list(self.body_type_mapping.values())
-        self.body_type_simple = list(self.body_type_mapping.values())
+        self.body_type_classes = list(self.body_type_mapping.keys())
+        self.body_type_simple = list(self.body_type_mapping.keys())
         
         
-        # NEW: Anatomical parts configuration (NO CABEZA)
+        # Anatomical parts configuration (7 body parts)
         self.ANATOMICAL_PARTS = {
-            'left_arm': {'keypoints': [5, 7, 9], 'names': ['left_shoulder', 'left_elbow', 'left_wrist']},    
+            'torso': {'keypoints': [5, 6, 11, 12], 'names': ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']},
+            'left_arm': {'keypoints': [5, 7, 9], 'names': ['left_shoulder', 'left_elbow', 'left_wrist']},
             'right_arm': {'keypoints': [6, 8, 10], 'names': ['right_shoulder', 'right_elbow', 'right_wrist']},
-            'left_leg': {'keypoints': [11, 13, 15], 'names': ['left_hip', 'left_knee', 'left_ankle']},        
+            'left_leg': {'keypoints': [11, 13, 15], 'names': ['left_hip', 'left_knee', 'left_ankle']},
             'right_leg': {'keypoints': [12, 14, 16], 'names': ['right_hip', 'right_knee', 'right_ankle']},
-            'torso': {'keypoints': [5, 6, 11, 12], 'names': ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']}
+            'torso_upper_legs': {'keypoints': [5, 6, 11, 12, 13, 14], 'names': ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip', 'left_knee', 'right_knee']},
+            'full_body': {'keypoints': [5, 6, 9, 10, 15, 16], 'names': ['left_shoulder', 'right_shoulder', 'left_wrist', 'right_wrist', 'left_ankle', 'right_ankle']}
+        }
+
+        # Weights for ensemble prediction based on body part reliability
+        self.part_weights = {
+            'torso': 1.5,
+            'full_body': 1.4,
+            'torso_upper_legs': 1.3,
+            'left_arm': 1.0,
+            'right_arm': 1.0,
+            'left_leg': 1.2,  # Increased weight since legs now have better crops
+            'right_leg': 1.2,  # Increased weight since legs now have better crops
         }
         
         # Models (will be loaded later)
@@ -178,30 +224,55 @@ class BodyAnalysisPipeline:
         return self.transform
     
     def load_model(self) -> bool:
-        """Load YOLO pose model and anatomical parts classifier"""
+        """Load YOLO pose model and comprehensive anatomical parts classifier"""
         try:
             # Load YOLO pose detection model
             if not os.path.exists(self.yolo_model_path):
-                # Try to download yolov8n-pose if it doesn't exist
                 logger.info("Downloading YOLOv8n-pose model...")
                 self.yolo_model = YOLO('yolov8n-pose.pt')
             else:
                 self.yolo_model = YOLO(self.yolo_model_path)
-            
-            # Load trained anatomical parts classifier
+
+            # Load trained comprehensive anatomical parts classifier
             if not os.path.exists(self.model_path):
-                raise FileNotFoundError(f"Anatomical parts model not found: {self.model_path}")
-            
-            # Create anatomical parts classifier
-            self.model = AnatomicalPartClassifier(
-                num_classes=len(self.body_type_mapping), 
-                pretrained=True
-            )
-            
-            # Load checkpoint
+                raise FileNotFoundError(f"Comprehensive model not found: {self.model_path}")
+
+            # Determine number of classes from model file first
+            logger.info(f"Analyzing model structure...")
             checkpoint = torch.load(self.model_path, map_location=self.device)
-            logger.info(f"Loaded anatomical parts checkpoint from: {self.model_path}")
-            
+
+            # Get number of classes from the final layer
+            if 'backbone.fc.9.weight' in checkpoint:
+                num_classes_from_model = checkpoint['backbone.fc.9.weight'].shape[0]
+                logger.info(f"Model has {num_classes_from_model} output classes")
+            else:
+                num_classes_from_model = len(self.body_type_mapping)
+                logger.info(f"Using mapping size: {num_classes_from_model} classes")
+
+            # Update body_type_mapping to match model classes
+            if num_classes_from_model != len(self.body_type_mapping):
+                logger.info(f"Adjusting body_type_mapping from {len(self.body_type_mapping)} to {num_classes_from_model} classes")
+                if num_classes_from_model < len(self.body_type_mapping):
+                    # Trim mapping
+                    keys_to_keep = list(self.body_type_mapping.keys())[:num_classes_from_model]
+                    self.body_type_mapping = {k: i for i, k in enumerate(keys_to_keep)}
+                else:
+                    # Add placeholder classes
+                    for i in range(len(self.body_type_mapping), num_classes_from_model):
+                        placeholder_name = f"unknown_class_{i}"
+                        self.body_type_mapping[placeholder_name] = i
+                        logger.info(f"Added placeholder: {placeholder_name} -> {i}")
+
+                # Update reverse mapping
+                self.idx_to_body_type = {v: k for k, v in self.body_type_mapping.items()}
+                self.body_type_classes = list(self.body_type_mapping.keys())
+
+            # Create comprehensive anatomical parts classifier
+            self.model = ComprehensiveAnatomicalClassifierResNet34(
+                num_classes=num_classes_from_model,
+                pretrained=False
+            )
+
             # Load weights (handle different checkpoint formats)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -209,21 +280,21 @@ class BodyAnalysisPipeline:
             else:
                 self.model.load_state_dict(checkpoint)
                 best_acc = 'Unknown'
-            
+
             self.model.to(self.device)
             self.model.eval()
-            
-            logger.info(f"✅ Anatomical Parts Model loaded successfully!")
-            logger.info(f"Model type: AnatomicalPartClassifier (NO CABEZA)")
+
+            logger.info(f"Comprehensive Anatomical Parts Model loaded successfully!")
+            logger.info(f"Model type: ComprehensiveAnatomicalClassifierResNet34")
             logger.info(f"Best training accuracy: {best_acc}")
             logger.info(f"Body type classes: {len(self.body_type_classes)}")
             logger.info(f"Anatomical parts: {list(self.ANATOMICAL_PARTS.keys())}")
             logger.info(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
-            
+
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to load anatomical parts models: {e}")
+            logger.error(f"Failed to load comprehensive anatomical parts models: {e}")
             return False
     
     def get_model_parameters(self) -> int:
@@ -261,61 +332,94 @@ class BodyAnalysisPipeline:
             logger.error(f"Pose detection error: {e}")
             return []
     
-    def create_anatomical_bbox_from_joints(self, keypoints: Dict, part_config: Dict, 
+    def create_anatomical_bbox_from_joints(self, keypoints: Dict, part_config: Dict,
+                                         torso_width_estimate: Optional[float] = None,
                                          expansion_factor: float = 1.4, min_size: int = 60) -> Optional[Dict]:
-        """Create bounding box for anatomical part from keypoints"""
+        """Create bounding box for anatomical part from keypoints with intelligent leg cropping"""
         part_keypoints = part_config['keypoints']
         part_names = part_config['names']
-        
+
         valid_joints = []
         used_joints = []
-        
+
         for i, keypoint_idx in enumerate(part_keypoints):
             if keypoint_idx in keypoints:
                 x, y = keypoints[keypoint_idx]
                 valid_joints.append([x, y])
                 used_joints.append(part_names[i])
-        
+
         min_joints_required = 2 if len(part_keypoints) <= 3 else 3
         if len(valid_joints) < min_joints_required:
             return None
-        
+
         valid_joints = np.array(valid_joints)
-        
+
         x_coords = valid_joints[:, 0]
         y_coords = valid_joints[:, 1]
-        
+
         x_min, x_max = x_coords.min(), x_coords.max()
         y_min, y_max = y_coords.min(), y_coords.max()
-        
+
         width = x_max - x_min
         height = y_max - y_min
         center_x = (x_min + x_max) / 2
         center_y = (y_min + y_max) / 2
-        
-        expanded_width = max(width * expansion_factor, min_size)
-        expanded_height = max(height * expansion_factor, min_size)
-        
+
+        # Check if this is a leg part and apply intelligent cropping
+        part_type = part_names[0] if part_names else ''
+        is_leg_part = any('leg' in name.lower() or 'knee' in name.lower() or 'ankle' in name.lower() for name in part_names)
+
+        if is_leg_part and torso_width_estimate is not None:
+            # Apply intelligent leg cropping based on torso width
+            min_leg_width_ratio = 0.4  # Leg should be at least 40% of torso width
+            min_leg_width = torso_width_estimate * min_leg_width_ratio
+
+            # Ensure minimum width for proper muscle capture
+            if width < min_leg_width:
+                # Center the expansion around the current leg center
+                half_new_width = min_leg_width / 2
+                x_min = center_x - half_new_width
+                x_max = center_x + half_new_width
+                width = min_leg_width
+
+            # Apply generous padding for legs
+            pad_x = width * 0.4  # Use generous padding to ensure full leg capture
+            pad_y = height * 0.15  # Moderate vertical padding
+
+            expanded_width = width + 2 * pad_x
+            expanded_height = height + 2 * pad_y
+        else:
+            # Standard expansion for non-leg parts
+            expanded_width = max(width * expansion_factor, min_size)
+            expanded_height = max(height * expansion_factor, min_size)
+
         final_x_min = max(0, int(center_x - expanded_width / 2))
         final_y_min = max(0, int(center_y - expanded_height / 2))
         final_x_max = int(center_x + expanded_width / 2)
         final_y_max = int(center_y + expanded_height / 2)
-        
+
         final_width = final_x_max - final_x_min
         final_height = final_y_max - final_y_min
-        
+
         aspect_ratio = final_height / final_width if final_width > 0 else 0
         if final_width < 30 or final_height < 30:
             return None
-        
-        if aspect_ratio < 0.3 or aspect_ratio > 4.0:
-            return None
-        
+
+        # Relax aspect ratio constraints for legs since they can be very tall and narrow
+        if is_leg_part:
+            if aspect_ratio < 0.2 or aspect_ratio > 6.0:
+                return None
+        else:
+            if aspect_ratio < 0.3 or aspect_ratio > 4.0:
+                return None
+
         return {
             'bbox': [final_x_min, final_y_min, final_x_max, final_y_max],
             'joints_used': used_joints,
             'joint_count': len(valid_joints),
-            'aspect_ratio': aspect_ratio
+            'aspect_ratio': aspect_ratio,
+            'is_leg_part': is_leg_part,
+            'applied_intelligent_sizing': is_leg_part and torso_width_estimate is not None
         }
     
     def crop_part_preserve_aspect_ratio(self, image: np.ndarray, bbox: List[int]) -> np.ndarray:
@@ -373,55 +477,91 @@ class BodyAnalysisPipeline:
         return canvas
     
     def extract_anatomical_parts(self, image: np.ndarray) -> Tuple[Optional[Dict], np.ndarray]:
-        """Extract all anatomical parts from an image - NO CABEZA"""
+        """Extract all anatomical parts from an image with intelligent leg cropping"""
         # Detect pose keypoints
         pose_detections = self.detect_pose_keypoints(image)
-        
+
         if not pose_detections:
             return None, image
-        
+
         # Use the first (best) detection
         person_data = pose_detections[0]
         keypoints = person_data['keypoints']
-        
+
+        # Calculate torso width for intelligent leg sizing
+        torso_width_estimate = self._calculate_torso_width(keypoints)
+
         extracted_parts = {}
-        
-        # Extract each anatomical part (NO CABEZA)
+
+        # Extract each anatomical part with improved logic
         for part_name, part_config in self.ANATOMICAL_PARTS.items():
-            bbox_info = self.create_anatomical_bbox_from_joints(keypoints, part_config)
-            
+            bbox_info = self.create_anatomical_bbox_from_joints(
+                keypoints, part_config, torso_width_estimate=torso_width_estimate
+            )
+
             if bbox_info is not None:
                 part_keypoint_indices = part_config['keypoints']
-                confidences = [person_data['confidence_scores'][idx] 
+                confidences = [person_data['confidence_scores'][idx]
                              for idx in part_keypoint_indices if idx in person_data['confidence_scores']]
                 avg_confidence = np.mean(confidences) if confidences else 0.0
-                
+
                 # Crop the part WITH 128x128 ASPECT RATIO PRESERVATION
                 part_image = self.crop_part_preserve_aspect_ratio(image, bbox_info['bbox'])
-                
+
                 extracted_parts[part_name] = {
                     'image': part_image,
                     'bbox': bbox_info['bbox'],
                     'confidence': avg_confidence,
                     'joints_used': bbox_info['joints_used'],
-                    'aspect_ratio': bbox_info['aspect_ratio']
+                    'aspect_ratio': bbox_info['aspect_ratio'],
+                    'applied_intelligent_sizing': bbox_info.get('applied_intelligent_sizing', False)
                 }
-        
+
         return extracted_parts, image
+
+    def _calculate_torso_width(self, keypoints: Dict) -> Optional[float]:
+        """Calculate torso width estimate for intelligent leg cropping"""
+        try:
+            # Get shoulder keypoints
+            left_shoulder = keypoints.get(5)  # left_shoulder
+            right_shoulder = keypoints.get(6)  # right_shoulder
+            left_hip = keypoints.get(11)  # left_hip
+            right_hip = keypoints.get(12)  # right_hip
+
+            torso_width_estimate = None
+
+            if left_shoulder is not None and right_shoulder is not None:
+                shoulder_width = abs(right_shoulder[0] - left_shoulder[0])
+                if left_hip is not None and right_hip is not None:
+                    hip_width = abs(right_hip[0] - left_hip[0])
+                    torso_width_estimate = max(shoulder_width, hip_width)  # Use wider measurement
+                else:
+                    torso_width_estimate = shoulder_width
+            elif left_hip is not None and right_hip is not None:
+                torso_width_estimate = abs(right_hip[0] - left_hip[0])
+
+            return torso_width_estimate
+
+        except Exception as e:
+            logger.warning(f"Failed to calculate torso width: {e}")
+            return None
     
-    def predict_single_part(self, part_image: np.ndarray) -> Tuple[int, float, np.ndarray]:
+    def predict_single_part(self, part_image: np.ndarray) -> Tuple[str, float, np.ndarray]:
         """Predict body type for a single anatomical part"""
         # Preprocess image
         input_tensor = self.transform(part_image).unsqueeze(0).to(self.device)
-        
+
         # Run inference
         with torch.no_grad():
             outputs = self.model(input_tensor)
             probabilities = torch.softmax(outputs, dim=1)
-            predicted_class = torch.argmax(probabilities, dim=1).item()
-            confidence = probabilities[0, predicted_class].item()
-        
-        return predicted_class, confidence, probabilities[0].cpu().numpy()
+            predicted_idx = torch.argmax(probabilities, dim=1).item()
+            confidence = probabilities[0, predicted_idx].item()
+
+        # Convert index to body type name
+        predicted_body_type = self.idx_to_body_type[predicted_idx]
+
+        return predicted_body_type, confidence, probabilities[0].cpu().numpy()
     
     def analyze_body_type(self, image: np.ndarray, bbox: Optional[List[int]] = None, 
                          confidence_threshold: float = 0.5) -> Dict[str, Any]:
@@ -466,48 +606,40 @@ class BodyAnalysisPipeline:
             
             # Predict for each part
             part_predictions = {}
-            all_probabilities = []
-            part_confidences = []
-            
+            part_predictions_for_ensemble = {}
+
             for part_name, part_data in parts.items():
                 part_image = part_data['image']
-                predicted_class, confidence, probabilities = self.predict_single_part(part_image)
-                
+                predicted_body_type, confidence, probabilities = self.predict_single_part(part_image)
+
                 part_predictions[part_name] = {
-                    'predicted_class': predicted_class,
-                    'predicted_body_type': self.body_type_mapping[predicted_class],
+                    'predicted_body_type': predicted_body_type,
                     'confidence': confidence,
                     'probabilities': probabilities.tolist(),
                     'pose_confidence': part_data['confidence'],
                     'original_aspect_ratio': part_data['aspect_ratio'],
                     'bbox': part_data['bbox'],
-                    'joints_used': part_data['joints_used']
+                    'joints_used': part_data['joints_used'],
+                    'applied_intelligent_sizing': part_data.get('applied_intelligent_sizing', False)
                 }
-                
-                all_probabilities.append(probabilities)
-                part_confidences.append(part_data['confidence'])
-            
-            # Aggregate predictions using confidence-weighted voting
-            if len(part_confidences) > 0:
-                weights = np.array(part_confidences)
-                weights = weights / np.sum(weights)  # Normalize
-                
-                weighted_probabilities = np.average(all_probabilities, weights=weights, axis=0)
-                predicted_class = int(np.argmax(weighted_probabilities))
-                final_confidence = float(weighted_probabilities[predicted_class])
-            else:
-                # Fallback to simple average
-                avg_probabilities = np.mean(all_probabilities, axis=0) if all_probabilities else np.zeros(len(self.body_type_mapping))
-                predicted_class = int(np.argmax(avg_probabilities))
-                final_confidence = float(avg_probabilities[predicted_class])
-                weighted_probabilities = avg_probabilities
-            
-            predicted_body_type = self.body_type_mapping[predicted_class]
-            
-            # Create all_probabilities mapping
+
+                # Prepare for ensemble prediction
+                if part_name not in part_predictions_for_ensemble:
+                    part_predictions_for_ensemble[part_name] = []
+
+                part_predictions_for_ensemble[part_name].append({
+                    'body_type': predicted_body_type,
+                    'confidence': confidence,
+                    'probabilities': probabilities
+                })
+
+            # Generate ensemble prediction using weighted voting
+            final_body_type, final_confidence, ensemble_probs = self._ensemble_prediction(part_predictions_for_ensemble)
+
+            # Create all_probabilities mapping for API compatibility
             all_probabilities_dict = {
-                self.body_type_mapping[i]: float(prob) 
-                for i, prob in enumerate(weighted_probabilities)
+                body_type: float(ensemble_probs.get(body_type, 0.0))
+                for body_type in self.body_type_classes
             }
             
             
@@ -515,7 +647,8 @@ class BodyAnalysisPipeline:
             analysis_metrics = {
                 'overall_confidence': final_confidence,
                 'parts_detected_count': len(parts),
-                'voting_strategy': 'confidence_weighted'
+                'voting_strategy': 'enhanced_weighted_ensemble',
+                'intelligent_leg_cropping_applied': any(p.get('applied_intelligent_sizing', False) for p in part_predictions.values())
             }
             
             result = {
@@ -531,7 +664,7 @@ class BodyAnalysisPipeline:
                     'total_parts': len(parts),
                     'part_predictions': part_predictions,
                     'voting_strategy': 'confidence_weighted',
-                    'aggregated_probabilities': weighted_probabilities.tolist()
+                    'aggregated_probabilities': list(ensemble_probs.values()) if ensemble_probs else []
                 },
                 'analysis_metrics': analysis_metrics,
                 'analysis_summary': {
@@ -573,7 +706,58 @@ class BodyAnalysisPipeline:
                 }
             }
     
-    def classify_body_type_only(self, image: np.ndarray, bbox: Optional[List[int]] = None, 
+    def _ensemble_prediction(self, part_predictions: Dict) -> Tuple[str, float, Dict]:
+        """Combine predictions from multiple body parts using optimized weighted voting."""
+        if not part_predictions:
+            return "unknown", 0.0, {}
+
+        # Aggregate weighted probabilities
+        aggregated_probs = defaultdict(float)
+        total_weight = 0.0
+        diagnostic_info = {}  # Track contribution of each part
+
+        for part_name, predictions in part_predictions.items():
+            weight = self.part_weights.get(part_name, 1.0)
+
+            for pred in predictions:
+                body_type = pred['body_type']
+                confidence = pred['confidence']
+                weighted_contribution = confidence * weight
+
+                aggregated_probs[body_type] += weighted_contribution
+                total_weight += weight
+
+                # Track diagnostic info
+                if body_type not in diagnostic_info:
+                    diagnostic_info[body_type] = []
+                diagnostic_info[body_type].append({
+                    'part': part_name,
+                    'confidence': confidence,
+                    'weight': weight,
+                    'contribution': weighted_contribution
+                })
+
+        # Normalize probabilities
+        if total_weight > 0:
+            for body_type in aggregated_probs:
+                aggregated_probs[body_type] /= total_weight
+
+        # Get final prediction
+        if aggregated_probs:
+            final_body_type = max(aggregated_probs, key=aggregated_probs.get)
+            final_confidence = aggregated_probs[final_body_type]
+        else:
+            final_body_type = "unknown"
+            final_confidence = 0.0
+
+        # Add diagnostic reasoning
+        result_dict = dict(aggregated_probs)
+        result_dict['_diagnostic_info'] = diagnostic_info
+        result_dict['_total_weight'] = total_weight
+
+        return final_body_type, final_confidence, result_dict
+
+    def classify_body_type_only(self, image: np.ndarray, bbox: Optional[List[int]] = None,
                                confidence_threshold: float = 0.5) -> Dict[str, Any]:
         """Run body type classification only using anatomical parts"""
         return self.analyze_body_type(image, bbox, confidence_threshold)

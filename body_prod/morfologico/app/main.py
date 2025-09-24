@@ -31,13 +31,13 @@ async def lifespan(app: FastAPI):
         logger.info("🚀 Initializing Body Morphological Analysis Pipeline...")
         pipeline = BodyAnalysisPipeline()
         await asyncio.to_thread(pipeline.load_model)
-        logger.info("✅ Pipeline loaded successfully!")
+        logger.info("Pipeline loaded successfully!")
         yield
     except Exception as e:
         logger.error(f"❌ Failed to initialize pipeline: {e}")
         raise
     finally:
-        logger.info("🔄 Shutting down pipeline...")
+        logger.info("Shutting down pipeline...")
 
 # Create FastAPI app
 app = FastAPI(
@@ -90,16 +90,23 @@ async def model_info():
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
     return {
-        "model_architecture": "AnatomicalPartClassifier",
-        "backbone": "ResNet18",
+        "model_architecture": "ComprehensiveAnatomicalClassifierResNet34",
+        "backbone": "ResNet34",
         "input_size": [128, 128],
         "device": str(pipeline.device),
         "body_type_classes": pipeline.body_type_classes,
         "anatomical_parts": list(pipeline.ANATOMICAL_PARTS.keys()) if hasattr(pipeline, 'ANATOMICAL_PARTS') else [],
         "total_parameters": pipeline.get_model_parameters(),
-        "model_path": "/app/models/best_body_classifier_no_cabeza.pth",
-        "model_type": "anatomical_parts_no_cabeza",
-        "pose_detection": "YOLOv8n-pose"
+        "model_path": "/app/models/best_comprehensive_ensemble_resnet34_fixed.pth",
+        "model_type": "comprehensive_anatomical_with_intelligent_leg_cropping",
+        "pose_detection": "YOLOv8n-pose",
+        "improvements": {
+            "intelligent_leg_cropping": True,
+            "torso_width_based_sizing": True,
+            "enhanced_regularization": True,
+            "weighted_ensemble_voting": True
+        },
+        "part_weights": getattr(pipeline, 'part_weights', {})
     }
 
 @app.post("/analyze-body-morphology")
