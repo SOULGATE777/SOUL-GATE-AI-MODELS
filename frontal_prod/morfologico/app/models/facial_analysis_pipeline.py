@@ -7,23 +7,25 @@ import torchvision.transforms as transforms
 import os
 import json
 from typing import List, Dict, Any, Tuple
+from PIL import Image as PILImage
 
 class FacialLandmarkClassifier(torch.nn.Module):
+    """Shape classifier for facial landmarks (45 classes)"""
     def __init__(self, num_classes):
         super(FacialLandmarkClassifier, self).__init__()
         self.features = torch.nn.Sequential(
             torch.nn.Conv2d(3, 32, kernel_size=3, padding=1),
             torch.nn.ReLU(inplace=True),
             torch.nn.MaxPool2d(kernel_size=2, stride=2),
-            
+
             torch.nn.Conv2d(32, 64, kernel_size=3, padding=1),
             torch.nn.ReLU(inplace=True),
             torch.nn.MaxPool2d(kernel_size=2, stride=2),
-            
+
             torch.nn.Conv2d(64, 128, kernel_size=3, padding=1),
             torch.nn.ReLU(inplace=True),
             torch.nn.MaxPool2d(kernel_size=2, stride=2),
-            
+
             torch.nn.Conv2d(128, 256, kernel_size=3, padding=1),
             torch.nn.ReLU(inplace=True),
             torch.nn.MaxPool2d(kernel_size=2, stride=2),
@@ -36,7 +38,55 @@ class FacialLandmarkClassifier(torch.nn.Module):
             torch.nn.Dropout(0.5),
             torch.nn.Linear(512, num_classes)
         )
-        
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = self.classifier(x)
+        return x
+
+class FacialLandmarkSizeClassifier(torch.nn.Module):
+    """Enhanced size classifier for eyebrows (3 classes: ap, g, ngna)"""
+    def __init__(self, num_classes):
+        super(FacialLandmarkSizeClassifier, self).__init__()
+        # Enhanced CNN architecture with batch normalization and more capacity
+        self.features = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 64, kernel_size=3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+
+            torch.nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+
+            torch.nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            torch.nn.BatchNorm2d(256),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+
+            torch.nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            torch.nn.BatchNorm2d(512),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+
+        # Adaptive pooling to handle different input sizes
+        self.avgpool = torch.nn.AdaptiveAvgPool2d((2, 2))
+
+        # Enhanced fully connected layers with more capacity
+        self.classifier = torch.nn.Sequential(
+            torch.nn.Flatten(),
+            torch.nn.Linear(512 * 2 * 2, 1024),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Dropout(0.5),
+            torch.nn.Linear(1024, 512),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(512, num_classes)
+        )
+
     def forward(self, x):
         x = self.features(x)
         x = self.avgpool(x)
@@ -44,52 +94,71 @@ class FacialLandmarkClassifier(torch.nn.Module):
         return x
 
 class FacialAnalysisPipeline:
-    def __init__(self, detection_model_path, classification_model_path, tag_mapping_path=None, device=None):
+    def __init__(self, detection_model_path, classification_model_path, size_model_path=None, tag_mapping_path=None, device=None):
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Facial analysis pipeline using device: {self.device}")
-        
-        # Define landmark classes - updated to match 23-class model
+
+        # Define landmark classes - 23-class model
         self.landmark_classes = [
-            'cj_d', 'cj_i', 'cch_d', 'cch_i', 'oj_d', 'oj_i', 'nariz', 
-            'n', 'f', 'bc', 'pml_d', 'pml_i', 'tr_ex_cj_dr', 'tr_ex_cj_i', 
+            'cj_d', 'cj_i', 'cch_d', 'cch_i', 'oj_d', 'oj_i', 'nariz',
+            'n', 'f', 'bc', 'pml_d', 'pml_i', 'tr_ex_cj_dr', 'tr_ex_cj_i',
             'tr_in_cj_d', 'tr_in_cj_i', 'o_d', 'o_i', 'ac_d', 'ac_i',
             'entrecejo', 'parpado_dr', 'parpado_i'
         ]
-        
-        # Use the exact tag mapping from classification model training (52 tags)
-        self.tag_mapping = {
-            "tag_0": "0", "tag_1": "1", "tag_2": "2", "tag_3": "3", "tag_4": "a_n", 
-            "tag_5": "ab", "tag_6": "abierta", "tag_7": "adelgazamiento", "tag_8": "al", 
-            "tag_9": "ap", "tag_10": "ar", "tag_11": "bigote", "tag_12": "carnosos", 
-            "tag_13": "crl", "tag_14": "cv", "tag_15": "delgada", "tag_16": "el", 
-            "tag_17": "fr", "tag_18": "g", "tag_19": "grueso", "tag_20": "h", 
-            "tag_21": "hn", "tag_22": "i", "tag_23": "lineas_sonriza", "tag_24": "lineas_verticales", 
-            "tag_25": "ll", "tag_26": "lunar", "tag_27": "md", "tag_28": "md_a", 
-            "tag_29": "mercurial", "tag_30": "nd", "tag_31": "normal", "tag_32": "nrml", 
-            "tag_33": "nt", "tag_34": "on", "tag_35": "pc", "tag_36": "pg", 
-            "tag_37": "pl", "tag_38": "planos", "tag_39": "pliegue", "tag_40": "pm", 
-            "tag_41": "pn", "tag_42": "ptosis", "tag_43": "pursed", "tag_44": "rc", 
-            "tag_45": "rd", "tag_46": "salido", "tag_47": "sl", "tag_48": "solar", 
-            "tag_49": "sonriendo", "tag_50": "sp_sl", "tag_51": "uniceja"
+
+        # NEW: Updated shape tag mapping (45 classes - removed problematic tags)
+        self.shape_tags = [
+            '0', '1', '2', '3', 'a_n', 'ab', 'al', 'ar',
+            'crl', 'cv', 'delgada', 'el', 'fr', 'grueso', 'h', 'hn', 'i',
+            'lineas_sonriza', 'lineas_verticales', 'll', 'lunar', 'md', 'md_a', 'mercurial', 'nd', 'normal', 'nrml',
+            'nt', 'on', 'pc', 'pg', 'pl', 'planos', 'pliegue', 'pm', 'pn', 'ptosis',
+            'pursed', 'rc', 'rd', 'salido', 'sl', 'solar', 'sp_sl', 'uniceja'
+        ]
+
+        # NEW: Eyebrow size tags (3 classes - only for cj_d, cj_i)
+        self.eyebrow_size_tags = ['ap', 'g', 'ngna']
+        self.eyebrow_classes = ['cj_d', 'cj_i']
+
+        # NEW: Bbox confinement - valid shape tags per landmark class
+        self.valid_shape_tags = {
+            'cj_d': ['rc', 'el', 'cv'],  # Right eyebrow shapes
+            'cj_i': ['rc', 'el', 'cv'],  # Left eyebrow shapes
+            'nariz': ['delgada', 'nrml', 'grueso'],  # Nose shapes
+            'bc': ['lunar', 'mercurial', 'pursed', 'solar'],  # Mouth shapes
+            'n': ['i', 'pn', 'rd'],  # Nostril shapes
+            'oj_d': ['al', 'crl', 'fr', 'md', 'md_a'],  # Right eye shapes
+            'oj_i': ['al', 'crl', 'fr', 'md', 'md_a'],  # Left eye shapes
+            'entrecejo': ['lineas_verticales', 'normal', 'uniceja'],  # Between eyebrows
+            'parpado_dr': ['pliegue', 'ptosis'],  # Right eyelid
+            'parpado_i': ['pliegue', 'ptosis'],  # Left eyelid
+            'tr_ex_cj_dr': ['a_n', 'ab', 'h'],  # Outer right eyebrow area
+            'tr_ex_cj_i': ['a_n', 'ab', 'h'],  # Outer left eyebrow area
+            'tr_in_cj_d': ['ar', 'h'],  # Inner right eyebrow area
+            'tr_in_cj_i': ['ar', 'h'],  # Inner left eyebrow area
         }
-        
-        # Initialize tags list for all 52 classes
-        self.tags = [f"tag_{i}" for i in range(52)]
-        
-        print(f"Initialized with {len(self.tags)} tags and {len(self.tag_mapping)} tag mappings")
-        
+
+        # Backward compatibility: create tag_mapping for API responses
+        self.tag_mapping = {f"tag_{i}": tag for i, tag in enumerate(self.shape_tags)}
+        self.tags = [f"tag_{i}" for i in range(len(self.shape_tags))]
+
+        print(f"Initialized with {len(self.shape_tags)} shape tags and {len(self.eyebrow_size_tags)} eyebrow size tags")
+
         # Load models
         self.detection_model = self._load_detection_model(detection_model_path)
-        self.classification_model = self._load_classification_model(classification_model_path)
-        
+        self.classification_model = self._load_classification_model(classification_model_path, num_classes=len(self.shape_tags))
+
+        # NEW: Load eyebrow size model if provided
+        self.size_model = None
+        if size_model_path:
+            self.size_model = self._load_size_model(size_model_path)
+            print(f"Eyebrow size model loaded for classes: {self.eyebrow_classes}")
+
         # Define transforms
         self.detection_transform = transforms.Compose([
             transforms.ToTensor()
         ])
-        
+
         self.classification_transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((64, 64)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
@@ -116,61 +185,89 @@ class FacialAnalysisPipeline:
             print(f"Error loading detection model: {e}")
             raise e
     
-    def _load_classification_model(self, model_path: str):
-        """Load the facial characteristic classification model"""
+    def _load_classification_model(self, model_path: str, num_classes: int = 45):
+        """Load the shape classification model (45 classes)"""
         try:
-            checkpoint = torch.load(model_path, map_location=self.device)
-            
-            # Determine number of classes from model checkpoint
-            num_classes = 52  # We know it's 52 from your model info
-            
-            if isinstance(checkpoint, dict):
-                if 'classifier.4.weight' in checkpoint:
-                    detected_classes = checkpoint['classifier.4.weight'].shape[0]
-                    print(f"Detected {detected_classes} classes from model checkpoint")
-                    if detected_classes != 52:
-                        print(f"Warning: Expected 52 classes but model has {detected_classes}")
-                    num_classes = detected_classes
-                elif 'state_dict' in checkpoint:
-                    for key in checkpoint['state_dict']:
-                        if key.endswith('classifier.4.weight'):
-                            detected_classes = checkpoint['state_dict'][key].shape[0]
-                            print(f"Detected {detected_classes} classes from model checkpoint")
-                            if detected_classes != 52:
-                                print(f"Warning: Expected 52 classes but model has {detected_classes}")
-                            num_classes = detected_classes
-                            break
-            
-            print(f"Loading classification model with {num_classes} classes")
-            
-            # Ensure our mapping matches the model
-            if num_classes != len(self.tags):
-                print(f"Adjusting tags from {len(self.tags)} to {num_classes} to match model")
-                if num_classes < len(self.tags):
-                    self.tags = self.tags[:num_classes]
-                else:
-                    while len(self.tags) < num_classes:
-                        self.tags.append(f"tag_{len(self.tags)}")
-            
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+
+            print(f"Loading shape classification model with {num_classes} classes")
+
             model = FacialLandmarkClassifier(num_classes)
-            
+
             # Load weights
             if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['state_dict'])
             else:
                 model.load_state_dict(checkpoint)
-                
+
             model.to(self.device)
             model.eval()
-            print("Facial characteristic classification model loaded successfully!")
+            print("Shape classification model loaded successfully!")
             return model
-            
+
         except Exception as e:
-            print(f"Error loading classification model: {e}")
+            print(f"Error loading shape classification model: {e}")
+            raise e
+
+    def _load_size_model(self, model_path: str):
+        """Load the eyebrow size classification model (3 classes)"""
+        try:
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+
+            num_classes = 3  # ap, g, ngna
+            print(f"Loading eyebrow size classification model with {num_classes} classes")
+
+            model = FacialLandmarkSizeClassifier(num_classes)
+
+            # Load weights
+            if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
+
+            model.to(self.device)
+            model.eval()
+            print("Eyebrow size classification model loaded successfully!")
+            return model
+
+        except Exception as e:
+            print(f"Error loading eyebrow size model: {e}")
             raise e
     
+    def _validate_shape_prediction(self, predicted_tag, landmark_class, probabilities):
+        """Validate that shape prediction makes sense for the detected landmark class (bbox confinement)"""
+
+        # If we have specific valid tags for this landmark class
+        if landmark_class in self.valid_shape_tags:
+            if predicted_tag in self.valid_shape_tags[landmark_class]:
+                # Original prediction is valid, return it with its confidence
+                predicted_idx = self.shape_tags.index(predicted_tag)
+                return predicted_tag, probabilities[predicted_idx].item()
+            else:
+                # Original prediction is invalid, find highest confidence valid prediction
+                best_tag = None
+                best_confidence = -1.0
+
+                for valid_tag in self.valid_shape_tags[landmark_class]:
+                    if valid_tag in self.shape_tags:
+                        tag_idx = self.shape_tags.index(valid_tag)
+                        tag_confidence = probabilities[tag_idx].item()
+                        if tag_confidence > best_confidence:
+                            best_confidence = tag_confidence
+                            best_tag = valid_tag
+
+                if best_tag is not None:
+                    return best_tag, best_confidence
+
+                # Fallback to first valid tag if no probabilities provided
+                return self.valid_shape_tags[landmark_class][0], 0.0
+
+        # If no specific mapping, return the prediction (for backward compatibility)
+        predicted_idx = self.shape_tags.index(predicted_tag) if predicted_tag in self.shape_tags else 0
+        return predicted_tag, probabilities[predicted_idx].item()
+
     def process_image(self, image_path_or_array, confidence_threshold=0.5, output_path=None, display=False) -> Tuple[List[Dict[str, Any]], np.ndarray]:
-        """Process a single image and detect/classify facial landmarks"""
+        """Process a single image and detect/classify facial landmarks with bbox confinement and eyebrow size"""
         try:
             # Load image
             if isinstance(image_path_or_array, str):
@@ -178,113 +275,132 @@ class FacialAnalysisPipeline:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             else:
                 image = image_path_or_array
-                
+
             # Resize for consistent processing
             orig_height, orig_width = image.shape[:2]
             image_resized = cv2.resize(image, (224, 224))
-            
+
             # Scale factors for bbox conversion
             scale_x = orig_width / 224
             scale_y = orig_height / 224
-            
+
             # Prepare image for detection
             image_tensor = self.detection_transform(image_resized).unsqueeze(0).to(self.device)
-            
+
             # Detect landmarks
             with torch.no_grad():
                 detections = self.detection_model(image_tensor)[0]
-            
+
             # Filter by confidence
             keep = detections['scores'] > confidence_threshold
             boxes = detections['boxes'][keep].cpu().numpy()
             labels = detections['labels'][keep].cpu().numpy()
             scores = detections['scores'][keep].cpu().numpy()
-            
+
             # Create visualization copy
             image_viz = image_resized.copy()
-            
+
             # Process each detection
             results = []
-            
+
             for box, label_idx, score in zip(boxes, labels, scores):
                 # Get landmark class
                 landmark_class = self.landmark_classes[label_idx - 1]  # -1 because background is 0
-                
+
                 # Extract region
                 x1, y1, x2, y2 = box.astype(int)
-                
+
                 # Ensure coordinates are within image bounds
                 x1 = max(0, min(x1, image_resized.shape[1]))
                 y1 = max(0, min(y1, image_resized.shape[0]))
                 x2 = max(0, min(x2, image_resized.shape[1]))
                 y2 = max(0, min(y2, image_resized.shape[0]))
-                
+
                 region = image_resized[y1:y2, x1:x2]
-                
+
                 if region.size == 0:
                     continue
-                    
-                # Classify region
+
+                # SHAPE CLASSIFICATION with bbox confinement
                 try:
-                    region_tensor = self.classification_transform(region).unsqueeze(0).to(self.device)
-                    
+                    # Resize and convert region to PIL Image
+                    region_resized = cv2.resize(region, (64, 64))
+                    region_pil = PILImage.fromarray(region_resized)
+                    region_tensor = self.classification_transform(region_pil).unsqueeze(0).to(self.device)
+
                     with torch.no_grad():
                         outputs = self.classification_model(region_tensor)
                         probs = torch.nn.functional.softmax(outputs, dim=1)
 
-                        # Get top 3 predictions instead of just top 1
-                        top3_probs, top3_indices = torch.topk(probs, k=3, dim=1)
+                        # Get top prediction
+                        tag_idx = torch.argmax(probs, dim=1).item()
+                        predicted_tag = self.shape_tags[tag_idx] if tag_idx < len(self.shape_tags) else 'unknown'
 
-                        # Extract top 3 predictions for top_tags format
+                        # BBOX CONFINEMENT: Validate and correct prediction
+                        tag_name, tag_confidence = self._validate_shape_prediction(predicted_tag, landmark_class, probs[0])
+
+                        # Get top 3 predictions for additional info
+                        top3_probs, top3_indices = torch.topk(probs, k=min(3, len(self.shape_tags)), dim=1)
                         top_tags = []
                         for i in range(min(3, top3_probs.shape[1])):
-                            tag_idx = top3_indices[0][i].item()
-                            tag_confidence = top3_probs[0][i].item()
-
-                            # Get tag using correct index
-                            if tag_idx < len(self.tags):
-                                tag_id = self.tags[tag_idx]  # This gives us "tag_X"
-                            else:
-                                tag_id = f"tag_{tag_idx}"
-                                print(f"Warning: Model predicted index {tag_idx} but we only have {len(self.tags)} tags")
-
-                            # Get human-readable tag name
-                            tag_name_mapped = self.tag_mapping.get(tag_id, "Unknown")
-
+                            t_idx = top3_indices[0][i].item()
+                            t_tag = self.shape_tags[t_idx] if t_idx < len(self.shape_tags) else 'unknown'
+                            t_conf = top3_probs[0][i].item()
                             top_tags.append({
-                                'tag': tag_name_mapped,  # Human-readable name
-                                'confidence': float(tag_confidence),
+                                'tag': t_tag,
+                                'confidence': float(t_conf),
                                 'rank': i + 1
                             })
 
-                        # For backward compatibility, keep the original fields for the top prediction
-                        tag_idx = top3_indices[0][0].item()
-                        tag = self.tags[tag_idx] if tag_idx < len(self.tags) else f"tag_{tag_idx}"
-                        tag_name = self.tag_mapping.get(tag, "Unknown")
-                        tag_confidence = top3_probs[0][0].item()
-                
                 except Exception as e:
-                    print(f"Warning: Classification failed for region: {e}")
-                    tag = "unknown"
-                    tag_name = "Unknown"
+                    print(f"Warning: Shape classification failed for {landmark_class}: {e}")
+                    tag_name = "unknown"
                     tag_confidence = 0.0
                     top_tags = [{'tag': tag_name, 'confidence': tag_confidence, 'rank': 1}]
+
+                # EYEBROW SIZE CLASSIFICATION (only for cj_d, cj_i)
+                size_tag = None
+                size_confidence = None
+                if self.size_model and landmark_class in self.eyebrow_classes:
+                    try:
+                        # Reuse the region tensor
+                        region_resized = cv2.resize(region, (64, 64))
+                        region_pil = PILImage.fromarray(region_resized)
+                        region_tensor = self.classification_transform(region_pil).unsqueeze(0).to(self.device)
+
+                        with torch.no_grad():
+                            size_outputs = self.size_model(region_tensor)
+                            size_probs = torch.nn.functional.softmax(size_outputs, dim=1)
+                            size_idx = torch.argmax(size_probs, dim=1).item()
+
+                            size_tag = self.eyebrow_size_tags[size_idx] if size_idx < len(self.eyebrow_size_tags) else 'unknown'
+                            size_confidence = size_probs[0][size_idx].item()
+
+                    except Exception as e:
+                        print(f"Warning: Size classification failed for {landmark_class}: {e}")
+                        size_tag = None
+                        size_confidence = None
 
                 # Create result
                 result = {
                     'landmark_class': landmark_class,
-                    'tag': tag,
+                    'tag': f"tag_{self.shape_tags.index(tag_name)}" if tag_name in self.shape_tags else "tag_0",  # For backward compat
                     'tag_name': tag_name,
                     'score': float(score),
                     'tag_confidence': float(tag_confidence),
-                    'top_tags': top_tags,  # Add top 3 predictions in new format
+                    'top_tags': top_tags,
                     'box': [float(x1*scale_x), float(y1*scale_y), float(x2*scale_x), float(y2*scale_y)]
                 }
-                
+
+                # Add eyebrow size if available
+                if size_tag is not None:
+                    result['size_tag'] = size_tag
+                    result['size_confidence'] = float(size_confidence)
+
                 results.append(result)
-            
+
             return results, image_viz
-            
+
         except Exception as e:
             print(f"Error processing image: {e}")
             return [], image

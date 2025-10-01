@@ -39,33 +39,36 @@ point_detector = None
 async def startup_event():
     """Load models on startup"""
     global facial_pipeline, point_detector
-    
+
     try:
         print("Loading facial analysis pipeline...")
-        # Initialize the pipeline - it now has the tag mapping built-in
+        # Initialize the pipeline with 3 models: detection + shape + eyebrow size
         facial_pipeline = FacialAnalysisPipeline(
             detection_model_path='/app/models/facial_landmarks_detection_model.pth',
-            classification_model_path='/app/models/best_facial_landmark_classifier.pth',
-            tag_mapping_path=None  # We don't need external mapping anymore
+            classification_model_path='/app/models/best_shape_classifier.pth',
+            size_model_path='/app/models/best_eyebrow_size_classifier.pth',  # NEW: Eyebrow size model
+            tag_mapping_path=None
         )
-        
+
         print("Loading anthropometric point detector...")
         point_detector = AnthropometricPointDetector(
             model_path='/app/models/facial_points_detection_model.pth'
         )
-        
+
         print("All models loaded successfully!")
-        
+
         # Validate tag consistency
-        print("=== TAG MAPPING VALIDATION ===")
-        print(f"Pipeline has {len(facial_pipeline.tags)} tags")
-        print(f"Tag mapping has {len(facial_pipeline.tag_mapping)} entries")
-        print("Sample mappings:")
-        for i, tag in enumerate(facial_pipeline.tags[:5]):
-            tag_name = facial_pipeline.tag_mapping.get(tag, "Unknown")
-            print(f"  {tag} -> {tag_name}")
-        print("=== VALIDATION COMPLETE ===")
-        
+        print("=== MODEL CONFIGURATION ===")
+        print(f"Detection classes: {len(facial_pipeline.landmark_classes)}")
+        print(f"Shape tags: {len(facial_pipeline.shape_tags)} classes")
+        print(f"Eyebrow size tags: {len(facial_pipeline.eyebrow_size_tags)} classes (for {', '.join(facial_pipeline.eyebrow_classes)})")
+        print(f"Bbox confinement enabled: {len(facial_pipeline.valid_shape_tags)} landmark types")
+        print("\nSample shape tags:")
+        for i, tag in enumerate(facial_pipeline.shape_tags[:10]):
+            print(f"  {i}: {tag}")
+        print(f"\nEyebrow size tags: {', '.join(facial_pipeline.eyebrow_size_tags)}")
+        print("=== CONFIGURATION COMPLETE ===")
+
     except Exception as e:
         print(f"Error loading models: {e}")
         raise e
@@ -76,8 +79,10 @@ async def health_check():
     return {
         "status": "healthy",
         "models_loaded": facial_pipeline is not None and point_detector is not None,
-        "tag_mapping_entries": len(facial_pipeline.tag_mapping) if facial_pipeline else 0,
-        "total_tags": len(facial_pipeline.tags) if facial_pipeline else 0
+        "shape_tags": len(facial_pipeline.shape_tags) if facial_pipeline else 0,
+        "eyebrow_size_tags": len(facial_pipeline.eyebrow_size_tags) if facial_pipeline else 0,
+        "eyebrow_size_model_loaded": facial_pipeline.size_model is not None if facial_pipeline else False,
+        "bbox_confinement_enabled": True
     }
 
 @app.post("/analyze-face")
@@ -123,7 +128,18 @@ async def analyze_face(
             image_array,
             confidence_threshold=confidence_threshold
         )
-        
+
+        # Separate eyebrow size results from shape results
+        eyebrow_size_results = []
+        for result in facial_results:
+            if 'size_tag' in result:
+                eyebrow_size_results.append({
+                    'landmark_class': result['landmark_class'],
+                    'size_tag': result['size_tag'],
+                    'size_confidence': result['size_confidence'],
+                    'box': result['box']
+                })
+
         # Create beautiful combined visualization
         if include_visualization:
             viz_path = await create_beautiful_visualization(
@@ -131,12 +147,17 @@ async def analyze_face(
             )
         else:
             viz_path = None
-        
+
         # Prepare response
         response = {
             "facial_landmarks": {
                 "count": len(facial_results),
                 "detections": facial_results
+            },
+            "eyebrow_size_classification": {
+                "count": len(eyebrow_size_results),
+                "detections": eyebrow_size_results,
+                "classes": facial_pipeline.eyebrow_size_tags if facial_pipeline else []
             },
             "anthropometric_points": {
                 "count": len(point_results),
@@ -144,11 +165,13 @@ async def analyze_face(
             },
             "summary": {
                 "total_detections": len(facial_results) + len(point_results),
+                "eyebrow_size_detections": len(eyebrow_size_results),
                 "confidence_threshold": confidence_threshold,
-                "image_processed": True
+                "image_processed": True,
+                "bbox_confinement_applied": True
             }
         }
-        
+
         if viz_path:
             response["visualization_path"] = viz_path
         
@@ -271,9 +294,13 @@ async def get_tag_mapping():
     """Get the current tag mapping for debugging"""
     if facial_pipeline:
         return {
-            "tag_mapping": facial_pipeline.tag_mapping,
-            "total_tags": len(facial_pipeline.tags),
-            "sample_tags": facial_pipeline.tags[:10]
+            "shape_tags": facial_pipeline.shape_tags,
+            "eyebrow_size_tags": facial_pipeline.eyebrow_size_tags,
+            "eyebrow_classes": facial_pipeline.eyebrow_classes,
+            "total_shape_tags": len(facial_pipeline.shape_tags),
+            "total_eyebrow_size_tags": len(facial_pipeline.eyebrow_size_tags),
+            "bbox_confinement_mappings": facial_pipeline.valid_shape_tags,
+            "sample_shape_tags": facial_pipeline.shape_tags[:15]
         }
     else:
         raise HTTPException(status_code=503, detail="Models not loaded")
@@ -282,15 +309,26 @@ async def get_tag_mapping():
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Facial Recognition API",
-        "version": "1.0.0",
+        "message": "Facial Recognition API - Enhanced 3-Model System",
+        "version": "2.0.0",
         "endpoints": {
             "analyze_face": "/analyze-face",
-            "detect_landmarks": "/detect-landmarks", 
+            "detect_landmarks": "/detect-landmarks",
             "detect_points": "/detect-points",
             "tag_mapping": "/tag-mapping",
             "health": "/health"
         },
         "models_loaded": facial_pipeline is not None and point_detector is not None,
-        "tag_consistency": "Fixed to match Jupyter environment"
+        "features": {
+            "shape_classification": "45 classes with bbox confinement",
+            "eyebrow_size_classification": "3 classes (ap, g, ngna) for eyebrows only",
+            "bbox_confinement": "Validates predictions per landmark type",
+            "anthropometric_points": "13 anatomical points"
+        },
+        "improvements": [
+            "Improved data quality",
+            "Tag reduction from 52 to 45 classes",
+            "Separate eyebrow size model",
+            "Bbox confinement validation"
+        ]
     }

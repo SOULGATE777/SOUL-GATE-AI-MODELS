@@ -1,17 +1,21 @@
-# Frontal Morphological Analysis Module
+# Frontal Morphological Analysis Module (V2)
 
 ## Overview
 
-The Frontal Morphological Analysis module is a comprehensive facial analysis system designed for frontal face images. It combines advanced deep learning models for facial landmark detection, morphological characteristic classification, and anthropometric point detection to provide detailed facial analysis suitable for medical, anthropological, and biometric applications.
+The Frontal Morphological Analysis module is a comprehensive facial analysis system designed for frontal face images. It combines advanced deep learning models for facial landmark detection, morphological characteristic classification, eyebrow size classification, and anthropometric point detection to provide detailed facial analysis suitable for medical, anthropological, and biometric applications.
+
+**Version 2.0** introduces a **3-model ensemble** with bbox confinement validation and specialized eyebrow analysis.
 
 ## Features
 
 ### Core Capabilities
-- **Dual-Model Architecture**: Separate detection and classification models for optimal accuracy
-- **Facial Landmark Detection**: 18 anatomical landmark classes using Faster R-CNN
-- **Morphological Classification**: 54 facial characteristics with confidence scoring
-- **Anthropometric Point Detection**: Precise anatomical point localization
-- **Multi-Model Integration**: Seamless combination of detection and classification results
+- **3-Model Ensemble**: Detection + Shape Classification + Eyebrow Size Classification
+- **Facial Landmark Detection**: 23 anatomical landmark classes using Faster R-CNN
+- **Shape Classification**: 45 morphological tags with bbox confinement validation
+- **Eyebrow Size Classification**: 3-class dedicated model for eyebrow characteristics (ap, g, ngna)
+- **Bbox Confinement**: Validates predictions per landmark type to prevent cross-landmark errors
+- **Anthropometric Point Detection**: Precise anatomical point localization (13 points)
+- **Multi-Model Integration**: Seamless combination of all detection and classification results
 - **Real-time Visualization**: Beautiful annotated outputs with comprehensive analysis
 - **Batch Processing**: Efficient processing of multiple images
 
@@ -31,8 +35,10 @@ GET /health
 {
   "status": "healthy",
   "models_loaded": true,
-  "tag_mapping_entries": 54,
-  "total_tags": 54
+  "shape_tags": 45,
+  "eyebrow_size_tags": 3,
+  "eyebrow_size_model_loaded": true,
+  "bbox_confinement_enabled": true
 }
 ```
 
@@ -52,42 +58,68 @@ POST /analyze-face
     "count": 12,
     "detections": [
       {
-        "landmark_class": "OjD",
-        "tag": "tag_33",
-        "tag_name": "normal",
+        "landmark_class": "cj_d",
+        "tag": "tag_38",
+        "tag_name": "rc",
         "score": 0.92,
         "tag_confidence": 0.87,
+        "size_tag": "g",
+        "size_confidence": 0.91,
+        "top_tags": [
+          {"tag": "rc", "confidence": 0.87, "rank": 1},
+          {"tag": "el", "confidence": 0.09, "rank": 2},
+          {"tag": "cv", "confidence": 0.04, "rank": 3}
+        ],
         "box": [145.2, 78.4, 165.8, 98.6]
       },
       {
-        "landmark_class": "Nariz",
-        "tag": "tag_21",
+        "landmark_class": "nariz",
+        "tag": "tag_13",
         "tag_name": "grueso",
         "score": 0.89,
         "tag_confidence": 0.76,
+        "top_tags": [...],
         "box": [155.1, 95.3, 175.4, 125.7]
       }
     ]
+  },
+  "eyebrow_size_classification": {
+    "count": 2,
+    "detections": [
+      {
+        "landmark_class": "cj_d",
+        "size_tag": "g",
+        "size_confidence": 0.91,
+        "box": [145.2, 78.4, 165.8, 98.6]
+      },
+      {
+        "landmark_class": "cj_i",
+        "size_tag": "ap",
+        "size_confidence": 0.88,
+        "box": [120.4, 78.1, 140.6, 98.3]
+      }
+    ],
+    "classes": ["ap", "g", "ngna"]
   },
   "anthropometric_points": {
     "count": 8,
     "detections": [
       {
-        "point_id": "1",
-        "coordinates": [160.5, 85.2],
-        "confidence": 0.94
-      },
-      {
-        "point_id": "2", 
-        "coordinates": [142.8, 102.6],
-        "confidence": 0.88
+        "point_class": "Point_1",
+        "label_idx": 1,
+        "score": 0.94,
+        "bbox": [160.5, 85.2, 165.3, 90.1],
+        "center_point": [162.9, 87.65],
+        "point": [162.9, 87.65]
       }
     ]
   },
   "summary": {
     "total_detections": 20,
+    "eyebrow_size_detections": 2,
     "confidence_threshold": 0.5,
-    "image_processed": true
+    "image_processed": true,
+    "bbox_confinement_applied": true
   },
   "visualization_path": "/app/results/analysis_uuid.jpg"
 }
@@ -166,184 +198,130 @@ GET /tag-mapping
 **Response:**
 ```json
 {
-  "tag_mapping": {
-    "tag_0": "0",
-    "tag_1": "1",
-    "tag_2": "2",
-    "tag_3": "3",
-    "tag_4": "a_n",
-    "tag_5": "ab",
-    "tag_6": "abierta",
-    "tag_7": "adelgazamiento",
-    "tag_8": "al",
-    "tag_9": "ap",
-    "tag_10": "ar",
-    "tag_11": "bigote",
-    "tag_12": "cabellos_sueltos",
-    "tag_13": "carnosos",
-    "tag_14": "crl",
-    "tag_15": "cv",
-    "tag_16": "delgada",
-    "tag_17": "el",
-    "tag_18": "fleco",
-    "tag_19": "fr",
-    "tag_20": "g",
-    "tag_21": "grueso",
-    "tag_22": "h",
-    "tag_23": "hn",
-    "tag_24": "i",
-    "tag_25": "lineas_sonriza",
-    "tag_26": "lineas_verticales",
-    "tag_27": "ll",
-    "tag_28": "lunar",
-    "tag_29": "md",
-    "tag_30": "md_a",
-    "tag_31": "mercurial",
-    "tag_32": "nd",
-    "tag_33": "normal",
-    "tag_34": "nrml",
-    "tag_35": "nt",
-    "tag_36": "on",
-    "tag_37": "pc",
-    "tag_38": "pg",
-    "tag_39": "pl",
-    "tag_40": "planos",
-    "tag_41": "pliegue",
-    "tag_42": "pm",
-    "tag_43": "pn",
-    "tag_44": "ptosis",
-    "tag_45": "pursed",
-    "tag_46": "rc",
-    "tag_47": "rd",
-    "tag_48": "salido",
-    "tag_49": "sl",
-    "tag_50": "solar",
-    "tag_51": "sonriendo",
-    "tag_52": "sp_sl",
-    "tag_53": "uniceja"
+  "shape_tags": [
+    "0", "1", "2", "3", "a_n", "ab", "al", "ar",
+    "crl", "cv", "delgada", "el", "fr", "grueso", "h", "hn", "i",
+    "lineas_sonriza", "lineas_verticales", "ll", "lunar", "md", "md_a",
+    "mercurial", "nd", "normal", "nrml", "nt", "on", "pc", "pg", "pl",
+    "planos", "pliegue", "pm", "pn", "ptosis", "pursed", "rc", "rd",
+    "salido", "sl", "solar", "sp_sl", "uniceja"
+  ],
+  "eyebrow_size_tags": ["ap", "g", "ngna"],
+  "eyebrow_classes": ["cj_d", "cj_i"],
+  "total_shape_tags": 45,
+  "total_eyebrow_size_tags": 3,
+  "bbox_confinement_mappings": {
+    "cj_d": ["rc", "el", "cv"],
+    "cj_i": ["rc", "el", "cv"],
+    "nariz": ["delgada", "nrml", "grueso"],
+    "bc": ["lunar", "mercurial", "pursed", "solar"],
+    "n": ["i", "pn", "rd"],
+    "oj_d": ["al", "crl", "fr", "md", "md_a"],
+    "oj_i": ["al", "crl", "fr", "md", "md_a"],
+    "entrecejo": ["lineas_verticales", "normal", "uniceja"],
+    "parpado_dr": ["pliegue", "ptosis"],
+    "parpado_i": ["pliegue", "ptosis"]
   },
-  "total_tags": 54,
-  "sample_tags": ["tag_0", "tag_1", "tag_2", "tag_3", "tag_4"]
+  "sample_shape_tags": ["0", "1", "2", "3", "a_n", "ab", "al", "ar", "crl", "cv", "delgada", "el", "fr", "grueso", "h"]
 }
 ```
 
 ## Facial Landmark Classes
 
-The system detects 18 distinct facial landmark classes:
+The system detects 23 distinct facial landmark classes:
 
-### Eye Region (4 classes)
-- **CjD**: Right eyebrow (Ceja Derecha)
-- **CjIz**: Left eyebrow (Ceja Izquierda)
-- **OjD**: Right eye (Ojo Derecho)
-- **OjIz**: Left eye (Ojo Izquierdo)
+### Eye & Eyebrow Region (8 classes)
+- **cj_d**: Right eyebrow (Ceja Derecha) - *includes size classification*
+- **cj_i**: Left eyebrow (Ceja Izquierda) - *includes size classification*
+- **oj_d**: Right eye (Ojo Derecho)
+- **oj_i**: Left eye (Ojo Izquierdo)
+- **parpado_dr**: Right eyelid
+- **parpado_i**: Left eyelid
+- **entrecejo**: Between eyebrows (glabella)
+- **ac_d**, **ac_i**: Eye corners
 
-### Cheek Region (2 classes)
-- **CchD**: Right cheek (Cachete Derecho)
-- **CchIzq**: Left cheek (Cachete Izquierdo)
+### Cheek Region (4 classes)
+- **cch_d**: Right cheek (Cachete Derecho)
+- **cch_i**: Left cheek (Cachete Izquierdo)
+- **pml_d**: Right cheekbone (Pomulo Derecho)
+- **pml_i**: Left cheekbone (Pomulo Izquierdo)
 
 ### Central Facial Features (3 classes)
-- **Nariz**: Nose
-- **N**: Nasal area
-- **F**: Forehead (Frente)
+- **nariz**: Nose
+- **n**: Nasal area
+- **f**: Forehead (Frente)
 
-### Mouth Region (3 classes)
-- **Bc**: Mouth/lips (Boca)
-- **PmlD**: Right cheekbone (Pomulo Derecho)
-- **PmlIz**: Left cheekbone (Pomulo Izquierdo)
+### Mouth Region (1 class)
+- **bc**: Mouth/lips (Boca)
 
 ### Ear Region (6 classes)
-- **TrExCjDr**: Right external ear tragus
-- **TrExCjIz**: Left external ear tragus
-- **TrInCjDr**: Right internal ear tragus
-- **TrInCjIz**: Left internal ear tragus
-- **OD**: Right ear (Oreja Derecha)
-- **OIz**: Left ear (Oreja Izquierda)
+- **tr_ex_cj_dr**: Right external ear tragus
+- **tr_ex_cj_i**: Left external ear tragus
+- **tr_in_cj_d**: Right internal ear tragus
+- **tr_in_cj_i**: Left internal ear tragus
+- **o_d**: Right ear (Oreja Derecha)
+- **o_i**: Left ear (Oreja Izquierda)
 
-## Morphological Characteristics (54 Tags)
+## Morphological Characteristics
 
-### Numeric Classifications (0-3)
-- **tag_0-tag_3**: Numeric morphological codes
+### Shape Classification (45 Tags)
 
-### Facial Structure
-- **a_n**: Aquiline nose
-- **ab**: Open/prominent
-- **abierta**: Open feature
-- **adelgazamiento**: Thinning
-- **delgada**: Thin/narrow
-- **grueso**: Thick/coarse
-- **carnosos**: Fleshy/full
+**Complete list of 45 shape tags:**
+```
+0, 1, 2, 3, a_n, ab, al, ar, crl, cv, delgada, el, fr, grueso, h, hn, i,
+lineas_sonriza, lineas_verticales, ll, lunar, md, md_a, mercurial, nd,
+normal, nrml, nt, on, pc, pg, pl, planos, pliegue, pm, pn, ptosis,
+pursed, rc, rd, salido, sl, solar, sp_sl, uniceja
+```
 
-### Eye Characteristics
-- **al**: Eye-related measurement
-- **ap**: Eye appearance
-- **ar**: Eye area
-- **el**: Eye line
-- **ptosis**: Drooping eyelid
-- **planos**: Flat/plane
+**Removed tags from V1** (improved data quality):
+- `abierta`, `adelgazamiento`, `bigote`, `carnosos`, `cabellos_sueltos`, `fleco`, `sonriendo`
 
-### Hair and Forehead
-- **bigote**: Mustache
-- **cabellos_sueltos**: Loose hair
-- **fleco**: Bangs/fringe
-- **fr**: Forehead-related
-- **uniceja**: Unibrow
+### Eyebrow Size Classification (3 Tags - Eyebrows Only)
 
-### Nose Features
-- **h**: Height-related
-- **hn**: Nasal height
-- **normal**: Normal/standard
-- **nrml**: Normal variant
-- **nt**: Nasal tip
-- **salido**: Protruding
+Applied **only to `cj_d` and `cj_i`** landmarks:
 
-### Mouth and Expression
-- **lineas_sonriza**: Smile lines
-- **lineas_verticales**: Vertical lines
-- **pursed**: Pursed lips
-- **sonriendo**: Smiling
-- **pliegue**: Fold/crease
+- **ap**: Apretadas (narrow/thin eyebrows)
+- **g**: Gruesas (thick/wide eyebrows)
+- **ngna**: Normal/intermediate (neither narrow nor thick)
 
-### Facial Features
-- **lunar**: Mole/beauty mark
-- **mercurial**: Mercury-like (reflective)
-- **solar**: Sun-related (pigmentation)
-- **cv**: Curve-related
-- **crl**: Curl-related
+### Bbox Confinement Validation
 
-### Measurements
-- **md**: Mid-distance
-- **md_a**: Mid-distance variant
-- **nd**: Nasal distance
-- **on**: Other measurement
-- **pc**: Percentage/proportion
-- **pg**: Page/position
-- **pl**: Plane/flat
-- **pm**: Mid-point
-- **pn**: Nasal point
-- **rc**: Radius/curve
-- **rd**: Radius/distance
-- **sl**: Side length
-- **sp_sl**: Special side length
+The system validates shape predictions per landmark type. Examples:
 
-### General
-- **g**: General measurement
-- **i**: Index/indicator
-- **ll**: Line length
+- **Eyebrows** (`cj_d`, `cj_i`): Only accepts `rc`, `el`, `cv`
+- **Nose** (`nariz`): Only accepts `delgada`, `nrml`, `grueso`
+- **Mouth** (`bc`): Only accepts `lunar`, `mercurial`, `pursed`, `solar`
+- **Eyes** (`oj_d`, `oj_i`): Only accepts `al`, `crl`, `fr`, `md`, `md_a`
+- **Nostril** (`n`): Only accepts `i`, `pn`, `rd`
+- **Eyelids** (`parpado_dr`, `parpado_i`): Only accepts `pliegue`, `ptosis`
+- **Glabella** (`entrecejo`): Only accepts `lineas_verticales`, `normal`, `uniceja`
+
+If the model predicts an invalid tag, the system automatically selects the highest-confidence valid tag.
 
 ## Technical Specifications
 
 ### Detection Model Architecture
 - **Base Model**: Faster R-CNN with ResNet-50 FPN backbone
-- **Classes**: 18 landmark classes + background
+- **Classes**: 23 landmark classes + background
 - **Input Processing**: 224×224 pixel normalization
 - **Output**: Bounding boxes with confidence scores
 
-### Classification Model Architecture
+### Shape Classification Model Architecture
 - **Architecture**: Custom CNN with 4 convolutional layers
 - **Feature Layers**: 32 → 64 → 128 → 256 channels
-- **Classifier**: 1024 → 512 → 54 classes
+- **Classifier**: 1024 → 512 → 45 classes
 - **Input Size**: 64×64 pixels
 - **Normalization**: ImageNet standard (mean/std)
+- **Validation**: Bbox confinement per landmark type
+
+### Eyebrow Size Classification Model Architecture
+- **Architecture**: Enhanced CNN with 4 convolutional layers + BatchNorm
+- **Feature Layers**: 64 → 128 → 256 → 512 channels
+- **Classifier**: 2048 → 1024 → 512 → 3 classes
+- **Input Size**: 64×64 pixels
+- **Normalization**: ImageNet standard (mean/std)
+- **Applies to**: Only `cj_d` and `cj_i` landmarks
 
 ### Anthropometric Point Detector
 - **Detection**: Precise anatomical point localization
@@ -530,9 +508,14 @@ curl -X GET "http://localhost:8005/tag-mapping"
 
 ## Model Files Required
 
-- `models/facial_landmarks_detection_model.pth` - Faster R-CNN landmark detection model
-- `models/best_facial_landmark_classifier.pth` - CNN characteristic classification model  
-- `models/facial_points_detection_model.pth` - Anthropometric point detection model
+Place these files in the `models/` directory:
+
+1. `facial_landmarks_detection_model.pth` - Faster R-CNN landmark detection (23 classes)
+2. `best_shape_classifier.pth` - **NEW V2** Shape classification model (45 classes)
+3. `best_eyebrow_size_classifier.pth` - **NEW V2** Eyebrow size model (3 classes)
+4. `facial_points_detection_model.pth` - Anthropometric point detection (13 points)
+
+**Note**: V1 used `best_facial_landmark_classifier.pth` (52 classes). V2 replaces this with 2 separate models.
 
 ## Results Directory
 
