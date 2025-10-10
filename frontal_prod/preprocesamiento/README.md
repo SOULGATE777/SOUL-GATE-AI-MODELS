@@ -7,7 +7,8 @@ The Frontal Preprocessing module is a specialized head detection and preprocessi
 ## Features
 
 ### Core Capabilities
-- **Frontal Head Detection**: Uses YOLOv8 for robust head/face detection in frontal images
+- **Frontal Head Detection**: Uses MediaPipe for robust head/face detection in frontal images
+- **Face Alignment**: Automatically corrects tilted faces to anatomical position using eye landmarks
 - **Intelligent Cropping**: Crops detected heads with configurable padding around bounding boxes
 - **Aspect Ratio Preservation**: Maintains original proportions while resizing to target dimensions
 - **Base64 Output**: Converts processed images to base64 format for easy API integration
@@ -55,6 +56,7 @@ POST /preprocess-frontal
 - `output_format` (optional): String 'JPEG'|'PNG' (default: 'JPEG')
 - `quality` (optional): Integer 1-100 (default: 95, JPEG only)
 - `include_visualization` (optional): Boolean (default: false)
+- `align_face` (optional): Boolean (default: true) - Align tilted faces to anatomical position
 
 **Response:**
 ```json
@@ -69,7 +71,13 @@ POST /preprocess-frontal
     "target_size": [600, 600],
     "padding_factor": 0.15,
     "output_format": "JPEG",
-    "quality": 95
+    "quality": 95,
+    "align_face": true
+  },
+  "alignment": {
+    "was_aligned": true,
+    "rotation_angle": -5.23,
+    "alignment_applied": true
   },
   "processed_heads": [
     {
@@ -209,19 +217,21 @@ GET /processing-stats
 ## Technical Specifications
 
 ### Model Architecture
-- **Base Model**: YOLOv8 (nano version by default)
-- **Detection Strategy**: Uses "person" class detection and extracts head region (top 30% of person bounding box)
-- **Training Framework**: Ultralytics YOLOv8 with PyTorch backend
+- **Face Detection**: MediaPipe Face Detection (short-range model)
+- **Face Alignment**: MediaPipe Face Mesh with 468 landmarks
+- **Alignment Method**: Eye landmarks (33, 263) for rotation angle calculation
+- **Detection Strategy**: Detects faces and expands to cranium region (1.8x height, 1.4x width)
 - **Input Processing**: Automatic image preprocessing and tensor conversion
 
 ### Processing Pipeline
 1. **Image Validation**: Format and dimension checks
-2. **Head Detection**: YOLOv8 inference with confidence filtering
-3. **Head Region Extraction**: Intelligent head region estimation from person detections
-4. **Bounding Box Processing**: Padding calculation and boundary validation
-5. **Cropping**: Intelligent cropping with aspect ratio preservation
-6. **Resizing**: Target size fitting with letterboxing on black background
-7. **Format Conversion**: Base64 encoding with configurable quality
+2. **Face Alignment** (optional): Eye landmark detection and rotation correction
+3. **Head Detection**: MediaPipe Face Detection with confidence filtering
+4. **Cranium Region Extraction**: Intelligent cranium region estimation from face detections
+5. **Bounding Box Processing**: Padding calculation and boundary validation
+6. **Cropping**: Intelligent cropping with aspect ratio preservation
+7. **Resizing**: Target size fitting with letterboxing on black background
+8. **Format Conversion**: Base64 encoding with configurable quality
 
 ### Input Requirements
 - **Image Formats**: JPG, JPEG, PNG
@@ -300,12 +310,19 @@ with open('frontal_image.jpg', 'rb') as f:
             'padding_factor': 0.2,
             'output_format': 'JPEG',
             'quality': 90,
-            'include_visualization': True
+            'include_visualization': True,
+            'align_face': True  # Enable face alignment
         }
     )
 
 result = response.json()
 print(f"Detected {result['total_heads_detected']} heads")
+
+# Check alignment results
+if 'alignment' in result:
+    print(f"Face alignment: {result['alignment']['was_aligned']}")
+    if result['alignment']['was_aligned']:
+        print(f"Rotation angle: {result['alignment']['rotation_angle']:.2f}°")
 
 # Decode first head from base64
 if result['processed_heads']:
@@ -328,13 +345,19 @@ print(f"Found {len(detections['detections'])} heads")
 
 ### cURL Examples
 ```bash
-# Complete preprocessing
+# Complete preprocessing with alignment
 curl -X POST "http://localhost:8014/preprocess-frontal" \
   -F "file=@frontal_image.jpg" \
   -F "confidence_threshold=0.6" \
   -F "target_width=600" \
   -F "target_height=600" \
-  -F "include_visualization=true"
+  -F "include_visualization=true" \
+  -F "align_face=true"
+
+# Preprocessing without alignment
+curl -X POST "http://localhost:8014/preprocess-frontal" \
+  -F "file=@frontal_image.jpg" \
+  -F "align_face=false"
 
 # Detection only
 curl -X POST "http://localhost:8014/detect-heads" \
@@ -429,12 +452,49 @@ The base64 output format allows seamless integration with other services in the 
 4. **Poor Detection**: Adjust confidence threshold or ensure clear frontal images
 5. **Base64 Errors**: Check output format and quality parameters
 
+## Face Alignment Feature
+
+The preprocessing service includes automatic face alignment to correct tilted faces before processing.
+
+### How It Works
+1. **Eye Detection**: MediaPipe Face Mesh detects 468 facial landmarks
+2. **Angle Calculation**: Computes rotation angle from left (landmark 33) and right (landmark 263) eye centers
+3. **Rotation**: If tilt > 2°, rotates image to align eyes horizontally
+4. **Processing**: Aligned image proceeds through detection and cropping pipeline
+
+### Alignment Parameters
+- **Threshold**: 2° (faces tilted less than 2° are not rotated)
+- **Method**: Rotation around eye midpoint using `cv2.warpAffine`
+- **Background Fill**: Black (0, 0, 0)
+
+### Usage
+```python
+# Enable alignment (default)
+response = requests.post(
+    'http://localhost:8014/preprocess-frontal',
+    files={'file': f},
+    data={'align_face': True}
+)
+
+# Disable alignment
+response = requests.post(
+    'http://localhost:8014/preprocess-frontal',
+    files={'file': f},
+    data={'align_face': False}
+)
+
+# Check alignment results
+if result['alignment']['was_aligned']:
+    print(f"Face rotated by {result['alignment']['rotation_angle']:.2f}°")
+```
+
 ## Performance Notes
 
-- **Processing Time**: ~0.2-1.5 seconds per image (GPU), ~1-5 seconds (CPU)
-- **Memory Usage**: ~1-3GB GPU memory, ~0.5-1GB system RAM
-- **Throughput**: ~40-120 images/minute depending on hardware and image size
+- **Processing Time**: ~0.2-1.5 seconds per image (CPU, without alignment), ~0.3-2.0 seconds (with alignment)
+- **Memory Usage**: ~0.5-1GB system RAM
+- **Throughput**: ~30-100 images/minute depending on hardware and image size
 - **Accuracy**: Optimized for clear frontal images with visible heads/faces
+- **Alignment Overhead**: +30-50ms per image
 
 ## Development and Testing
 

@@ -31,6 +31,9 @@ class FrontalPreprocessingPipeline:
         self.mp_face_detection = mp.solutions.face_detection
         self.mp_drawing = mp.solutions.drawing_utils
 
+        # Initialize MediaPipe Face Mesh for alignment
+        self.mp_face_mesh = mp.solutions.face_mesh
+
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
@@ -39,6 +42,10 @@ class FrontalPreprocessingPipeline:
         # Cranium expansion factors
         self.cranium_height_multiplier = 1.8  # Expand face height by 80% for cranium
         self.cranium_width_multiplier = 1.4   # Expand face width by 40% for cranium
+
+        # Face alignment parameters
+        self.alignment_threshold = 2.0  # Only align if tilt angle > 2 degrees
+        self.face_mesh_detector = None  # Lazy initialization
 
         logger.info(f"Initializing FrontalPreprocessingPipeline with MediaPipe")
         self._load_model()
@@ -62,6 +69,130 @@ class FrontalPreprocessingPipeline:
         except Exception as e:
             logger.error(f"Failed to initialize MediaPipe: {str(e)}")
             raise e
+
+    def _initialize_face_mesh(self):
+        """Lazy initialization of Face Mesh detector"""
+        if self.face_mesh_detector is None:
+            self.face_mesh_detector = self.mp_face_mesh.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5
+            )
+            logger.info("MediaPipe Face Mesh initialized for alignment")
+
+    def detect_eye_landmarks(self, image: np.ndarray) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """
+        Detect eye landmarks for face alignment
+
+        Args:
+            image: Input image in RGB format
+
+        Returns:
+            Tuple of (left_eye_center, right_eye_center) or None if not detected
+        """
+        self._initialize_face_mesh()
+
+        # Convert RGB to BGR for MediaPipe
+        image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        h, w = image.shape[:2]
+
+        # Process image with Face Mesh
+        results = self.face_mesh_detector.process(image_bgr)
+
+        if results.multi_face_landmarks:
+            landmarks = results.multi_face_landmarks[0]
+
+            # Extract eye center landmarks
+            # Left eye center: landmark 33
+            # Right eye center: landmark 263
+            left_eye = landmarks.landmark[33]
+            right_eye = landmarks.landmark[263]
+
+            # Convert normalized coordinates to pixel coordinates
+            left_eye_center = (int(left_eye.x * w), int(left_eye.y * h))
+            right_eye_center = (int(right_eye.x * w), int(right_eye.y * h))
+
+            return left_eye_center, right_eye_center
+
+        logger.warning("No face landmarks detected for alignment")
+        return None
+
+    def calculate_rotation_angle(self, left_eye: Tuple[int, int], right_eye: Tuple[int, int]) -> float:
+        """
+        Calculate rotation angle needed to align eyes horizontally
+
+        Args:
+            left_eye: (x, y) coordinates of left eye center
+            right_eye: (x, y) coordinates of right eye center
+
+        Returns:
+            Rotation angle in degrees
+        """
+        # Calculate delta between eye positions
+        dx = right_eye[0] - left_eye[0]
+        dy = right_eye[1] - left_eye[1]
+
+        # Calculate angle in radians, then convert to degrees
+        angle_rad = np.arctan2(dy, dx)
+        angle_deg = np.degrees(angle_rad)
+
+        return angle_deg
+
+    def align_face(self, image: np.ndarray) -> Tuple[np.ndarray, Dict]:
+        """
+        Align tilted face to anatomical position based on eye landmarks
+
+        Args:
+            image: Input image in RGB format
+
+        Returns:
+            Tuple of (aligned_image, alignment_metadata)
+        """
+        metadata = {
+            'was_aligned': False,
+            'rotation_angle': 0.0,
+            'alignment_applied': False
+        }
+
+        # Detect eye landmarks
+        eye_landmarks = self.detect_eye_landmarks(image)
+
+        if eye_landmarks is None:
+            logger.warning("Could not detect eyes for alignment, returning original image")
+            return image, metadata
+
+        left_eye, right_eye = eye_landmarks
+
+        # Calculate rotation angle
+        angle = self.calculate_rotation_angle(left_eye, right_eye)
+        metadata['rotation_angle'] = float(angle)
+
+        # Only rotate if angle exceeds threshold
+        if abs(angle) < self.alignment_threshold:
+            logger.info(f"Face tilt angle ({angle:.2f}°) below threshold ({self.alignment_threshold}°), no alignment needed")
+            return image, metadata
+
+        # Calculate rotation center (midpoint between eyes)
+        center_x = (left_eye[0] + right_eye[0]) // 2
+        center_y = (left_eye[1] + right_eye[1]) // 2
+        center = (center_x, center_y)
+
+        # Get rotation matrix
+        h, w = image.shape[:2]
+        rotation_matrix = cv2.getRotationMatrix2D(center, angle, scale=1.0)
+
+        # Rotate image
+        aligned_image = cv2.warpAffine(image, rotation_matrix, (w, h),
+                                       flags=cv2.INTER_LINEAR,
+                                       borderMode=cv2.BORDER_CONSTANT,
+                                       borderValue=(0, 0, 0))
+
+        metadata['was_aligned'] = True
+        metadata['alignment_applied'] = True
+
+        logger.info(f"Face aligned: rotated {angle:.2f}° from eye landmarks")
+        return aligned_image, metadata
 
     def detect_heads(self, image: np.ndarray, confidence_threshold: float = None) -> List[Dict]:
         """
@@ -227,7 +358,8 @@ class FrontalPreprocessingPipeline:
                      target_size: Tuple[int, int] = None,
                      padding_factor: float = None,
                      output_format: str = 'JPEG',
-                     quality: int = 95) -> Dict:
+                     quality: int = 95,
+                     align_face: bool = True) -> Dict:
         """
         Complete preprocessing pipeline: detect cranium, crop, and convert to base64
 
@@ -238,6 +370,7 @@ class FrontalPreprocessingPipeline:
             padding_factor: Padding factor around detected cranium
             output_format: Output image format ('JPEG', 'PNG')
             quality: JPEG quality (1-100)
+            align_face: Whether to align tilted faces (default: True)
 
         Returns:
             Dictionary with detection results and base64 encoded cropped cranium
@@ -249,15 +382,23 @@ class FrontalPreprocessingPipeline:
         if padding_factor is None:
             padding_factor = self.default_padding_factor
 
-        # Detect cranium regions
-        detections = self.detect_heads(image, confidence_threshold)
+        # Step 1: Align face if requested
+        alignment_metadata = None
+        working_image = image
+        if align_face:
+            working_image, alignment_metadata = self.align_face(image)
+        else:
+            logger.info("Face alignment disabled by parameter")
 
-        # Process each detection
+        # Step 2: Detect cranium regions on aligned image
+        detections = self.detect_heads(working_image, confidence_threshold)
+
+        # Step 3: Process each detection
         processed_heads = []
         for detection in detections:
-            # Crop cranium
+            # Crop cranium from aligned image
             cropped_cranium = self.crop_head_with_padding(
-                image, detection['bbox'], target_size, padding_factor
+                working_image, detection['bbox'], target_size, padding_factor
             )
 
             # Convert to base64
@@ -276,7 +417,7 @@ class FrontalPreprocessingPipeline:
                 'expansion_factors': detection.get('expansion_factors')
             })
 
-        return {
+        result = {
             'total_detections': len(detections),
             'processed_heads': processed_heads,
             'original_image_size': image.shape[:2],
@@ -285,9 +426,16 @@ class FrontalPreprocessingPipeline:
                 'target_size': target_size,
                 'padding_factor': padding_factor,
                 'output_format': output_format,
-                'quality': quality
+                'quality': quality,
+                'align_face': align_face
             }
         }
+
+        # Add alignment metadata if alignment was performed
+        if alignment_metadata is not None:
+            result['alignment'] = alignment_metadata
+
+        return result
 
     def get_model_info(self) -> Dict:
         """Get information about the loaded model"""
@@ -302,5 +450,11 @@ class FrontalPreprocessingPipeline:
             'cranium_expansion': {
                 'height_multiplier': self.cranium_height_multiplier,
                 'width_multiplier': self.cranium_width_multiplier
+            },
+            'alignment_capabilities': {
+                'face_alignment_available': True,
+                'alignment_method': 'MediaPipe Face Mesh (468 landmarks)',
+                'alignment_threshold': self.alignment_threshold,
+                'eye_landmarks_used': 'Left eye center (33), Right eye center (263)'
             }
         }

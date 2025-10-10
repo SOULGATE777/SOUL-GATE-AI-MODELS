@@ -119,7 +119,8 @@ async def preprocess_frontal(
     padding_factor: float = Form(0.15),
     output_format: str = Form("JPEG"),
     quality: int = Form(95),
-    include_visualization: bool = Form(False)
+    include_visualization: bool = Form(False),
+    align_face: bool = Form(True)
 ):
     """
     Complete frontal preprocessing: detect heads, crop, resize and convert to base64
@@ -132,6 +133,7 @@ async def preprocess_frontal(
     - **output_format**: Output format for base64 images ('JPEG', 'PNG', default: 'JPEG')
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
+    - **align_face**: Align tilted faces to anatomical position (default: true)
     """
 
     if pipeline is None:
@@ -175,7 +177,8 @@ async def preprocess_frontal(
             target_size=(target_width, target_height),
             padding_factor=padding_factor,
             output_format=output_format,
-            quality=quality
+            quality=quality,
+            align_face=align_face
         )
 
         # Generate unique processing ID
@@ -191,6 +194,10 @@ async def preprocess_frontal(
             "processing_parameters": results['processing_parameters'],
             "processed_heads": []
         }
+
+        # Add alignment metadata if available
+        if 'alignment' in results:
+            response['alignment'] = results['alignment']
 
         # Add processed heads to response
         for i, head_data in enumerate(results['processed_heads']):
