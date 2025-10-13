@@ -289,39 +289,81 @@ class AnthropometricAnalyzer:
         
         return proportions
 
-    def _calculate_eyebrow_slopes(self, extended_points):
-        """Calculate eyebrow slopes"""
-        # Point 1 and Point 17 (Across the face)
-        point_1 = extended_points[0]
-        point_17 = extended_points[16]
-        
-        # Calculate face line slope
-        face_line_slope = (point_17[1] - point_1[1]) / (point_17[0] - point_1[0]) if point_17[0] != point_1[0] else float('inf')
-        
+    def _calculate_eyebrow_slopes(self, extended_points, model_predictions):
+        """Calculate eyebrow slopes relative to vertical midline reference (point 9 to M3)"""
+        # Get vertical midline reference vector (point 9 to M3)
+        point_9 = extended_points[8]  # chin
+
+        # M3 should always be used for this measurement (not C1)
+        if 3 not in model_predictions:
+            print("WARNING: Model point 3 (M3) not available for vertical reference. Angles may be inaccurate.")
+            # Fallback: use point 69 if M3 not available
+            point_m3 = extended_points[69]
+        else:
+            point_m3 = model_predictions[3]
+
+        # Calculate vertical midline reference angle (from point 9 to M3)
+        vertical_ref_angle = math.atan2(point_m3[1] - point_9[1], point_m3[0] - point_9[0])
+
+        # Calculate perpendicular to vertical midline (this is our "horizontal" reference)
+        perpendicular_ref_angle = vertical_ref_angle + math.pi / 2
+
         # Eyebrow points
+        # Right eyebrow (17-21): points go from outer to inner (right to left in image)
+        # Left eyebrow (22-26): points go from inner to outer (left to right in image)
         right_eyebrow_points = extended_points[17:22]
         left_eyebrow_points = extended_points[22:27]
-        
-        def get_slope(p1, p2):
-            return (p2[1] - p1[1]) / (p2[0] - p1[0]) if p2[0] != p1[0] else float('inf')
 
-        # Calculate slopes
-        right_eyebrow_slopes = {
-            "portion_1": get_slope(right_eyebrow_points[0], right_eyebrow_points[1]),
-            "portion_2": get_slope(right_eyebrow_points[1], right_eyebrow_points[3]),
-            "portion_3": get_slope(right_eyebrow_points[3], right_eyebrow_points[4])
+        def get_angle_relative_to_perpendicular(p1, p2):
+            """Calculate angle relative to perpendicular of vertical midline"""
+            # Calculate angle of segment
+            segment_angle = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
+            # Calculate relative to perpendicular reference
+            relative_angle = segment_angle - perpendicular_ref_angle
+            # Normalize to [-pi, pi]
+            while relative_angle > math.pi:
+                relative_angle -= 2 * math.pi
+            while relative_angle < -math.pi:
+                relative_angle += 2 * math.pi
+            # Convert to degrees
+            return math.degrees(relative_angle)
+
+        def get_angle_relative_to_perpendicular_reversed(p1, p2):
+            """Calculate angle with reversed direction for mirrored features"""
+            # Reverse the direction: calculate from p2 to p1 instead
+            segment_angle = math.atan2(p1[1] - p2[1], p1[0] - p2[0])
+            # Calculate relative to perpendicular reference
+            relative_angle = segment_angle - perpendicular_ref_angle
+            # Normalize to [-pi, pi]
+            while relative_angle > math.pi:
+                relative_angle -= 2 * math.pi
+            while relative_angle < -math.pi:
+                relative_angle += 2 * math.pi
+            # Convert to degrees
+            return math.degrees(relative_angle)
+
+        # Calculate angles
+        # Right eyebrow: REVERSE direction (inner to outer) to go rightward anatomically
+        right_eyebrow_angles = {
+            "portion_1": get_angle_relative_to_perpendicular_reversed(right_eyebrow_points[0], right_eyebrow_points[1]),
+            "portion_2": get_angle_relative_to_perpendicular_reversed(right_eyebrow_points[1], right_eyebrow_points[3]),
+            "portion_3": get_angle_relative_to_perpendicular_reversed(right_eyebrow_points[3], right_eyebrow_points[4])
         }
 
-        left_eyebrow_slopes = {
-            "portion_1": get_slope(left_eyebrow_points[0], left_eyebrow_points[1]),
-            "portion_2": get_slope(left_eyebrow_points[1], left_eyebrow_points[3]),
-            "portion_3": get_slope(left_eyebrow_points[3], left_eyebrow_points[4])
+        # Left eyebrow: natural order (inner to outer, goes rightward) - matches right anatomically
+        # This ensures symmetrical eyebrows produce same angle values
+        left_eyebrow_angles = {
+            "portion_1": get_angle_relative_to_perpendicular(left_eyebrow_points[0], left_eyebrow_points[1]),
+            "portion_2": get_angle_relative_to_perpendicular(left_eyebrow_points[1], left_eyebrow_points[3]),
+            "portion_3": get_angle_relative_to_perpendicular(left_eyebrow_points[3], left_eyebrow_points[4])
         }
-        
+
         return {
-            "face_line_slope": face_line_slope,
-            "right_eyebrow": right_eyebrow_slopes,
-            "left_eyebrow": left_eyebrow_slopes
+            "vertical_reference_used": 3 in model_predictions,
+            "vertical_reference_angle_deg": math.degrees(vertical_ref_angle),
+            "perpendicular_reference_angle_deg": math.degrees(perpendicular_ref_angle),
+            "right_eyebrow": right_eyebrow_angles,
+            "left_eyebrow": left_eyebrow_angles
         }
 
     def _calculate_eyebrow_proportions(self, extended_points):
@@ -359,42 +401,65 @@ class AnthropometricAnalyzer:
             'left_eye_length': left_eye_length
         }
 
-    def _calculate_eye_angles(self, extended_points):
-        """Calculate the angle of both eyes relative to the horizontal baseline"""
+    def _calculate_eye_angles(self, extended_points, model_predictions):
+        """Calculate the angle of both eyes relative to vertical midline reference (point 9 to M3)"""
+        # Get vertical midline reference vector (point 9 to M3)
+        point_9 = extended_points[8]  # chin
+
+        # M3 should always be used for this measurement (not C1)
+        if 3 not in model_predictions:
+            print("WARNING: Model point 3 (M3) not available for vertical reference. Eye angles may be inaccurate.")
+            # Fallback: use point 69 if M3 not available
+            point_m3 = extended_points[69]
+        else:
+            point_m3 = model_predictions[3]
+
+        # Calculate vertical midline reference angle (from point 9 to M3)
+        vertical_ref_angle = math.atan2(point_m3[1] - point_9[1], point_m3[0] - point_9[0])
+
+        # Calculate perpendicular to vertical midline (this is our "horizontal" reference)
+        perpendicular_ref_angle = vertical_ref_angle + math.pi / 2
+
         # Right eye: inner corner (39) to outer corner (36)
         right_inner = extended_points[39]
         right_outer = extended_points[36]
-        
+
         # Left eye: inner corner (42) to outer corner (45)
         left_inner = extended_points[42]
         left_outer = extended_points[45]
-        
-        # Calculate vertical differences (positive when outer is higher than inner)
-        # Note: In image coordinates, y increases downward, so we flip the calculation
-        right_vertical_diff = right_inner[1] - right_outer[1] 
-        left_vertical_diff = left_inner[1] - left_outer[1]
-        
-        # Calculate horizontal differences (always use absolute distance)
-        right_horizontal_diff = abs(right_outer[0] - right_inner[0])
-        left_horizontal_diff = abs(left_outer[0] - left_inner[0])
-        
-        # Calculate angles using atan2 for proper quadrant handling
-        right_angle_rad = math.atan2(right_vertical_diff, right_horizontal_diff)
-        left_angle_rad = math.atan2(left_vertical_diff, left_horizontal_diff)
-        
+
+        # Calculate eye angles
+        # Right eye: REVERSE direction (outer to inner) - goes rightward anatomically
+        right_eye_angle = math.atan2(right_inner[1] - right_outer[1], right_inner[0] - right_outer[0])
+        # Left eye: calculate from inner to outer (goes rightward in image, matches right anatomically)
+        # This ensures both eyes with same tilt produce same angle value
+        left_eye_angle = math.atan2(left_outer[1] - left_inner[1], left_outer[0] - left_inner[0])
+
+        # Calculate relative to perpendicular reference
+        right_relative_angle = right_eye_angle - perpendicular_ref_angle
+        left_relative_angle = left_eye_angle - perpendicular_ref_angle
+
+        # Normalize to [-pi, pi]
+        while right_relative_angle > math.pi:
+            right_relative_angle -= 2 * math.pi
+        while right_relative_angle < -math.pi:
+            right_relative_angle += 2 * math.pi
+
+        while left_relative_angle > math.pi:
+            left_relative_angle -= 2 * math.pi
+        while left_relative_angle < -math.pi:
+            left_relative_angle += 2 * math.pi
+
         # Convert to degrees
-        right_angle_deg = math.degrees(right_angle_rad)
-        left_angle_deg = math.degrees(left_angle_rad)
-        
-        # Calculate slopes for reference
-        right_slope = (right_outer[1] - right_inner[1]) / (right_outer[0] - right_inner[0]) if (right_outer[0] - right_inner[0]) != 0 else float('inf')
-        left_slope = (left_outer[1] - left_inner[1]) / (left_outer[0] - left_inner[0]) if (left_outer[0] - left_inner[0]) != 0 else float('inf')
-        
+        right_angle_deg = math.degrees(right_relative_angle)
+        left_angle_deg = math.degrees(left_relative_angle)
+
         return {
             'left_eye_angle': left_angle_deg,
             'right_eye_angle': right_angle_deg,
-            'left_eye_slope': left_slope,
-            'right_eye_slope': right_slope
+            'vertical_reference_used': 3 in model_predictions,
+            'vertical_reference_angle_deg': math.degrees(vertical_ref_angle),
+            'perpendicular_reference_angle_deg': math.degrees(perpendicular_ref_angle)
         }
 
     def _calculate_eyebrow_eyelid_distances(self, extended_points):
@@ -663,11 +728,11 @@ class AnthropometricAnalyzer:
             
             # Calculate proportions and slopes
             proportions = self._calculate_proportions(extended_points)
-            slopes = self._calculate_eyebrow_slopes(extended_points)
-            
+            slopes = self._calculate_eyebrow_slopes(extended_points, model_predictions)
+
             # NEW FEATURES: Calculate additional analysis
             eyebrow_proportions = self._calculate_eyebrow_proportions(extended_points)
-            eye_angles = self._calculate_eye_angles(extended_points)
+            eye_angles = self._calculate_eye_angles(extended_points, model_predictions)
             eyebrow_eyelid_distances = self._calculate_eyebrow_eyelid_distances(extended_points)
             mouth_measurements = self._calculate_mouth_measurements(extended_points)
             eye_face_proportions = self._calculate_eye_face_proportions(landmarks, model_predictions)
@@ -927,35 +992,27 @@ class AnthropometricAnalyzer:
         report.append(f"• Porcentaje interno/externo: {summary.get('face_area_analysis', {}).get('inner_outer_percentage', 'N/A')}")
         report.append("")
         
-        # Eyebrow slopes
+        # Eyebrow angles (now relative to vertical midline)
         if slopes:
-            report.append("PENDIENTES DE CEJAS:")
-            right_slopes = slopes.get('right_eyebrow', {})
-            left_slopes = slopes.get('left_eyebrow', {})
-            
+            report.append("ÁNGULOS DE CEJAS (relativos a línea media vertical):")
+            report.append(f"• Referencia vertical usada: {'M3' if slopes.get('vertical_reference_used') else 'punto 69'}")
+            if 'vertical_reference_angle_deg' in slopes:
+                report.append(f"• Ángulo de referencia vertical (9-M3): {slopes.get('vertical_reference_angle_deg', 0):.2f}°")
+
+            right_angles = slopes.get('right_eyebrow', {})
+            left_angles = slopes.get('left_eyebrow', {})
+
             for portion in ['portion_1', 'portion_2', 'portion_3']:
-                if portion in right_slopes:
-                    slope = right_slopes[portion]
-                    degrees = self._convert_slope_to_degrees(slope)
-                    if portion == 'portion_1':
-                        degrees = 180 - degrees
-                    elif portion == 'portion_2':
-                        degrees = 90 - degrees
-                        degrees = max(degrees, 0)
-                    label = self._label_proportion(degrees, portion)
-                    report.append(f"• Ceja derecha {portion}: {slope:.4f} ({degrees:.2f}°) - {label}")
-            
+                if portion in right_angles:
+                    angle = right_angles[portion]
+                    label = self._label_proportion(angle, portion)
+                    report.append(f"• Ceja derecha {portion}: {angle:.2f}° - {label}")
+
             for portion in ['portion_1', 'portion_2', 'portion_3']:
-                if portion in left_slopes:
-                    slope = left_slopes[portion]
-                    degrees = self._convert_slope_to_degrees(slope)
-                    if portion == 'portion_1':
-                        degrees = 180 - degrees
-                    elif portion == 'portion_2':
-                        degrees = 90 - degrees
-                        degrees = max(degrees, 0)
-                    label = self._label_proportion(degrees, portion)
-                    report.append(f"• Ceja izquierda {portion}: {slope:.4f} ({degrees:.2f}°) - {label}")
+                if portion in left_angles:
+                    angle = left_angles[portion]
+                    label = self._label_proportion(angle, portion)
+                    report.append(f"• Ceja izquierda {portion}: {angle:.2f}° - {label}")
             report.append("")
         
         # Model integration

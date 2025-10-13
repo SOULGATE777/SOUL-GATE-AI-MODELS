@@ -1,12 +1,21 @@
-# Antropometrico Analysis API v2.0
+# Antropometrico Analysis API v2.1
 
 Advanced anthropometric facial analysis system with comprehensive feature detection, custom model integration, and detailed reporting capabilities.
 
-## 🚀 New Features in v2.0
+## 🚀 New Features in v2.1
+
+### Latest Updates (v2.1)
+- **Improved Angle Measurements**: Eyebrow and eye angles now calculated relative to vertical midline reference (point 9 to M3) instead of horizontal baseline
+- **Enhanced Anatomical Accuracy**: Standardized angle calculations ensure symmetrical features produce consistent measurements
+- **Reference Vector Integration**: Uses Model Point 3 (M3) when available for accurate vertical reference alignment
+- **Consistent Bilateral Measurements**: Both left and right features now measured with anatomically equivalent directions
+- **Bug Fixes**: Face alignment preprocessing improvements, updated object detection model integration
+- **Classification Improvements**: Enhanced eyebrow type classifier integration with morfológico pipeline
 
 ### Enhanced Analysis Features
 - **Eyebrow Length Analysis**: Classifies eyebrow length relative to eye length (corta/normal/larga)
-- **Eye Angle Analysis**: Measures and classifies eye angles (normal/hacia arriba/hacia abajo)
+- **Eye Angle Analysis**: Measures and classifies eye angles relative to facial vertical axis (normal/hacia arriba/hacia abajo)
+- **Eyebrow Slope Analysis**: Three-segment eyebrow angle analysis relative to perpendicular of vertical midline
 - **Face Area Proportions**: Analyzes inner/outer face area ratios and eye-to-face proportions
 - **Enhanced Model Integration**: Uses all 13 custom model points with confidence scoring
 - **Comprehensive Reporting**: Detailed text and JSON reports with all measurements
@@ -210,26 +219,33 @@ Analyzes eyebrow length relative to corresponding eye length for aesthetic propo
 - **Ceja normal**: Eyebrow/eye ratio 1.0-1.4
 - **Ceja larga**: Eyebrow/eye ratio > 1.4
 
-#### Slope Analysis
-Calculates eyebrow angles in three segments for shape assessment:
-- **Portion 1**: Inner ascending segment
-- **Portion 2**: Peak to arch transition
-- **Portion 3**: Outer descending segment
+#### Slope Analysis (v2.1 Update)
+Calculates eyebrow angles in three segments relative to the perpendicular of the vertical midline reference:
+- **Reference System**: Angles measured relative to perpendicular of vertical axis (point 9 to M3)
+- **Portion 1**: Inner segment angle (points 17-18 for right, 22-23 for left)
+- **Portion 2**: Middle arch segment (points 18-20 for right, 23-25 for left)
+- **Portion 3**: Outer descending segment (points 20-21 for right, 25-26 for left)
+- **Anatomical Consistency**: Both eyebrows measured in equivalent anatomical directions for direct comparison
 
-### Eye Angle Analysis (Palpebral Fissure Inclination)
-Measures the angle of eye openings relative to horizontal baseline:
+### Eye Angle Analysis (Palpebral Fissure Inclination) - v2.1 Update
+Measures the angle of eye openings relative to the perpendicular of the vertical midline reference:
 
 #### Measurement Points
-- **Right eye**: Inner corner (point 39) to outer corner (point 36)
+- **Right eye**: Outer corner (point 36) to inner corner (point 39)
 - **Left eye**: Inner corner (point 42) to outer corner (point 45)
+- **Reference Vector**: Vertical midline from chin (point 9) to top of head (M3/point 69)
 
 #### Angle Classifications
-- **Ángulo normal**: -5° to +5° (horizontal alignment)
-- **Ángulo hacia arriba**: > +5° (upward slanting, positive canthal tilt)
-- **Ángulo hacia abajo**: < -5° (downward slanting, negative canthal tilt)
+- **Ángulo normal**: -5° to +5° (alignment with perpendicular to vertical axis)
+- **Ángulo hacia arriba**: > +5° (upward slanting relative to reference, positive canthal tilt)
+- **Ángulo hacia abajo**: < -5° (downward slanting relative to reference, negative canthal tilt)
 
-#### Calculation Method
-Uses arctangent of vertical difference over horizontal distance between inner and outer eye corners.
+#### Calculation Method (v2.1)
+1. Establishes vertical midline reference vector (point 9 to M3)
+2. Calculates perpendicular to vertical reference as "horizontal" baseline
+3. Measures eye angle relative to this perpendicular reference
+4. Ensures both eyes measured in anatomically equivalent directions for bilateral symmetry assessment
+5. Prefers Model Point 3 (M3) over calculated point 69 for enhanced accuracy
 
 ### Intercanthal Distance Analysis
 Evaluates eye spacing proportions:
@@ -415,24 +431,43 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 3. **Check Logs**: `docker-compose logs antropometrico-api`
 4. **Image Quality**: Ensure clear, well-lit frontal face images
 
-## 🔄 API Changes from v1.0
+## 🔄 Version History
 
-### New Endpoints
+### v2.1 (Current)
+**Breaking Changes:**
+- Eye angle and eyebrow slope calculations now return different values due to new reference system
+- Response fields `face_line_slope` removed from eyebrow analysis
+- Response fields `left_eye_slope` and `right_eye_slope` removed from eye analysis
+
+**New Fields:**
+- `vertical_reference_used`: Boolean indicating if M3 was used (vs fallback point 69)
+- `vertical_reference_angle_deg`: Angle of vertical midline reference
+- `perpendicular_reference_angle_deg`: Angle of perpendicular reference used for measurements
+
+**Improvements:**
+- More accurate angle measurements that account for head tilt and pose
+- Consistent bilateral measurements for improved symmetry assessment
+- Better anatomical accuracy using facial vertical axis as reference
+
+### v2.0
+**New Endpoints:**
 - `/analyze-eyebrows` - Focused eyebrow analysis
 - `/analyze-eyes` - Eye angle and proportion analysis
 - `/analyze-face-areas` - Face area proportion analysis
 - `/get-detailed-report` - Comprehensive reporting
+- `/analyze-eye-colorimetry` - Iris color analysis
+- `/analyze-iris-color` - Focused iris classification
+- `/compare-eye-colors` - Color classification comparison
 
-### Enhanced Responses
+**Enhanced Responses:**
 - Additional analysis fields in `/analyze-anthropometric`
 - Detailed classifications and measurements
 - Model integration status and confidence scores
 - Enhanced error reporting and validation
 
-### Backward Compatibility
+**Backward Compatibility:**
 - All v1.0 endpoints remain functional
-- Response format extended (not breaking)
-- Previous visualization format supported
+- Response format extended (not breaking from v1.0)
 
 ## 📝 Development & Testing
 
