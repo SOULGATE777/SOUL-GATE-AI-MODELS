@@ -9,10 +9,11 @@ import asyncio
 
 from app.models.age_estimation_pipeline import AgeEstimationPipeline
 from app.utils.image_processing import (
-    save_uploaded_file, cleanup_temp_files, 
+    save_uploaded_file, cleanup_temp_files,
     validate_image_format, ensure_results_directory,
     save_multiple_uploaded_files
 )
+from app.utils.lazy_model_loader import LazyModelLoader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,13 +37,15 @@ app.add_middleware(
 # Ensure results directory exists
 ensure_results_directory()
 
-# Initialize the pipeline
-try:
-    pipeline = AgeEstimationPipeline()
-    logger.info("✅ Age estimation pipeline initialized successfully")
-except Exception as e:
-    logger.error(f"❌ Failed to initialize pipeline: {e}")
-    pipeline = None
+# Initialize lazy model loader
+model_loader = LazyModelLoader(
+    load_func=lambda: AgeEstimationPipeline(),
+    name="age_estimation_pipeline"
+)
+
+def get_pipeline():
+    """Get age estimation pipeline, loading it if necessary"""
+    return model_loader.get_model()
 
 @app.get("/")
 async def root():
@@ -65,11 +68,14 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
-    
+
     return {
         "status": "healthy",
+        "lazy_loading_enabled": True,
+        "model_loaded": model_loader.is_loaded(),
         "pipeline_ready": pipeline is not None,
         "model_initialized": pipeline.is_initialized if pipeline else False,
         "gpu_available": str(pipeline.device).startswith('cuda') if pipeline else False,
@@ -81,6 +87,7 @@ async def health_check():
 @app.get("/model-info")
 async def get_model_info():
     """Get detailed model information"""
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
@@ -101,6 +108,7 @@ async def estimate_age(
     Returns:
         JSON response with age estimation results
     """
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
@@ -151,6 +159,7 @@ async def batch_estimate_ages(
     Returns:
         JSON response with batch age estimation results
     """
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
@@ -204,6 +213,7 @@ async def quick_age_estimate(
     Returns:
         JSON response with basic age estimation
     """
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     

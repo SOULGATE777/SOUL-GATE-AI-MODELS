@@ -11,6 +11,7 @@ from datetime import datetime
 from app.models.espejo_pipeline import EspejoAnalyzer
 from app.utils.visualization import create_mirror_visualization, create_analysis_dashboard
 from app.utils.image_processing import process_uploaded_image
+from app.utils.lazy_model_loader import LazyModelLoader
 
 app = FastAPI(
     title="Espejo Analysis API",
@@ -18,15 +19,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize the analyzer (will be loaded on startup)
-analyzer = None
+# Initialize lazy model loader
+model_loader = LazyModelLoader(
+    load_func=lambda: EspejoAnalyzer(),
+    name="espejo_analyzer"
+)
+
+def get_analyzer():
+    """Get espejo analyzer, loading it if necessary"""
+    return model_loader.get_model()
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the espejo analyzer on startup"""
-    global analyzer
-    analyzer = EspejoAnalyzer()
-    print("✅ Espejo Analysis API v1.0 initialized successfully")
+    """Register model for lazy loading"""
+    print("🚀 Initializing Espejo Analysis API with lazy loading...")
+    print("✅ Model registered for lazy loading. Will load on first request.")
+    print("💾 RAM saved: Model will only load when needed!")
 
 @app.get("/health")
 async def health_check():
@@ -36,7 +44,8 @@ async def health_check():
         "service": "espejo",
         "version": "1.0.0",
         "timestamp": datetime.now().isoformat(),
-        "analyzer_loaded": analyzer is not None,
+        "lazy_loading_enabled": True,
+        "model_loaded": model_loader.is_loaded(),
         "features": [
             "mirror_face_generation",
             "anthropometric_analysis",
@@ -70,6 +79,7 @@ async def analyze_espejo(
         JSON response with comprehensive analysis results
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -200,6 +210,7 @@ async def generate_mirrors(
     Generate mirror images only
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -229,6 +240,7 @@ async def classify_regions(
     Classify facial regions with decision tree and hybrid splitting
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -258,6 +270,7 @@ async def analyze_proportions(
     Analyze facial proportions only
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -292,6 +305,7 @@ async def get_diagnosis(
     Get final diagnosis with decision tree and hybrid splitting results
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         

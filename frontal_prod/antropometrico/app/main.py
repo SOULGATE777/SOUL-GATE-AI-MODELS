@@ -12,6 +12,7 @@ from app.models.anthropometric_pipeline import AnthropometricAnalyzer
 from app.models.eye_colorimetry_analyzer import EyeColorimetryAnalyzer
 from app.utils.visualization import create_visualization, create_detailed_report_image
 from app.utils.image_processing import process_uploaded_image
+from app.utils.lazy_model_loader import MultiModelLoader
 
 app = FastAPI(
     title="Antropometrico Analysis API",
@@ -19,39 +20,69 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Initialize the analyzers (will be loaded on startup)
-analyzer = None
-eye_analyzer = None
+# Initialize lazy model loader
+model_loader = MultiModelLoader()
+
+# Register models for lazy loading
+def _load_anthropometric_analyzer():
+    """Lazy load function for anthropometric analyzer"""
+    print("🔄 Loading anthropometric analyzer...")
+    analyzer = AnthropometricAnalyzer()
+    print("✅ Anthropometric analyzer loaded successfully!")
+    return analyzer
+
+def _load_eye_colorimetry_analyzer():
+    """Lazy load function for eye colorimetry analyzer"""
+    print("🔄 Loading eye colorimetry analyzer...")
+    analyzer = EyeColorimetryAnalyzer()
+    print("✅ Eye colorimetry analyzer loaded successfully!")
+    return analyzer
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the anthropometric and eye colorimetry analyzers on startup"""
-    global analyzer, eye_analyzer
-    analyzer = AnthropometricAnalyzer()
-    eye_analyzer = EyeColorimetryAnalyzer()
-    print("✅ Antropometrico Analysis API v2.0 with Eye Colorimetry initialized successfully")
+    """Register models for lazy loading (no actual loading here)"""
+    print("🚀 Initializing Antropometrico Analysis API with lazy loading...")
+
+    # Register models without loading them
+    model_loader.register_model("analyzer", _load_anthropometric_analyzer)
+    model_loader.register_model("eye_analyzer", _load_eye_colorimetry_analyzer)
+
+    print("✅ Models registered for lazy loading. They will load on first request.")
+    print("💾 RAM saved: Models will only load when needed!")
+
+# Helper functions to get models
+def get_analyzer():
+    """Get anthropometric analyzer, loading it if necessary"""
+    return model_loader.get_model("analyzer")
+
+def get_eye_analyzer():
+    """Get eye colorimetry analyzer, loading it if necessary"""
+    return model_loader.get_model("eye_analyzer")
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    loaded_models = model_loader.get_loaded_models()
     return {
         "status": "healthy",
         "service": "antropometrico",
         "version": "2.0.0",
         "timestamp": datetime.now().isoformat(),
-        "analyzer_loaded": analyzer is not None,
-        "eye_analyzer_loaded": eye_analyzer is not None,
+        "lazy_loading_enabled": True,
+        "models_registered": ["analyzer", "eye_analyzer"],
+        "models_currently_loaded": loaded_models,
         "features": [
             "facial_landmarks_detection",
             "custom_model_points",
-            "eyebrow_length_analysis", 
+            "eyebrow_length_analysis",
             "eye_angle_analysis",
             "eye_face_area_proportions",
             "inner_outer_face_analysis",
             "comprehensive_reporting",
             "eye_colorimetry_analysis",
             "iris_color_classification",
-            "rgb_hsv_color_systems"
+            "rgb_hsv_color_systems",
+            "lazy_loading"
         ]
     }
 
@@ -75,6 +106,7 @@ async def analyze_anthropometric(
         JSON response with comprehensive analysis results
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -190,6 +222,7 @@ async def analyze_eyebrows(
     Analyze eyebrow proportions and characteristics
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -226,6 +259,7 @@ async def analyze_eyes(
     Analyze eye angles and proportions
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -261,6 +295,7 @@ async def analyze_face_areas(
     Analyze face area proportions (inner/outer)
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -295,6 +330,7 @@ async def analyze_mouth(
     Analyze mouth measurements including cupid's bow arches and lips ratio
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
 
@@ -349,6 +385,7 @@ async def get_detailed_report(
         format: Output format ("text" or "json")
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -410,6 +447,7 @@ async def detect_landmarks(
     Detect facial landmarks only
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -434,6 +472,7 @@ async def detect_anthropometric_points(
     Detect anthropometric points using custom model
     """
     try:
+        analyzer = get_analyzer()
         if analyzer is None:
             raise HTTPException(status_code=500, detail="Analyzer not initialized")
         
@@ -493,6 +532,7 @@ async def analyze_eye_colorimetry(
         JSON response with eye colorimetry analysis results
     """
     try:
+        eye_analyzer = get_eye_analyzer()
         if eye_analyzer is None:
             raise HTTPException(status_code=500, detail="Eye colorimetry analyzer not initialized")
         
@@ -531,6 +571,7 @@ async def analyze_iris_color(
         JSON response with iris color classifications
     """
     try:
+        eye_analyzer = get_eye_analyzer()
         if eye_analyzer is None:
             raise HTTPException(status_code=500, detail="Eye colorimetry analyzer not initialized")
         
@@ -591,6 +632,7 @@ async def compare_eye_colors(
         JSON response with comparison of classification methods
     """
     try:
+        eye_analyzer = get_eye_analyzer()
         if eye_analyzer is None:
             raise HTTPException(status_code=500, detail="Eye colorimetry analyzer not initialized")
         

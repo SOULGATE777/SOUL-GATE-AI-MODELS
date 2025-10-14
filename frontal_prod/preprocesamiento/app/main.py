@@ -15,6 +15,7 @@ from datetime import datetime
 from app.models.frontal_preprocessing_pipeline import FrontalPreprocessingPipeline
 from app.utils.image_processing import ImageProcessor
 from app.utils.visualization import FrontalVisualizationManager
+from app.utils.lazy_model_loader import MultiModelLoader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,42 +40,65 @@ app.add_middleware(
 # Mount static files for visualization serving
 app.mount("/visualization", StaticFiles(directory="results"), name="visualization")
 
-# Global pipeline instance
-pipeline = None
-image_processor = None
-viz_manager = None
+# Initialize lazy model loader
+model_loader = MultiModelLoader()
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the preprocessing pipeline on startup"""
-    global pipeline, image_processor, viz_manager
-
+def _load_pipeline():
+    """Lazy load preprocessing pipeline"""
     try:
-        # Check for custom YOLOv8 model, otherwise use pre-trained
         model_path = "/app/models/frontal_head_detection_model.pt"
 
         if not os.path.exists(model_path):
             logger.info(f"Custom model not found at {model_path}, using pre-trained YOLOv8n")
             model_path = None
 
-        # Determine device
         device = 'cuda' if os.environ.get('CUDA_VISIBLE_DEVICES', '') != '-1' else 'cpu'
         logger.info(f"Using device: {device}")
 
-        # Initialize components
         pipeline = FrontalPreprocessingPipeline(
             model_path=model_path,
             device=device
         )
-
-        image_processor = ImageProcessor()
-        viz_manager = FrontalVisualizationManager()
-
-        logger.info("Frontal preprocessing pipeline initialized successfully!")
-
+        logger.info("✅ Frontal preprocessing pipeline loaded successfully!")
+        return pipeline
     except Exception as e:
-        logger.error(f"Failed to initialize pipeline: {str(e)}")
+        logger.error(f"Failed to load pipeline: {str(e)}")
         raise e
+
+def _load_image_processor():
+    """Lazy load image processor"""
+    logger.info("✅ Image processor loaded successfully!")
+    return ImageProcessor()
+
+def _load_viz_manager():
+    """Lazy load visualization manager"""
+    logger.info("✅ Visualization manager loaded successfully!")
+    return FrontalVisualizationManager()
+
+def get_pipeline():
+    """Get preprocessing pipeline, loading it if necessary"""
+    return model_loader.get_model("pipeline")
+
+def get_image_processor():
+    """Get image processor, loading it if necessary"""
+    return model_loader.get_model("image_processor")
+
+def get_viz_manager():
+    """Get visualization manager, loading it if necessary"""
+    return model_loader.get_model("viz_manager")
+
+@app.on_event("startup")
+async def startup_event():
+    """Register models for lazy loading"""
+    logger.info("🚀 Initializing Frontal Preprocessing API with lazy loading...")
+
+    # Register models for lazy loading
+    model_loader.register_model("pipeline", _load_pipeline)
+    model_loader.register_model("image_processor", _load_image_processor)
+    model_loader.register_model("viz_manager", _load_viz_manager)
+
+    logger.info("✅ Models registered for lazy loading. They will load on first request.")
+    logger.info("💾 RAM saved: Models will only load when needed!")
 
 @app.get("/")
 async def root():
@@ -96,6 +120,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    pipeline = get_pipeline()
     if pipeline is None:
         return JSONResponse(
             status_code=503,
@@ -105,7 +130,8 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "frontal-preprocessing",
-        "model_loaded": pipeline is not None,
+        "lazy_loading_enabled": True,
+        "models_loaded": model_loader.get_loaded_models(),
         "device": str(pipeline.device) if pipeline else "unknown",
         "timestamp": datetime.utcnow().isoformat()
     }
@@ -136,6 +162,7 @@ async def preprocess_frontal(
     - **align_face**: Align tilted faces to anatomical position (default: true)
     """
 
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
 
@@ -162,12 +189,12 @@ async def preprocess_frontal(
     try:
         # Read and decode image
         contents = await file.read()
-        image = image_processor.decode_image_from_bytes(contents)
+        image = get_image_processor().decode_image_from_bytes(contents)
 
         if image is None:
             raise HTTPException(status_code=400, detail="Could not decode image")
 
-        if not image_processor.validate_image(image):
+        if not get_image_processor().validate_image(image):
             raise HTTPException(status_code=400, detail="Invalid image format or dimensions")
 
         # Process image through pipeline
@@ -217,7 +244,7 @@ async def preprocess_frontal(
         # Generate visualizations if requested
         if include_visualization and results['processed_heads']:
             try:
-                viz_results = viz_manager.create_complete_visualization(
+                viz_results = get_viz_manager().create_complete_visualization(
                     original_image=image,
                     processing_result=results,
                     include_summary=True
@@ -261,6 +288,7 @@ async def detect_heads_only(
     - **confidence_threshold**: Minimum confidence for detection (0.1-0.9)
     """
 
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
 
@@ -275,12 +303,12 @@ async def detect_heads_only(
     try:
         # Read and decode image
         contents = await file.read()
-        image = image_processor.decode_image_from_bytes(contents)
+        image = get_image_processor().decode_image_from_bytes(contents)
 
         if image is None:
             raise HTTPException(status_code=400, detail="Could not decode image")
 
-        if not image_processor.validate_image(image):
+        if not get_image_processor().validate_image(image):
             raise HTTPException(status_code=400, detail="Invalid image format or dimensions")
 
         # Detect heads
@@ -322,6 +350,7 @@ async def crop_heads_from_bboxes(
     - **quality**: JPEG quality 1-100
     """
 
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
 
@@ -344,12 +373,12 @@ async def crop_heads_from_bboxes(
 
         # Read and decode image
         contents = await file.read()
-        image = image_processor.decode_image_from_bytes(contents)
+        image = get_image_processor().decode_image_from_bytes(contents)
 
         if image is None:
             raise HTTPException(status_code=400, detail="Could not decode image")
 
-        if not image_processor.validate_image(image):
+        if not get_image_processor().validate_image(image):
             raise HTTPException(status_code=400, detail="Invalid image format or dimensions")
 
         # Crop heads
@@ -410,6 +439,7 @@ async def get_visualization(filename: str):
 @app.get("/model-info")
 async def get_model_info():
     """Get information about the loaded model"""
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
 
@@ -418,6 +448,8 @@ async def get_model_info():
 @app.get("/processing-stats")
 async def get_processing_stats():
     """Get processing statistics and capabilities"""
+    pipeline = get_pipeline() if "pipeline" in model_loader.get_loaded_models() else None
+
     return {
         "service_info": {
             "name": "Frontal Preprocessing Service",
@@ -440,6 +472,10 @@ async def get_processing_stats():
             "target_size": {"min": 100, "max": 2048, "default": 600},
             "padding_factor": {"min": 0.0, "max": 0.5, "default": 0.15},
             "quality": {"min": 1, "max": 100, "default": 95}
+        },
+        "lazy_loading": {
+            "enabled": True,
+            "models_loaded": model_loader.get_loaded_models()
         },
         "device": str(pipeline.device) if pipeline else "unknown",
         "model_loaded": pipeline is not None

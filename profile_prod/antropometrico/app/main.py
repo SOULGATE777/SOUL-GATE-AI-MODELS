@@ -14,6 +14,7 @@ import os
 try:
     # First attempt: relative import (production Docker environment)
     from app.models.enhanced_pipeline import EnhancedCompatibilityPipeline
+    from app.utils.lazy_model_loader import LazyModelLoader
 except ImportError as e1:
     try:
         # Second attempt: direct module import
@@ -25,6 +26,7 @@ except ImportError as e1:
             sys.path.insert(0, app_dir)
         # Try importing again
         from models.enhanced_pipeline import EnhancedCompatibilityPipeline
+        from utils.lazy_model_loader import LazyModelLoader
     except ImportError as e2:
         # Log both errors for debugging
         print(f"Import attempt 1 failed: {e1}")
@@ -48,52 +50,63 @@ app = FastAPI(
 # Mount static files for visualization serving
 app.mount("/visualization", StaticFiles(directory="results"), name="visualization")
 
-# Global pipeline instance
-pipeline = None
+# Initialize lazy model loader
+model_loader = LazyModelLoader(
+    load_func=lambda: _load_pipeline(),
+    name="profile_anthropometric_pipeline"
+)
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the enhanced analysis pipeline on startup"""
-    global pipeline
-    
+def _load_pipeline():
+    """Lazy load enhanced analysis pipeline"""
     try:
         # Primary model path (required)
         point_model_path = "/app/models/best_point_detection_model_v2.pth"
-        
+
         # Fallback to older model name if new one doesn't exist
         if not os.path.exists(point_model_path):
             point_model_path = "/app/models/profile_aware_point_detection_model.pth"
-            
+
         if not os.path.exists(point_model_path):
             logger.error(f"Point detection model not found at {point_model_path}")
             raise FileNotFoundError(f"Point detection model not found")
-        
+
         # GNN model path (optional)
         gnn_model_path = "/app/models/facial_landmark_gnn.pth"
         if not os.path.exists(gnn_model_path):
             logger.warning(f"GNN model not found at {gnn_model_path}, will use point detection only")
             gnn_model_path = None
-        
+
         # Determine device
         device = 'cuda' if os.environ.get('CUDA_VISIBLE_DEVICES', '') != '-1' else 'cpu'
         logger.info(f"Using device: {device}")
-        
+
         # Initialize enhanced pipeline
         pipeline = EnhancedCompatibilityPipeline(
             point_model_path=point_model_path,
             gnn_model_path=gnn_model_path,
             device=device
         )
-        
-        logger.info("Enhanced profile anthropometric pipeline initialized successfully!")
-        
+
         # Log pipeline configuration
         gnn_status = "with GNN validation" if gnn_model_path else "point detection only"
-        logger.info(f"Pipeline mode: {gnn_status}")
-        
+        logger.info(f"✅ Enhanced profile anthropometric pipeline loaded successfully! Mode: {gnn_status}")
+
+        return pipeline
+
     except Exception as e:
-        logger.error(f"Failed to initialize enhanced pipeline: {str(e)}")
+        logger.error(f"Failed to load enhanced pipeline: {str(e)}")
         raise e
+
+def get_pipeline():
+    """Get enhanced pipeline, loading it if necessary"""
+    return model_loader.get_model()
+
+@app.on_event("startup")
+async def startup_event():
+    """Register model for lazy loading"""
+    logger.info("🚀 Initializing Profile Anthropometric API with lazy loading...")
+    logger.info("✅ Model registered for lazy loading. Will load on first request.")
+    logger.info("💾 RAM saved: Model will only load when needed!")
 
 @app.get("/")
 async def root():
@@ -112,16 +125,18 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    pipeline = get_pipeline()
     if pipeline is None:
         return JSONResponse(
             status_code=503,
             content={"status": "unhealthy", "message": "Pipeline not initialized"}
         )
-    
+
     return {
         "status": "healthy",
         "service": "profile-anthropometric",
-        "model_loaded": pipeline is not None,
+        "lazy_loading_enabled": True,
+        "model_loaded": model_loader.is_loaded(),
         "device": str(pipeline.device) if pipeline else "unknown",
         "gnn_enabled": pipeline.gnn_model is not None if pipeline else False,
         "point_classes": len(pipeline.point_classes) if pipeline else 0
@@ -140,10 +155,11 @@ async def analyze_profile_anthropometric(
     - **confidence_threshold**: Minimum confidence for point detection (0.05-0.9)
     - **include_visualization**: Whether to generate visualization
     """
-    
+
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
-    
+
     # Validate file type
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -228,10 +244,11 @@ async def detect_profile_points(
     - **file**: Profile image file (JPG, PNG)
     - **confidence_threshold**: Minimum confidence for point detection (0.05-0.9)
     """
-    
+
+    pipeline = get_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
-    
+
     # Validate file type
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -296,7 +313,8 @@ async def get_visualization(filename: str):
 @app.get("/model-info")
 async def get_model_info():
     """Get information about the loaded enhanced model"""
-    if pipeline is None:
+    pipeline = get_pipeline()
+        if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
     return {

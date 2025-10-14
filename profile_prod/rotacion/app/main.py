@@ -15,6 +15,7 @@ import json
 from app.models.profile_rotation_pipeline import ProfileRotationPipeline
 from app.utils.image_processing import ImageProcessor
 from app.utils.visualization import ProfileRotationVisualizer
+from app.utils.lazy_model_loader import MultiModelLoader
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -46,54 +47,58 @@ RESULTS_DIR.mkdir(exist_ok=True)
 # Mount static files for serving visualizations
 app.mount("/visualization", StaticFiles(directory=str(RESULTS_DIR)), name="visualization")
 
-# Global variables for model and utilities
-pipeline = None
-image_processor = None
-visualizer = None
+# Initialize lazy model loader
+model_loader = MultiModelLoader()
+
+def _load_pipeline():
+    """Lazy load profile rotation pipeline"""
+    model_path = MODELS_DIR / "best_profile_classifier_multilabel.pth"
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Model file not found at {model_path}. Please place the trained model in the /models directory."
+        )
+    try:
+        pipeline = ProfileRotationPipeline(str(model_path))
+        logger.info("✅ Profile rotation pipeline loaded successfully!")
+        return pipeline
+    except Exception as e:
+        logger.error(f"Failed to load pipeline: {e}")
+        raise e
+
+def _load_image_processor():
+    """Lazy load image processor"""
+    logger.info("✅ Image processor loaded successfully!")
+    return ImageProcessor()
+
+def _load_visualizer():
+    """Lazy load visualizer"""
+    logger.info("✅ Visualizer loaded successfully!")
+    return ProfileRotationVisualizer()
 
 def get_pipeline():
-    """Dependency to get the rotation pipeline"""
-    global pipeline
-    if pipeline is None:
-        model_path = MODELS_DIR / "best_profile_classifier_multilabel.pth"
-        if not model_path.exists():
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Model file not found at {model_path}. Please place the trained model in the /models directory."
-            )
-        try:
-            pipeline = ProfileRotationPipeline(str(model_path))
-            logger.info("Profile rotation pipeline initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize pipeline: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to initialize model: {e}")
-    return pipeline
+    """Get profile rotation pipeline, loading it if necessary"""
+    return model_loader.get_model("pipeline")
 
 def get_image_processor():
-    """Dependency to get the image processor"""
-    global image_processor
-    if image_processor is None:
-        image_processor = ImageProcessor()
-    return image_processor
+    """Get image processor, loading it if necessary"""
+    return model_loader.get_model("image_processor")
 
 def get_visualizer():
-    """Dependency to get the visualizer"""
-    global visualizer
-    if visualizer is None:
-        visualizer = ProfileRotationVisualizer()
-    return visualizer
+    """Get visualizer, loading it if necessary"""
+    return model_loader.get_model("visualizer")
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the model and utilities on startup"""
-    try:
-        get_pipeline()
-        get_image_processor()
-        get_visualizer()
-        logger.info("Profile rotation API startup completed successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize API: {e}")
-        raise
+    """Register models for lazy loading"""
+    logger.info("🚀 Initializing Profile Rotation API with lazy loading...")
+
+    # Register models for lazy loading
+    model_loader.register_model("pipeline", _load_pipeline)
+    model_loader.register_model("image_processor", _load_image_processor)
+    model_loader.register_model("visualizer", _load_visualizer)
+
+    logger.info("✅ Models registered for lazy loading. They will load on first request.")
+    logger.info("💾 RAM saved: Models will only load when needed!")
 
 @app.get("/health")
 async def health_check():
@@ -103,7 +108,8 @@ async def health_check():
         "service": "profile-rotation",
         "version": "1.0.0",
         "timestamp": datetime.utcnow().isoformat(),
-        "model_loaded": pipeline is not None,
+        "lazy_loading_enabled": True,
+        "models_loaded": model_loader.get_loaded_models(),
         "port": 8011
     }
 

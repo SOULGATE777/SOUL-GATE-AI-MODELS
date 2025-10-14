@@ -14,6 +14,7 @@ from app.models.facial_analysis_pipeline import FacialAnalysisPipeline
 from app.models.anthropometric_detection import AnthropometricPointDetector
 from app.utils.visualization import create_beautiful_visualization
 from app.utils.image_processing import process_uploaded_image
+from app.utils.lazy_model_loader import MultiModelLoader
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -31,57 +32,61 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for models
-facial_pipeline = None
-point_detector = None
+# Initialize lazy model loader
+model_loader = MultiModelLoader()
+
+# Register models for lazy loading
+def _load_facial_pipeline():
+    """Lazy load function for facial analysis pipeline"""
+    print("🔄 Loading facial analysis pipeline...")
+    pipeline = FacialAnalysisPipeline(
+        detection_model_path='/app/models/facial_landmarks_detection_model.pth',
+        classification_model_path='/app/models/best_shape_classifier.pth',
+        size_model_path='/app/models/best_eyebrow_size_classifier.pth',
+        tag_mapping_path=None
+    )
+    print("✅ Facial analysis pipeline loaded successfully!")
+    return pipeline
+
+def _load_point_detector():
+    """Lazy load function for anthropometric point detector"""
+    print("🔄 Loading anthropometric point detector...")
+    detector = AnthropometricPointDetector(
+        model_path='/app/models/facial_points_detection_model.pth'
+    )
+    print("✅ Anthropometric point detector loaded successfully!")
+    return detector
 
 @app.on_event("startup")
 async def startup_event():
-    """Load models on startup"""
-    global facial_pipeline, point_detector
+    """Register models for lazy loading (no actual loading here)"""
+    print("🚀 Initializing Facial Recognition API with lazy loading...")
 
-    try:
-        print("Loading facial analysis pipeline...")
-        # Initialize the pipeline with 3 models: detection + shape + eyebrow size
-        facial_pipeline = FacialAnalysisPipeline(
-            detection_model_path='/app/models/facial_landmarks_detection_model.pth',
-            classification_model_path='/app/models/best_shape_classifier.pth',
-            size_model_path='/app/models/best_eyebrow_size_classifier.pth',  # NEW: Eyebrow size model
-            tag_mapping_path=None
-        )
+    # Register models without loading them
+    model_loader.register_model("facial_pipeline", _load_facial_pipeline)
+    model_loader.register_model("point_detector", _load_point_detector)
 
-        print("Loading anthropometric point detector...")
-        point_detector = AnthropometricPointDetector(
-            model_path='/app/models/facial_points_detection_model.pth'
-        )
+    print("✅ Models registered for lazy loading. They will load on first request.")
+    print("💾 RAM saved: Models will only load when needed!")
 
-        print("All models loaded successfully!")
+# Helper functions to get models
+def get_facial_pipeline():
+    """Get facial pipeline, loading it if necessary"""
+    return model_loader.get_model("facial_pipeline")
 
-        # Validate tag consistency
-        print("=== MODEL CONFIGURATION ===")
-        print(f"Detection classes: {len(facial_pipeline.landmark_classes)}")
-        print(f"Shape tags: {len(facial_pipeline.shape_tags)} classes")
-        print(f"Eyebrow size tags: {len(facial_pipeline.eyebrow_size_tags)} classes (for {', '.join(facial_pipeline.eyebrow_classes)})")
-        print(f"Bbox confinement enabled: {len(facial_pipeline.valid_shape_tags)} landmark types")
-        print("\nSample shape tags:")
-        for i, tag in enumerate(facial_pipeline.shape_tags[:10]):
-            print(f"  {i}: {tag}")
-        print(f"\nEyebrow size tags: {', '.join(facial_pipeline.eyebrow_size_tags)}")
-        print("=== CONFIGURATION COMPLETE ===")
-
-    except Exception as e:
-        print(f"Error loading models: {e}")
-        raise e
+def get_point_detector():
+    """Get point detector, loading it if necessary"""
+    return model_loader.get_model("point_detector")
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    loaded_models = model_loader.get_loaded_models()
     return {
         "status": "healthy",
-        "models_loaded": facial_pipeline is not None and point_detector is not None,
-        "shape_tags": len(facial_pipeline.shape_tags) if facial_pipeline else 0,
-        "eyebrow_size_tags": len(facial_pipeline.eyebrow_size_tags) if facial_pipeline else 0,
-        "eyebrow_size_model_loaded": facial_pipeline.size_model is not None if facial_pipeline else False,
+        "lazy_loading_enabled": True,
+        "models_registered": ["facial_pipeline", "point_detector"],
+        "models_currently_loaded": loaded_models,
         "bbox_confinement_enabled": True
     }
 
@@ -101,9 +106,13 @@ async def analyze_face(
         raise HTTPException(status_code=400, detail="File must be an image")
     
     try:
+        # Get models (lazy load if needed)
+        facial_pipeline = get_facial_pipeline()
+        point_detector = get_point_detector()
+
         # Process uploaded image
         image_array, temp_path = await process_uploaded_image(file)
-        
+
         # Run facial landmark detection and classification
         facial_results, facial_viz = facial_pipeline.process_image(
             image_array,
@@ -193,10 +202,13 @@ async def detect_landmarks(
     """Detect and classify facial landmarks only"""
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
-    
+
     try:
+        # Get model (lazy load if needed)
+        facial_pipeline = get_facial_pipeline()
+
         image_array, temp_path = await process_uploaded_image(file)
-        
+
         results, viz_image = facial_pipeline.process_image(
             image_array,
             confidence_threshold=confidence_threshold,
@@ -246,10 +258,13 @@ async def detect_anthropometric_points(
     """Detect anthropometric points only"""
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
-    
+
     try:
+        # Get model (lazy load if needed)
+        point_detector = get_point_detector()
+
         image_array, temp_path = await process_uploaded_image(file)
-        
+
         results = point_detector.detect_points(
             image_array,
             confidence_threshold=confidence_threshold
@@ -292,43 +307,56 @@ async def get_visualization(filename: str):
 @app.get("/tag-mapping")
 async def get_tag_mapping():
     """Get the current tag mapping for debugging"""
-    if facial_pipeline:
-        return {
-            "shape_tags": facial_pipeline.shape_tags,
-            "eyebrow_size_tags": facial_pipeline.eyebrow_size_tags,
-            "eyebrow_classes": facial_pipeline.eyebrow_classes,
-            "total_shape_tags": len(facial_pipeline.shape_tags),
-            "total_eyebrow_size_tags": len(facial_pipeline.eyebrow_size_tags),
-            "bbox_confinement_mappings": facial_pipeline.valid_shape_tags,
-            "sample_shape_tags": facial_pipeline.shape_tags[:15]
-        }
-    else:
-        raise HTTPException(status_code=503, detail="Models not loaded")
+    # Get model (lazy load if needed)
+    facial_pipeline = get_facial_pipeline()
+
+    return {
+        "shape_tags": facial_pipeline.shape_tags,
+        "eyebrow_size_tags": facial_pipeline.eyebrow_size_tags,
+        "eyebrow_classes": facial_pipeline.eyebrow_classes,
+        "total_shape_tags": len(facial_pipeline.shape_tags),
+        "total_eyebrow_size_tags": len(facial_pipeline.eyebrow_size_tags),
+        "bbox_confinement_mappings": facial_pipeline.valid_shape_tags,
+        "sample_shape_tags": facial_pipeline.shape_tags[:15]
+    }
 
 @app.get("/")
 async def root():
     """Root endpoint with API information"""
+    loaded_models = model_loader.get_loaded_models()
     return {
-        "message": "Facial Recognition API - Enhanced 3-Model System",
+        "message": "Facial Recognition API - Enhanced 3-Model System with Lazy Loading",
         "version": "2.0.0",
         "endpoints": {
             "analyze_face": "/analyze-face",
             "detect_landmarks": "/detect-landmarks",
             "detect_points": "/detect-points",
             "tag_mapping": "/tag-mapping",
-            "health": "/health"
+            "health": "/health",
+            "memory_stats": "/memory-stats"
         },
-        "models_loaded": facial_pipeline is not None and point_detector is not None,
+        "lazy_loading_enabled": True,
+        "models_currently_loaded": loaded_models,
         "features": {
             "shape_classification": "45 classes with bbox confinement",
             "eyebrow_size_classification": "3 classes (ap, g, ngna) for eyebrows only",
             "bbox_confinement": "Validates predictions per landmark type",
-            "anthropometric_points": "13 anatomical points"
+            "anthropometric_points": "13 anatomical points",
+            "lazy_loading": "Models load on first request to save RAM"
         },
         "improvements": [
             "Improved data quality",
             "Tag reduction from 52 to 45 classes",
             "Separate eyebrow size model",
-            "Bbox confinement validation"
+            "Bbox confinement validation",
+            "Lazy loading for reduced RAM usage"
         ]
+    }
+
+@app.get("/memory-stats")
+async def memory_stats():
+    """Get memory and model loading statistics"""
+    return {
+        "model_stats": model_loader.get_all_stats(),
+        "loaded_models": model_loader.get_loaded_models()
     }
