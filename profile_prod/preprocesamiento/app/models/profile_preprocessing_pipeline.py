@@ -10,6 +10,7 @@ import logging
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
 from PIL import Image
+from app.utils.rotation_utils import FaceRotationAligner
 
 logger = logging.getLogger(__name__)
 
@@ -19,25 +20,37 @@ class ProfilePreprocessingPipeline:
     for downstream analysis services.
     """
     
-    def __init__(self, model_path: str, device: str = 'auto'):
+    def __init__(self, model_path: str, device: str = 'auto', point_model_path: Optional[str] = None):
         """
         Initialize the preprocessing pipeline
-        
+
         Args:
             model_path: Path to the trained Faster R-CNN model
             device: Device to run inference on ('cuda', 'cpu', or 'auto')
+            point_model_path: Optional path to point detection model for face rotation alignment
         """
         self.device = self._setup_device(device)
         self.model = None
         self.model_path = model_path
         self.all_classes = []
         self.num_classes = 0
-        
+
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
         self.default_padding_factor = 0.15
-        
+
+        # Face rotation aligner (optional)
+        self.rotation_aligner = None
+        if point_model_path and Path(point_model_path).exists():
+            try:
+                logger.info("Initializing face rotation aligner...")
+                self.rotation_aligner = FaceRotationAligner(point_model_path, str(self.device))
+                logger.info("Face rotation aligner initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize rotation aligner: {str(e)}")
+                self.rotation_aligner = None
+
         logger.info(f"Initializing ProfilePreprocessingPipeline on {self.device}")
         self._load_model()
     
@@ -225,15 +238,16 @@ class ProfilePreprocessingPipeline:
         
         return img_base64
     
-    def process_image(self, image: np.ndarray, 
+    def process_image(self, image: np.ndarray,
                      confidence_threshold: float = None,
                      target_size: Tuple[int, int] = None,
                      padding_factor: float = None,
                      output_format: str = 'JPEG',
-                     quality: int = 95) -> Dict:
+                     quality: int = 95,
+                     apply_rotation: bool = False) -> Dict:
         """
         Complete preprocessing pipeline: detect faces, crop, and convert to base64
-        
+
         Args:
             image: Input image in RGB format
             confidence_threshold: Minimum confidence for face detection
@@ -241,7 +255,8 @@ class ProfilePreprocessingPipeline:
             padding_factor: Padding factor around detected faces
             output_format: Output image format ('JPEG', 'PNG')
             quality: JPEG quality (1-100)
-            
+            apply_rotation: Whether to apply face rotation alignment using points 34 and 10
+
         Returns:
             Dictionary with detection results and base64 encoded cropped faces
         """
@@ -251,21 +266,37 @@ class ProfilePreprocessingPipeline:
             target_size = self.default_target_size
         if padding_factor is None:
             padding_factor = self.default_padding_factor
-        
+
+        # Apply rotation alignment if requested and available
+        rotation_metadata = None
+        working_image = image
+
+        if apply_rotation and self.rotation_aligner is not None:
+            logger.info("Applying face rotation alignment...")
+            rotated_image, rotation_metadata = self.rotation_aligner.align_face(image)
+
+            if rotated_image is not None:
+                working_image = rotated_image
+                logger.info(f"Rotation applied: {rotation_metadata.get('rotation_angle', 0):.2f}°")
+            else:
+                logger.warning(f"Rotation failed: {rotation_metadata.get('error', 'Unknown error')}")
+        elif apply_rotation and self.rotation_aligner is None:
+            logger.warning("Rotation requested but rotation aligner not available")
+
         # Detect faces
-        detections = self.detect_faces(image, confidence_threshold)
-        
+        detections = self.detect_faces(working_image, confidence_threshold)
+
         # Process each detection
         processed_faces = []
         for detection in detections:
             # Crop face
             cropped_face = self.crop_face_with_padding(
-                image, detection['bbox'], target_size, padding_factor
+                working_image, detection['bbox'], target_size, padding_factor
             )
-            
+
             # Convert to base64
             face_base64 = self.image_to_base64(cropped_face, output_format, quality)
-            
+
             processed_faces.append({
                 'detection_id': detection['detection_id'],
                 'bbox': detection['bbox'],
@@ -275,19 +306,28 @@ class ProfilePreprocessingPipeline:
                 'target_size': target_size,
                 'padding_factor': padding_factor
             })
-        
-        return {
+
+        result = {
             'total_detections': len(detections),
             'processed_faces': processed_faces,
             'original_image_size': image.shape[:2],
+            'working_image': working_image,  # The image used for detection (rotated or original)
             'processing_parameters': {
                 'confidence_threshold': confidence_threshold,
                 'target_size': target_size,
                 'padding_factor': padding_factor,
                 'output_format': output_format,
-                'quality': quality
+                'quality': quality,
+                'rotation_applied': apply_rotation
             }
         }
+
+        # Add rotation metadata if rotation was attempted
+        if rotation_metadata is not None:
+            result['rotation_metadata'] = rotation_metadata
+            logger.info(f"Added rotation_metadata to result: {rotation_metadata}")
+
+        return result
     
     def get_model_info(self) -> Dict:
         """Get information about the loaded model"""

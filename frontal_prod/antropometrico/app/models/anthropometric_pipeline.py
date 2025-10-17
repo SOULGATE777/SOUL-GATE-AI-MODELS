@@ -14,7 +14,7 @@ class AnthropometricAnalyzer:
     def __init__(self):
         """Initialize the anthropometric analyzer with models"""
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"🔧 Using device: {self.device}")
+        print(f"Using device: {self.device}")
         
         # Initialize dlib components - REQUIRED for the system to work
         self.detector = dlib.get_frontal_face_detector()
@@ -23,9 +23,9 @@ class AnthropometricAnalyzer:
         predictor_path = "/app/models/shape_predictor_68_face_landmarks.dat"
         if os.path.exists(predictor_path):
             self.predictor = dlib.shape_predictor(predictor_path)
-            print("✅ Dlib facial landmark predictor loaded")
+            print("SUCCESS: Dlib facial landmark predictor loaded")
         else:
-            print("❌ ERROR: Dlib predictor not found - system cannot function without it")
+            print("ERROR: Dlib predictor not found - system cannot function without it")
             print("Please ensure shape_predictor_68_face_landmarks.dat is in /app/models/")
             self.predictor = None
         
@@ -55,13 +55,13 @@ class AnthropometricAnalyzer:
                     model.load_state_dict(checkpoint)
                 model.to(self.device)
                 model.eval()
-                print(f"✅ Trained model loaded from {model_path}")
+                print(f"SUCCESS: Trained model loaded from {model_path}")
                 return model
             except Exception as e:
-                print(f"❌ Error loading model: {e}")
+                print(f"ERROR: Error loading model: {e}")
                 return None
         else:
-            print(f"❌ Model file {model_path} not found")
+            print(f"ERROR: Model file {model_path} not found")
             return None
 
     def _preprocess_image(self, img):
@@ -72,7 +72,7 @@ class AnthropometricAnalyzer:
     def _detect_faces(self, img):
         """Detect faces using dlib"""
         faces = self.detector(img)
-        print(f"👤 Number of faces detected: {len(faces)}")
+        print(f"Number of faces detected: {len(faces)}")
         return faces
 
     def _detect_landmarks(self, img, face):
@@ -90,11 +90,11 @@ class AnthropometricAnalyzer:
         # Prepare image for model
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         height, width = image_rgb.shape[:2]
-        print(f"🔍 Input image shape: {image.shape}")
-        print(f"🔍 Image dimensions: {width}x{height}")
-        
+        print(f"Input image shape: {image.shape}")
+        print(f"Image dimensions: {width}x{height}")
+
         image_resized = cv2.resize(image_rgb, (224, 224))
-        print(f"🔍 Model input size: 224x224")
+        print(f"Model input size: 224x224")
         
         # Convert to tensor and normalize
         image_tensor = torch.from_numpy(image_resized.transpose((2, 0, 1))).float() / 255.0
@@ -123,8 +123,8 @@ class AnthropometricAnalyzer:
                     # Scale back to original image size
                     center_x = center_x * (width / 224)
                     center_y = center_y * (height / 224)
-                    
-                    print(f"🎯 Model prediction - Label: {label}, Score: {score:.3f}, Coords: ({center_x:.1f}, {center_y:.1f})")
+
+                    print(f"Model prediction - Label: {label}, Score: {score:.3f}, Coords: ({center_x:.1f}, {center_y:.1f})")
                     detected_points[int(label)] = (int(center_x), int(center_y))
         
         return detected_points
@@ -149,13 +149,13 @@ class AnthropometricAnalyzer:
         # Point 68: Between eyebrows - use model prediction (point 2) if available
         if 2 in model_predictions:
             between_eyebrows = model_predictions[2]
-            print(f"✅ Using model point 2 for point 68 (between eyebrows): {between_eyebrows}")
+            print(f"SUCCESS: Using model point 2 for point 68 (between eyebrows): {between_eyebrows}")
         else:
             between_eyebrows = (
                 int((left_highest[0] + right_highest[0]) // 2),
                 int((left_highest[1] + right_highest[1]) // 2)
             )
-            print("⚠️ Using inferred calculation for point 68 (between eyebrows)")
+            print("WARNING: Using inferred calculation for point 68 (between eyebrows)")
         
         # Point 69: Top of head - use calculated point C1 (M9 Y + M2 X) to avoid widow's peak issues
         calculated_c1 = None
@@ -167,20 +167,20 @@ class AnthropometricAnalyzer:
                     int(model_predictions[9][1])   # Y from model point 9 (M9)
                 )
                 top_of_head = calculated_c1
-                print(f"✅ Using calculated point C1 for point 69: X from M2({model_predictions[2][0]:.1f}) + Y from M9({model_predictions[9][1]:.1f}) = {top_of_head}")
+                print(f"SUCCESS: Using calculated point C1 for point 69: X from M2({model_predictions[2][0]:.1f}) + Y from M9({model_predictions[9][1]:.1f}) = {top_of_head}")
             elif 3 in model_predictions:
                 # Fallback to model point 3 if M9 or M2 not available
                 top_of_head = model_predictions[3]
-                print(f"⚠️ Fallback: Using model point 3 for point 69 (top of head): {top_of_head}")
+                print(f"WARNING: Fallback: Using model point 3 for point 69 (top of head): {top_of_head}")
             else:
                 # Final fallback to calculated estimate
                 top_of_head = (
                     int(between_eyebrows[0]),
                     int(between_eyebrows[1] - (face_height * 0.4))
                 )
-                print("⚠️ Using inferred calculation for point 69 (top of head)")
+                print("WARNING: Using inferred calculation for point 69 (top of head)")
         except Exception as e:
-            print(f"❌ Error calculating C1: {e}")
+            print(f"ERROR: Error calculating C1: {e}")
             # Safe fallback
             top_of_head = (
                 int(between_eyebrows[0]),
@@ -211,7 +211,7 @@ class AnthropometricAnalyzer:
         point_1 = model_predictions.get(1, None)
         if point_1:
             extended_points = np.vstack([extended_points, [point_1]])
-            print(f"✅ Model point 1 added as point 72: {point_1}")
+            print(f"SUCCESS: Model point 1 added as point 72: {point_1}")
         
         return extended_points, point_1 is not None, calculated_c1
 
@@ -265,8 +265,8 @@ class AnthropometricAnalyzer:
         third_third_l_eyebrow = float(np.linalg.norm(left_eyebrow_points[3] - left_eyebrow_points[4]))
 
         # Debug key measurements
-        print(f"📏 Head height: {head_height:.1f}, Distance 69-68: {distance_69_68:.1f}")
-        print(f"📏 Point 69 (top): {point_69}, Point 68 (eyebrows): {point_68}")
+        print(f"DEBUG: Head height: {head_height:.1f}, Distance 69-68: {distance_69_68:.1f}")
+        print(f"DEBUG: Point 69 (top): {point_69}, Point 68 (eyebrows): {point_68}")
 
         # Calculate proportions
         proportions = {
@@ -486,7 +486,7 @@ class AnthropometricAnalyzer:
         left_eyebrow_eyelid_proportion = left_eyebrow_eyelid_distance / head_height if head_height > 0 else 0
         right_eyebrow_eyelid_proportion = right_eyebrow_eyelid_distance / head_height if head_height > 0 else 0
 
-        print(f"📏 Eyebrow-Eyelid Distances - Left: {left_eyebrow_eyelid_distance:.1f}px ({left_eyebrow_eyelid_proportion:.4f}), Right: {right_eyebrow_eyelid_distance:.1f}px ({right_eyebrow_eyelid_proportion:.4f})")
+        print(f"DEBUG: Eyebrow-Eyelid Distances - Left: {left_eyebrow_eyelid_distance:.1f}px ({left_eyebrow_eyelid_proportion:.4f}), Right: {right_eyebrow_eyelid_distance:.1f}px ({right_eyebrow_eyelid_proportion:.4f})")
 
         return {
             'left_eyebrow_eyelid_distance': left_eyebrow_eyelid_distance,
@@ -530,7 +530,7 @@ class AnthropometricAnalyzer:
         # Calculate lips ratio: upper lip / lower lip
         lips_ratio = upper_lip_distance / lower_lip_distance if lower_lip_distance > 0 else 0
 
-        print(f"📏 Mouth Measurements:")
+        print(f"DEBUG: Mouth Measurements:")
         print(f"   Left cupid's arch (50-61): {left_cupid_arch_distance:.1f}px (proportion: {left_cupid_arch_proportion:.4f})")
         print(f"   Right cupid's arch (52-63): {right_cupid_arch_distance:.1f}px (proportion: {right_cupid_arch_proportion:.4f})")
         print(f"   Upper lip distance (51-62): {upper_lip_distance:.1f}px")
@@ -762,7 +762,7 @@ class AnthropometricAnalyzer:
             }
             
         except Exception as e:
-            print(f"❌ Analysis error: {e}")
+            print(f"ERROR: Analysis error: {e}")
             return None
 
     def _create_analysis_summary(self, proportions, slopes, model_predictions,
@@ -1018,10 +1018,10 @@ class AnthropometricAnalyzer:
         # Model integration
         report.append("INTEGRACIÓN DEL MODELO:")
         report.append(f"• Puntos del modelo detectados: {summary.get('model_integration', {}).get('total_model_points', 0)}")
-        report.append(f"• Punto 1 detectado: {'✓' if summary.get('model_integration', {}).get('point_1_detected') else '✗'}")
-        report.append(f"• Punto 2 usado (entre cejas): {'✓' if summary.get('model_integration', {}).get('point_2_used') else '✗'}")
-        report.append(f"• Punto 3 usado (parte superior cabeza): {'✓' if summary.get('model_integration', {}).get('point_3_used') else '✗'}")
-        report.append(f"• Punto C1 calculado (X de M2, Y de M9): {'✓' if summary.get('model_integration', {}).get('calculated_c1_used') else '✗'}")
+        report.append(f"• Punto 1 detectado: {'YES' if summary.get('model_integration', {}).get('point_1_detected') else 'NO'}")
+        report.append(f"• Punto 2 usado (entre cejas): {'YES' if summary.get('model_integration', {}).get('point_2_used') else 'NO'}")
+        report.append(f"• Punto 3 usado (parte superior cabeza): {'YES' if summary.get('model_integration', {}).get('point_3_used') else 'NO'}")
+        report.append(f"• Punto C1 calculado (X de M2, Y de M9): {'YES' if summary.get('model_integration', {}).get('calculated_c1_used') else 'NO'}")
         if summary.get('model_integration', {}).get('calculated_c1_used'):
             report.append("  → C1 evita interferencia de entradas en el cabello")
         

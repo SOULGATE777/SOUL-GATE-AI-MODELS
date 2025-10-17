@@ -2,12 +2,13 @@
 
 ## Overview
 
-The Profile Preprocessing module is a specialized face detection and preprocessing service designed to prepare profile (lateral) facial images for downstream analysis. It uses a trained Faster R-CNN model to detect profile faces that may be too far away in images, crops them with appropriate padding, resizes them while maintaining proportions, and outputs them in base64 format for seamless integration with other services.
+The Profile Preprocessing module is a specialized face detection and preprocessing service designed to prepare profile (lateral) facial images for downstream analysis. It uses a trained Faster R-CNN model to detect profile faces that may be too far away in images, optionally applies intelligent face rotation alignment using anthropometric point detection for standardized orientation, crops them with appropriate padding, resizes them while maintaining proportions, and outputs them in base64 format for seamless integration with other services.
 
 ## Features
 
 ### Core Capabilities
 - **Profile Face Detection**: Uses Faster R-CNN trained specifically for profile face detection
+- **Face Rotation Alignment**: Automatically aligns profile faces using anthropometric point detection (points 34 and 10) to create vertical alignment before processing
 - **Intelligent Cropping**: Crops detected faces with configurable padding around bounding boxes
 - **Aspect Ratio Preservation**: Maintains original proportions while resizing to target dimensions
 - **Base64 Output**: Converts processed images to base64 format for easy API integration
@@ -55,6 +56,7 @@ POST /preprocess-profile
 - `output_format` (optional): String 'JPEG'|'PNG' (default: 'JPEG')
 - `quality` (optional): Integer 1-100 (default: 95, JPEG only)
 - `include_visualization` (optional): Boolean (default: false)
+- `apply_rotation` (optional): Boolean (default: true) - Apply face rotation alignment using anthropometric points
 
 **Response:**
 ```json
@@ -69,7 +71,17 @@ POST /preprocess-profile
     "target_size": [600, 600],
     "padding_factor": 0.15,
     "output_format": "JPEG",
-    "quality": 95
+    "quality": 95,
+    "rotation_applied": true
+  },
+  "rotation_metadata": {
+    "rotation_applied": true,
+    "rotation_angle": -15.3,
+    "rotation_center": [540, 960],
+    "points_detected": {
+      "34": [520, 850],
+      "10": [560, 1070]
+    }
   },
   "processed_faces": [
     {
@@ -208,18 +220,21 @@ GET /processing-stats
 ## Technical Specifications
 
 ### Model Architecture
-- **Base Model**: Faster R-CNN with ResNet-50 backbone
+- **Face Detection Model**: Faster R-CNN with ResNet-50 backbone
 - **Detection Head**: Custom FastRCNNPredictor for profile face classes
+- **Point Detection Model**: ResNet-50 based keypoint detection model with attention mechanism
+- **Rotation Aligner**: Anthropometric point-based face alignment using points 34 and 10
 - **Training Framework**: PyTorch with torchvision detection utilities
 - **Input Processing**: Automatic image preprocessing and tensor conversion
 
 ### Processing Pipeline
 1. **Image Validation**: Format and dimension checks
-2. **Face Detection**: Faster R-CNN inference with confidence filtering
-3. **Bounding Box Processing**: Padding calculation and boundary validation
-4. **Cropping**: Intelligent cropping with aspect ratio preservation
-5. **Resizing**: Target size fitting with letterboxing on black background
-6. **Format Conversion**: Base64 encoding with configurable quality
+2. **Face Rotation Alignment** (optional): Detects anthropometric points 34 and 10, calculates rotation angle to make their vector vertical, and rotates the image for standardized alignment
+3. **Face Detection**: Faster R-CNN inference with confidence filtering on the (optionally rotated) image
+4. **Bounding Box Processing**: Padding calculation and boundary validation
+5. **Cropping**: Intelligent cropping with aspect ratio preservation
+6. **Resizing**: Target size fitting with letterboxing on black background
+7. **Format Conversion**: Base64 encoding with configurable quality
 
 ### Input Requirements
 - **Image Formats**: JPG, JPEG, PNG
@@ -282,7 +297,7 @@ import base64
 from PIL import Image
 import io
 
-# Complete preprocessing
+# Complete preprocessing with rotation alignment
 with open('profile_image.jpg', 'rb') as f:
     response = requests.post(
         'http://localhost:8010/preprocess-profile',
@@ -294,12 +309,21 @@ with open('profile_image.jpg', 'rb') as f:
             'padding_factor': 0.2,
             'output_format': 'JPEG',
             'quality': 90,
-            'include_visualization': True
+            'include_visualization': True,
+            'apply_rotation': True  # Enable face rotation alignment
         }
     )
 
 result = response.json()
 print(f"Detected {result['total_faces_detected']} faces")
+
+# Check if rotation was applied
+if 'rotation_metadata' in result:
+    rotation_info = result['rotation_metadata']
+    if rotation_info['rotation_applied']:
+        print(f"Face rotated by {rotation_info['rotation_angle']:.2f}° for alignment")
+    else:
+        print(f"Rotation skipped: {rotation_info.get('error', 'Unknown reason')}")
 
 # Decode first face from base64
 if result['processed_faces']:
@@ -322,12 +346,13 @@ print(f"Found {len(detections['detections'])} faces")
 
 ### cURL Examples
 ```bash
-# Complete preprocessing
+# Complete preprocessing with rotation alignment
 curl -X POST "http://localhost:8010/preprocess-profile" \
   -F "file=@profile_image.jpg" \
   -F "confidence_threshold=0.6" \
   -F "target_width=600" \
   -F "target_height=600" \
+  -F "apply_rotation=true" \
   -F "include_visualization=true"
 
 # Detection only
@@ -356,6 +381,7 @@ async function preprocessProfile(imagePath) {
     form.append('target_height', '600');
     form.append('output_format', 'JPEG');
     form.append('quality', '95');
+    form.append('apply_rotation', 'true');  // Enable face rotation alignment
 
     try {
         const response = await axios.post(
@@ -363,8 +389,17 @@ async function preprocessProfile(imagePath) {
             form,
             { headers: form.getHeaders() }
         );
-        
+
         console.log(`Processed ${response.data.faces_processed} faces`);
+
+        // Check rotation metadata
+        if (response.data.rotation_metadata) {
+            const rotation = response.data.rotation_metadata;
+            if (rotation.rotation_applied) {
+                console.log(`Face rotated by ${rotation.rotation_angle.toFixed(2)}° for alignment`);
+            }
+        }
+
         return response.data;
     } catch (error) {
         console.error('Error:', error.response?.data || error.message);
@@ -377,19 +412,85 @@ preprocessProfile('profile_image.jpg');
 
 ## Model Files Required
 
-Place your trained model file in the `models/` directory:
+Place your trained model files in the `models/` directory:
 - `models/profile_detection_model.pth` - Faster R-CNN model trained for profile face detection
+- `models/profile_aware_point_detection_model.pth` - Point detection model for face rotation alignment (optional)
 
+### Face Detection Model (`profile_detection_model.pth`)
 The model file should contain:
 - `model_state_dict`: PyTorch model weights
 - `all_classes`: List of class names
 - `num_classes`: Number of classes (including background)
 
+### Point Detection Model (`profile_aware_point_detection_model.pth`)
+The model file should contain:
+- `model_state_dict`: PyTorch model weights for keypoint detection
+- `all_classes`: List of anthropometric point names
+- `num_keypoints`: Number of keypoints to detect
+- `heatmap_size`: Size of the output heatmaps (default: 112)
+
+**Note**: If the point detection model is not present, the service will still function normally but the rotation alignment feature will be disabled.
+
+## Face Rotation Alignment
+
+### Overview
+The service includes an optional face rotation alignment feature that automatically standardizes the orientation of profile faces before detection and cropping. This ensures consistent face positioning across all processed images, improving downstream analysis accuracy.
+
+### How It Works
+1. **Point Detection**: Uses a trained keypoint detection model to identify anthropometric landmarks on the face
+2. **Reference Points**: Specifically targets points 34 and 10 on the profile face
+3. **Angle Calculation**: Computes the angle needed to make the vector between these points perfectly vertical
+4. **Image Rotation**: Rotates the entire image around the center point between the two landmarks
+5. **Face Detection**: Performs face detection on the aligned image for better consistency
+
+### Key Components
+- **Point Detection Model**: ResNet-50 based architecture with attention mechanism and heatmap output
+- **Rotation Utility** (`app/utils/rotation_utils.py`): Contains the `FaceRotationAligner` class
+  - `detect_points()`: Detects anthropometric points using the keypoint model
+  - `calculate_rotation_angle()`: Computes rotation angle from points 34 and 10
+  - `rotate_image()`: Applies rotation transformation to the image
+  - `align_face()`: Complete alignment pipeline
+
+### Usage
+Enable rotation alignment by setting `apply_rotation=true` in the preprocessing request:
+
+```python
+response = requests.post(
+    'http://localhost:8010/preprocess-profile',
+    files={'file': image_file},
+    data={'apply_rotation': True}
+)
+```
+
+The response will include rotation metadata:
+```python
+{
+  "rotation_metadata": {
+    "rotation_applied": True,
+    "rotation_angle": -15.3,  # Degrees rotated
+    "rotation_center": [540, 960],  # Rotation center coordinates
+    "points_detected": {
+      "34": [520, 850],  # Point 34 coordinates
+      "10": [560, 1070]  # Point 10 coordinates
+    }
+  }
+}
+```
+
+### Benefits
+- **Consistency**: All faces are aligned to the same vertical reference
+- **Improved Detection**: Standardized orientation helps the detection model
+- **Better Measurements**: Downstream anthropometric measurements are more accurate
+- **Reproducibility**: Same face in different orientations produces consistent results
+
+### Fallback Behavior
+If rotation alignment fails (e.g., points 34 and 10 not detected), the service automatically falls back to processing the original image without rotation. The `rotation_metadata.error` field will contain the reason for failure.
+
 ## Results Directory
 
 Generated files are stored in `/app/results/`:
 - `preprocessing_viz_{uuid}_detection_grid.png` - Detection grid visualizations
-- `preprocessing_viz_{uuid}_original_with_detections.png` - Original images with bounding boxes
+- `preprocessing_viz_{uuid}_original_with_detections.png` - Original images with bounding boxes (shows rotated image if rotation was applied)
 - `preprocessing_viz_{uuid}_processing_summary.png` - Processing statistics summaries
 
 ## Architecture Integration
@@ -415,17 +516,22 @@ The base64 output format allows seamless integration with other services in the 
 
 ### Troubleshooting
 1. **Model Loading Issues**: Ensure `profile_detection_model.pth` exists in `models/` directory
-2. **CUDA Errors**: Check GPU availability or set `CUDA_VISIBLE_DEVICES=-1` for CPU mode
-3. **Memory Issues**: Reduce image size or use CPU mode for large images
-4. **Poor Detection**: Adjust confidence threshold or ensure clear profile images
-5. **Base64 Errors**: Check output format and quality parameters
+2. **Rotation Not Working**: Check if `profile_aware_point_detection_model.pth` exists in `models/` directory; verify `apply_rotation=true` is set
+3. **CUDA Errors**: Check GPU availability or set `CUDA_VISIBLE_DEVICES=-1` for CPU mode
+4. **Memory Issues**: Reduce image size or use CPU mode for large images
+5. **Poor Detection**: Adjust confidence threshold or ensure clear profile images
+6. **Base64 Errors**: Check output format and quality parameters
+7. **Rotation Skipped**: Check `rotation_metadata.error` in response for details; common causes include missing anthropometric points 34 and 10
 
 ## Performance Notes
 
-- **Processing Time**: ~0.5-3 seconds per image (GPU), ~2-10 seconds (CPU)
+- **Processing Time**:
+  - Without rotation: ~0.5-3 seconds per image (GPU), ~2-10 seconds (CPU)
+  - With rotation: ~1-4 seconds per image (GPU), ~3-12 seconds (CPU)
 - **Memory Usage**: ~2-4GB GPU memory, ~1-2GB system RAM
-- **Throughput**: ~20-60 images/minute depending on hardware and image size
+- **Throughput**: ~15-60 images/minute depending on hardware, image size, and rotation settings
 - **Accuracy**: Optimized for clear profile images with faces visible from the side
+- **Rotation Alignment**: Provides standardized face orientation for improved downstream analysis consistency
 
 ## Development and Testing
 
@@ -438,6 +544,19 @@ curl http://localhost:8010/health
 curl -X POST "http://localhost:8010/preprocess-profile" \
   -F "file=@test_image.jpg" \
   -F "include_visualization=true"
+```
+
+### Testing Rotation Alignment
+```bash
+# Run the rotation test script
+python test_rotation.py
+
+# This will verify:
+# - Point detection model loading
+# - Anthropometric point detection
+# - Rotation angle calculation
+# - Image rotation functionality
+# - Full alignment pipeline
 ```
 
 ### Adding Custom Classes

@@ -1,98 +1,88 @@
-# Antropometrico Analysis API v2.1
+# Antropometric Analysis API v2.1
 
 Advanced anthropometric facial analysis system with comprehensive feature detection, custom model integration, and detailed reporting capabilities.
 
-## 🚀 New Features in v2.1
+## Latest Updates (v2.1)
 
-### Latest Updates (v2.1)
-- **Improved Angle Measurements**: Eyebrow and eye angles now calculated relative to vertical midline reference (point 9 to M3) instead of horizontal baseline
-- **Enhanced Anatomical Accuracy**: Standardized angle calculations ensure symmetrical features produce consistent measurements
-- **Reference Vector Integration**: Uses Model Point 3 (M3) when available for accurate vertical reference alignment
-- **Consistent Bilateral Measurements**: Both left and right features now measured with anatomically equivalent directions
-- **Bug Fixes**: Face alignment preprocessing improvements, updated object detection model integration
-- **Classification Improvements**: Enhanced eyebrow type classifier integration with morfológico pipeline
+### Critical Changes in Angle Measurement System
+- **Vertical Midline Reference**: All angle measurements now calculated relative to vertical midline (point 9 to M3) instead of horizontal baseline
+- **Enhanced Anatomical Accuracy**: Standardized calculations ensure symmetrical features produce consistent measurements across left and right sides
+- **Model Point 3 (M3) Integration**: Uses M3 when available for accurate vertical reference alignment
+- **Calculated Point C1**: Combines X coordinate from M2 (between eyebrows) with Y coordinate from M9 to avoid widow's peak interference
+- **Consistent Bilateral Measurements**: Both left and right features measured in anatomically equivalent directions
 
-### Enhanced Analysis Features
-- **Eyebrow Length Analysis**: Classifies eyebrow length relative to eye length (corta/normal/larga)
-- **Eye Angle Analysis**: Measures and classifies eye angles relative to facial vertical axis (normal/hacia arriba/hacia abajo)
-- **Eyebrow Slope Analysis**: Three-segment eyebrow angle analysis relative to perpendicular of vertical midline
-- **Face Area Proportions**: Analyzes inner/outer face area ratios and eye-to-face proportions
-- **Enhanced Model Integration**: Uses all 13 custom model points with confidence scoring
-- **Comprehensive Reporting**: Detailed text and JSON reports with all measurements
+### Bug Fixes
+- Face alignment preprocessing improvements
+- Updated object detection model integration
+- Enhanced eyebrow type classifier integration with morfológico pipeline
 
-### API Endpoints
-- **Complete Analysis**: `/analyze-anthropometric` - Full facial analysis with all features
-- **Focused Analysis**: Specialized endpoints for eyebrows, eyes, and face areas
-- **Detailed Reporting**: `/get-detailed-report` - Comprehensive analysis reports
-- **Enhanced Visualization**: Multiple visualization options including detailed report images
-
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 .
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                          # Enhanced FastAPI application
+│   ├── main.py                          # FastAPI application
 │   ├── models/
-│   │   ├── anthropometric_pipeline.py   # Core analysis engine with new features
+│   │   ├── anthropometric_pipeline.py   # Core analysis engine
+│   │   ├── eye_colorimetry_analyzer.py  # Iris color analysis
 │   │   └── __init__.py
 │   └── utils/
 │       ├── image_processing.py          # Image processing utilities
-│       ├── visualization.py             # Enhanced visualization functions
+│       ├── visualization.py             # Visualization functions
 │       └── __init__.py
 ├── models/
 │   ├── facial_points_detection_model.pth    # Custom trained model
 │   └── shape_predictor_68_face_landmarks.dat # Dlib predictor
 ├── results/                             # Generated visualizations and reports
 ├── dataset_frontal/                     # Test images
-├── docker-compose.yml                   # Enhanced Docker composition
-├── Dockerfile                          # Updated container definition
-├── requirements.txt                     # Updated dependencies
+├── docker-compose.yml                   # Docker composition
+├── Dockerfile                          # Container definition
+├── requirements.txt                     # Dependencies
 └── README.md                           # This file
 ```
 
-## 🔧 Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 - Docker and Docker Compose
 - At least 4GB RAM available for the container
-- The required model files:
+- Required model files:
   - `facial_points_detection_model.pth` (custom trained model)
   - `shape_predictor_68_face_landmarks.dat` (dlib model)
 
 ### Quick Start
-1. **Clone and setup:**
+
+1. Clone and setup:
    ```bash
    git clone <repository>
    cd antropometrico
    ```
 
-2. **Ensure model files are in place:**
+2. Ensure model files are in place:
    ```bash
-   # Place your model files in the models/ directory
    ls models/
    # Should show:
    # facial_points_detection_model.pth
    # shape_predictor_68_face_landmarks.dat
    ```
 
-3. **Build and run:**
+3. Build and run:
    ```bash
    docker-compose up --build
    ```
 
-4. **Verify installation:**
+4. Verify installation:
    ```bash
    curl http://localhost:8001/health
    ```
 
-## 📊 API Documentation
+## API Endpoints
 
-### Complete Analysis Endpoint
+### Complete Analysis
 ```bash
 POST /analyze-anthropometric
 ```
-
 **Parameters:**
 - `file`: Image file (multipart/form-data)
 - `confidence_threshold`: Model confidence threshold (0.0-1.0, default: 0.5)
@@ -151,150 +141,248 @@ POST /get-detailed-report?format=json
 ```
 Generates comprehensive analysis reports in text or JSON format.
 
-## 🎯 Detailed Analysis Features
+## Facial Landmark System
 
-### Facial Landmark Detection
-The system uses 68 standard dlib facial landmarks (points 0-67) plus 4 extended points (68-71) and up to 13 custom model-detected points:
+### Standard Landmarks (Points 0-67)
+Uses dlib's 68-point facial landmark detector:
+- **Face contour (0-16)**: Jaw line from left ear to right ear
+- **Right eyebrow (17-21)**: Five points from outer to inner edge
+- **Left eyebrow (22-26)**: Five points from inner to outer edge
+- **Nose bridge (27-30)**: Four points from top to tip
+- **Nose base (31-35)**: Five points defining nostrils and base
+- **Right eye (36-41)**: Six points defining eye contour, outer to inner
+- **Left eye (42-47)**: Six points defining eye contour, inner to outer
+- **Mouth outer (48-59)**: Twelve points defining outer lip contour
+- **Mouth inner (60-67)**: Eight points defining inner lip contour
 
-#### Standard Landmarks (0-67)
-- **Face contour**: Points 0-16 (jaw line from ear to ear)
-- **Right eyebrow**: Points 17-21 (outer to inner edge)
-- **Left eyebrow**: Points 22-26 (inner to outer edge)
-- **Nose bridge**: Points 27-30 (top to tip)
-- **Nose base**: Points 31-35 (nostrils and base)
-- **Right eye**: Points 36-41 (outer corner to inner corner)
-- **Left eye**: Points 42-47 (inner corner to outer corner)
-- **Mouth outer**: Points 48-59 (outer lip contour)
-- **Mouth inner**: Points 60-67 (inner lip contour)
+### Extended Landmarks (Points 68-71)
+Calculated or model-derived points:
+- **Point 68**: Between eyebrows (uses model point 2 when available, otherwise calculated as midpoint of highest eyebrow points)
+- **Point 69**: Top of head (uses calculated C1 point: X from M2, Y from M9 to avoid widow's peak interference; fallback to M3 or calculated estimate)
+- **Point 70**: Left pupil center (calculated as midpoint of left eye landmarks 37 and 40)
+- **Point 71**: Right pupil center (calculated as midpoint of right eye landmarks 43 and 46)
 
-#### Extended Landmarks (68-71)
-- **Point 68**: Between eyebrows (uses model point 2 when available)
-- **Point 69**: Top of head (uses model point 3 when available)
-- **Point 70**: Left pupil center (calculated from eye landmarks)
-- **Point 71**: Right pupil center (calculated from eye landmarks)
+### Custom Model Points (M1-M13)
+Deep learning model detects up to 13 specialized anthropometric points:
+- **M1**: Superior facial implantation reference
+- **M2**: Between eyebrows (replaces calculated point 68 when available)
+- **M3**: Superior head point (used as vertical reference for all angle measurements)
+- **M4-M13**: Additional facial landmarks for enhanced accuracy
+- **C1 (Calculated)**: Hybrid point combining X from M2 and Y from M9 to avoid hair interference
 
-#### Custom Model Points (1-13)
-Advanced deep learning model detects up to 13 specialized anthropometric points with confidence scoring:
-- **Point 1**: Superior facial implantation reference
-- **Point 2**: Between eyebrows (replaces calculated point 68)
-- **Point 3**: Superior head point (replaces calculated point 69)
-- **Points 4-13**: Additional facial landmarks for enhanced accuracy
+## Comprehensive Measurement System
 
-### Facial Thirds Analysis (Golden Ratio Assessment)
-Divides the face into three vertical sections using key anthropometric points:
+### 1. Facial Thirds Analysis
 
-#### Measurement Points
-- **Top reference**: Point 69 (top of head) or model point 3
-- **Upper division**: Point 68 (between eyebrows) or model point 2
-- **Middle division**: Point 34 (nose base/subnasale)
-- **Lower reference**: Point 9 (menton/chin)
+Divides face into three vertical sections to assess proportional harmony according to classical anthropometric ratios.
 
-#### Proportional Calculations
-- **Primer Tercio**: Distance 69-68 / Total head height
-  - `tercio superior largo`: > 0.38 proportion
-  - `tercio superior standard`: 0.27-0.38 proportion
-  - `tercio superior corto`: < 0.27 proportion
+**Reference Points:**
+- Top: Point 69 (top of head, preferably calculated C1)
+- Upper division: Point 68 (between eyebrows, preferably M2)
+- Middle division: Point 34 (nose base/subnasale)
+- Lower reference: Point 9 (menton/chin)
 
-- **Segundo Tercio**: Distance 68-34 / Total head height
-  - `tercio medio largo`: > 0.38 proportion
-  - `tercio medio standard`: 0.27-0.38 proportion
-  - `tercio medio corto`: < 0.27 proportion
+**Measurements:**
+- **Primer Tercio (Upper Third)**: Distance from point 69 to 68, divided by total head height (69 to 9)
+- **Segundo Tercio (Middle Third)**: Distance from point 68 to 34, divided by total head height
+- **Tercer Tercio (Lower Third)**: Distance from point 34 to 9, divided by total head height
 
-- **Tercer Tercio**: Distance 34-9 / Total head height
-  - `tercio inferior largo`: > 0.38 proportion
-  - `tercio inferior standard`: 0.27-0.38 proportion
-  - `tercio inferior corto`: < 0.27 proportion
+**Classification Thresholds:**
+- **Tercio Largo (Long)**: Proportion > 0.38
+- **Tercio Standard (Normal)**: Proportion 0.27-0.38
+- **Tercio Corto (Short)**: Proportion < 0.27
 
-### Eyebrow Morphometry Analysis
-Analyzes eyebrow length relative to corresponding eye length for aesthetic proportion assessment:
+**Clinical Significance**: Ideal facial thirds should each be approximately 33% of total face height. Deviations indicate disproportionate facial development.
 
-#### Measurement Points
-- **Right eyebrow**: Points 17 (outer) to 21 (inner)
-- **Left eyebrow**: Points 22 (outer) to 26 (inner)
-- **Right eye**: Points 36 (outer corner) to 39 (inner corner)
-- **Left eye**: Points 42 (inner corner) to 45 (outer corner)
+### 2. Eyebrow Morphometry Analysis
 
-#### Length Classifications
-- **Ceja corta**: Eyebrow/eye ratio < 1.0
-- **Ceja normal**: Eyebrow/eye ratio 1.0-1.4
-- **Ceja larga**: Eyebrow/eye ratio > 1.4
+Analyzes eyebrow length relative to corresponding eye length for aesthetic proportion assessment.
 
-#### Slope Analysis (v2.1 Update)
-Calculates eyebrow angles in three segments relative to the perpendicular of the vertical midline reference:
-- **Reference System**: Angles measured relative to perpendicular of vertical axis (point 9 to M3)
-- **Portion 1**: Inner segment angle (points 17-18 for right, 22-23 for left)
-- **Portion 2**: Middle arch segment (points 18-20 for right, 23-25 for left)
-- **Portion 3**: Outer descending segment (points 20-21 for right, 25-26 for left)
-- **Anatomical Consistency**: Both eyebrows measured in equivalent anatomical directions for direct comparison
+**Measurement Points:**
+- **Right eyebrow length**: Distance from point 17 (outer) to point 21 (inner)
+- **Left eyebrow length**: Distance from point 26 (outer) to point 22 (inner)
+- **Right eye length**: Distance from point 36 (outer corner) to point 39 (inner corner)
+- **Left eye length**: Distance from point 42 (inner corner) to point 45 (outer corner)
 
-### Eye Angle Analysis (Palpebral Fissure Inclination) - v2.1 Update
-Measures the angle of eye openings relative to the perpendicular of the vertical midline reference:
+**Proportional Calculation**: Eyebrow length / Corresponding eye length
 
-#### Measurement Points
-- **Right eye**: Outer corner (point 36) to inner corner (point 39)
-- **Left eye**: Inner corner (point 42) to outer corner (point 45)
-- **Reference Vector**: Vertical midline from chin (point 9) to top of head (M3/point 69)
+**Classification Thresholds:**
+- **Ceja Corta (Short Eyebrow)**: Ratio < 1.0 (eyebrow shorter than eye)
+- **Ceja Normal (Normal Eyebrow)**: Ratio 1.0-1.4
+- **Ceja Larga (Long Eyebrow)**: Ratio > 1.4 (eyebrow significantly longer than eye)
 
-#### Angle Classifications
-- **Ángulo normal**: -5° to +5° (alignment with perpendicular to vertical axis)
-- **Ángulo hacia arriba**: > +5° (upward slanting relative to reference, positive canthal tilt)
-- **Ángulo hacia abajo**: < -5° (downward slanting relative to reference, negative canthal tilt)
+**Clinical Significance**: Normal eyebrows typically extend slightly beyond the eye length. Ratios outside normal range may indicate sparse eyebrows or structural variations.
 
-#### Calculation Method (v2.1)
-1. Establishes vertical midline reference vector (point 9 to M3)
-2. Calculates perpendicular to vertical reference as "horizontal" baseline
-3. Measures eye angle relative to this perpendicular reference
-4. Ensures both eyes measured in anatomically equivalent directions for bilateral symmetry assessment
-5. Prefers Model Point 3 (M3) over calculated point 69 for enhanced accuracy
+### 3. Eyebrow Slope Analysis (Three-Segment Method)
 
-### Intercanthal Distance Analysis
-Evaluates eye spacing proportions:
+Analyzes eyebrow angle in three anatomical segments relative to the perpendicular of the vertical midline reference.
 
-#### Measurements
-- **Inner eye distance**: Distance between points 39 and 42 (inner corners)
-- **Outer eye distance**: Distance between points 36 and 45 (outer corners)
-- **Eye distance proportion**: Inner distance / Outer distance
+**Reference System:**
+- **Vertical Midline**: Vector from point 9 (chin) to M3 (top of head)
+- **Perpendicular Reference**: 90-degree rotation of vertical midline, serves as "horizontal" baseline
+- **Angle Measurement**: Degrees relative to perpendicular reference
 
-#### Classifications
-- **Cercanos**: < 0.3 proportion (hypotelorism)
-- **Standard**: 0.3-0.37 proportion (normal spacing)
-- **Lejanos**: > 0.37 proportion (hypertelorism)
+**Right Eyebrow Segments** (measured from inner to outer for anatomical consistency):
+- **Portion 1**: Inner segment angle (points 21 to 20, reversed direction)
+- **Portion 2**: Middle arch segment (points 20 to 18, reversed direction)
+- **Portion 3**: Outer descending segment (points 18 to 17, reversed direction)
 
-### Face Area Analysis
-Calculates proportional relationships between facial regions:
+**Left Eyebrow Segments** (measured from inner to outer, natural direction):
+- **Portion 1**: Inner segment angle (points 22 to 23)
+- **Portion 2**: Middle arch segment (points 23 to 25)
+- **Portion 3**: Outer descending segment (points 25 to 26)
 
-#### Area Measurements
-- **Outer face area**: Convex hull of jaw contour + all model points
-- **Inner face area**: Region from eyebrows (points 17-26) to mouth (points 48-67)
-- **Eye areas**: Individual eye regions (points 36-41 and 42-47)
+**Classification Thresholds (Portions 1 and 2):**
+- **Ascendente (Ascending)**: Angle 5° to 75°
+- **Recto (Straight)**: Angle -1° to 5°
+- **Descendente (Descending)**: Angle ≤ 0°
 
-#### Proportional Analysis
-- **Inner/Outer percentage**: (Inner area / Outer area) × 100
-- **Eye-to-face proportions**: Individual eye area relative to total face area
-- Provides detailed area measurements in pixels²
+**Classification Thresholds (Portion 3):**
+- **Descendente (Descending)**: Angle > 75°
+- **Normal**: Angle 10° to 75°
+- **Ascendente (Ascending)**: Angle < 10°
 
-### Mouth-to-Eye Proportional Analysis
-Assesses facial harmony through mouth and eye relationships:
+**Clinical Significance**: Eyebrow shape affects facial expression perception. Ascending outer portions create a lifted appearance, while descending portions can appear sad or aged.
 
-#### Measurements
-- **Mouth length**: Distance between points 49 and 54 (mouth corners)
-- **Pupil distance**: Distance between pupil centers (points 70 and 71)
-- **Proportion ratio**: Mouth length / Pupil distance
+### 4. Eye Angle Analysis (Palpebral Fissure Inclination)
 
-#### Classifications
-- **Boca grande**: > 1.0 ratio (mouth wider than interpupillary distance)
-- **Relación estándar**: 0.7-1.0 ratio (harmonious proportion)
-- **Boca pequeña**: < 0.7 ratio (mouth narrower than typical)
+Measures the inclination of both eyes relative to the perpendicular of the vertical midline reference.
 
-### Eye Colorimetry Analysis
-Advanced iris color classification using multiple methodologies:
+**Reference System:**
+- **Vertical Midline**: Vector from point 9 (chin) to M3 (top of head)
+- **Perpendicular Reference**: 90-degree rotation of vertical midline
+- **Measurement Direction**: Both eyes measured in anatomically equivalent directions for symmetry assessment
 
-#### Color Detection Methods
-1. **HSV-based classification**: Uses hue, saturation, and brightness values
-2. **RGB average classification**: Analyzes average color within iris region
-3. **RGB dominant classification**: Uses K-means clustering for dominant colors
+**Measurement Points:**
+- **Right Eye**: From outer corner (point 36) to inner corner (point 39), reversed for rightward direction
+- **Left Eye**: From inner corner (point 42) to outer corner (point 45), natural rightward direction
 
-#### Color Categories
+**Angle Calculation:**
+1. Calculate angle of eye line relative to perpendicular reference
+2. Normalize to range [-180°, +180°]
+3. Positive values indicate upward slant at outer corner
+4. Negative values indicate downward slant at outer corner
+
+**Classification Thresholds:**
+- **Ángulo Normal (Normal Angle)**: -5° to +5° (nearly horizontal alignment with perpendicular reference)
+- **Ángulo Hacia Arriba (Upward Angle)**: > +5° (positive canthal tilt, outer corner higher than inner)
+- **Ángulo Hacia Abajo (Downward Angle)**: < -5° (negative canthal tilt, outer corner lower than inner)
+
+**Clinical Significance**: Positive canthal tilt is associated with youthful appearance and attractiveness. Negative canthal tilt can appear aged or sad.
+
+### 5. Intercanthal Distance Analysis
+
+Evaluates horizontal eye spacing proportions to classify eye separation.
+
+**Measurement Points:**
+- **Inner Eye Distance**: Distance between inner corners (point 39 to point 42)
+- **Outer Eye Distance**: Distance between outer corners (point 36 to point 45)
+
+**Proportional Calculation**: Inner eye distance / Outer eye distance
+
+**Classification Thresholds:**
+- **Cercanos (Hypotelorism)**: Proportion < 0.3 (eyes close together)
+- **Standard (Normal)**: Proportion 0.3-0.37
+- **Lejanos (Hypertelorism)**: Proportion > 0.37 (eyes widely spaced)
+
+**Clinical Significance**: Abnormal intercanthal distances may indicate genetic syndromes or craniofacial conditions.
+
+### 6. Eyebrow-Eyelid Distance Analysis
+
+Measures vertical distance between eyebrow and upper eyelid, proportional to head height.
+
+**Measurement Points:**
+- **Left Side**: Distance from point 19 (left eyebrow) to point 37 (left upper eyelid)
+- **Right Side**: Distance from point 24 (right eyebrow) to point 44 (right upper eyelid)
+
+**Proportional Calculation**: Eyebrow-eyelid distance / Total head height (point 69 to point 9)
+
+**Clinical Significance**: This measurement assesses eyebrow position and ptosis. Low proportions may indicate brow ptosis or excess upper eyelid skin.
+
+### 7. Mouth Morphometry Analysis
+
+Analyzes mouth structure including cupid's bow arches and lip proportions.
+
+**Cupid's Bow Measurements:**
+- **Left Cupid's Arch**: Distance from point 50 to point 61
+- **Right Cupid's Arch**: Distance from point 52 to point 63
+- **Proportional Calculation**: Arch distance / Head height
+
+**Lip Measurements:**
+- **Upper Lip Thickness**: Vertical distance from point 51 to point 62
+- **Lower Lip Thickness**: Vertical distance from point 66 to point 57
+- **Lips Ratio**: Upper lip thickness / Lower lip thickness
+
+**Clinical Significance**: Cupid's bow definition contributes to lip aesthetics. Lips ratio normally favors slightly fuller lower lip (ratio < 1.0).
+
+### 8. Mouth-to-Eye Proportional Analysis
+
+Assesses facial harmony through relationship between mouth width and interpupillary distance.
+
+**Measurement Points:**
+- **Mouth Length**: Distance between mouth corners (point 49 to point 54)
+- **Pupil Distance**: Distance between pupil centers (point 70 to point 71)
+
+**Proportional Calculation**: Mouth length / Pupil distance
+
+**Classification Thresholds:**
+- **Boca Grande (Large Mouth)**: Ratio > 1.0 (mouth wider than interpupillary distance)
+- **Relación Estándar (Standard Relation)**: Ratio 0.7-1.0
+- **Boca Pequeña (Small Mouth)**: Ratio < 0.7 (mouth narrower than typical)
+
+**Clinical Significance**: This proportion contributes to overall facial balance. Extreme deviations affect facial aesthetics.
+
+### 9. Face Area Analysis
+
+Calculates proportional relationships between different facial regions using polygon areas.
+
+**Outer Face Area:**
+- Defined by convex hull of jaw contour (points 0-16) plus all detected model points
+- Represents total visible face boundary
+
+**Inner Face Area:**
+- Defined by region from eyebrows (points 17-26) to mouth (points 48-67)
+- Represents central feature-rich zone
+
+**Eye Areas:**
+- **Right Eye Area**: Polygon defined by points 36-41
+- **Left Eye Area**: Polygon defined by points 42-47
+
+**Proportional Calculations:**
+- **Inner/Outer Percentage**: (Inner area / Outer area) × 100
+- **Right Eye to Face Proportion**: (Right eye area / Outer face area) × 100
+- **Left Eye to Face Proportion**: (Left eye area / Outer face area) × 100
+
+**Clinical Significance**: These proportions assess facial compactness and feature distribution. Eye-to-face ratios correlate with neoteny and attractiveness.
+
+### 10. Additional Proportional Measurements
+
+**Head Width Proportion:**
+- Calculation: Head width (point 2 to point 16) / Head height (point 69 to point 9)
+- Clinical Significance: Assesses facial shape (narrow, average, wide)
+
+**Chin to Face Width Proportion:**
+- Calculation: Chin width (point 7 to point 9) / Head width (point 2 to point 16)
+- Clinical Significance: Evaluates jaw taper and chin prominence
+
+**Outer Eye Distance Proportion:**
+- Calculation: Outer eye distance (point 36 to point 45) / Head height (point 69 to point 9)
+- Clinical Significance: Assesses eye position relative to face height
+
+**Mouth Length Proportion:**
+- Calculation: Mouth length (point 49 to point 54) / Head width (point 2 to point 16)
+- Clinical Significance: Evaluates mouth width relative to facial width
+
+## Eye Colorimetry Analysis
+
+Advanced iris color classification using multiple methodologies.
+
+### Color Detection Methods
+1. **HSV-based Classification**: Uses hue, saturation, and value (brightness) analysis
+2. **RGB Average Classification**: Analyzes average RGB values within iris region
+3. **RGB Dominant Classification**: Uses K-means clustering to identify dominant colors
+
+### Color Categories
 - **color_de_ojo_negro/cafe_oscuro**: Very dark brown/black eyes
 - **cafe_claro/hazel**: Light brown/hazel eyes
 - **verde**: Green eyes
@@ -304,56 +392,55 @@ Advanced iris color classification using multiple methodologies:
 - **amarillo**: Amber/yellow eyes
 - **azul_verde**: Blue-green/turquoise eyes
 
-#### Analysis Process
-1. **Landmark detection**: Identifies eye regions using facial landmarks
-2. **Iris extraction**: Isolates iris region excluding pupil and sclera
-3. **Color analysis**: K-means clustering and average color calculation
-4. **Multi-system classification**: RGB and HSV-based color categorization
-5. **Bilateral comparison**: Separate analysis for left and right eyes
+### Analysis Process
+1. **Landmark Detection**: Identifies eye regions using facial landmarks
+2. **Iris Extraction**: Isolates iris region excluding pupil and sclera
+3. **Color Analysis**: K-means clustering and average color calculation
+4. **Multi-system Classification**: RGB and HSV-based color categorization
+5. **Bilateral Comparison**: Separate analysis for left and right eyes
 
-### Model Integration and Confidence Scoring
-The system integrates a custom-trained deep learning model for enhanced accuracy:
+## Model Integration and Confidence Scoring
 
-#### Model Architecture
-- **Base model**: Faster R-CNN with ResNet-50 backbone
-- **Detection classes**: 13 specialized anthropometric points + background
-- **Input processing**: 224×224 pixel images with normalization
+### Model Architecture
+- **Base Model**: Faster R-CNN with ResNet-50 backbone
+- **Detection Classes**: 13 specialized anthropometric points + background class
+- **Input Processing**: 224×224 pixel images with normalization
 - **Output**: Bounding boxes, confidence scores, and point classifications
 
-#### Confidence Thresholds
-- **Adjustable threshold**: 0.0-1.0 (default 0.5)
-- **Point validation**: Only points above threshold are used
-- **Fallback system**: Traditional calculations when model points unavailable
-- **Quality indicators**: Model integration status reported in results
+### Confidence Thresholds
+- **Adjustable Threshold**: 0.0-1.0 (default 0.5)
+- **Point Validation**: Only points above threshold are used in analysis
+- **Fallback System**: Traditional calculations when model points unavailable
+- **Quality Indicators**: Model integration status reported in results
 
-#### Enhanced Accuracy Features
-- **Coordinate scaling**: Automatic scaling from model input to original image
-- **Point replacement**: Model points replace calculated estimates when available
-- **Hybrid approach**: Combines traditional landmarks with AI-detected points
-- **Confidence reporting**: Detailed confidence scores for each detected point
+### Enhanced Accuracy Features
+- **Coordinate Scaling**: Automatic scaling from model input (224×224) to original image dimensions
+- **Point Replacement**: Model points replace calculated estimates when available and confident
+- **Hybrid Approach**: Combines traditional landmarks with AI-detected points
+- **Confidence Reporting**: Detailed confidence scores for each detected point in results
 
-## 🖼️ Visualization Options
+## Visualization Options
 
 ### Standard Visualization
-- All 68 facial landmarks
-- Extended points (69-72)
-- Model predictions with color coding
+- All 68 facial landmarks with point numbers
+- Extended points (68-71) highlighted
+- Model predictions with color coding by confidence
 - Facial thirds reference lines
-- Key measurements overlay
+- Key measurement overlays
 
 ### Detailed Report Image
 - Side-by-side image and comprehensive measurements
 - All analysis results in organized format
-- Model integration status
-- Classification results
+- Model integration status indicators
+- Classification results with thresholds
 
 ### Specialized Visualizations
-- Eyebrow analysis with length comparisons
-- Eye angle visualization with degree measurements
-- Face area boundary visualization
-- Model point detection visualization
+- Eyebrow analysis with length comparison markers
+- Eye angle visualization with degree measurements and reference lines
+- Face area boundary visualization with color-coded regions
+- Model point detection visualization with confidence scores
 
-## 🔍 Usage Examples
+## Usage Examples
 
 ### Complete Analysis with Visualization
 ```bash
@@ -397,7 +484,7 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
   -F "use_dominant_color=true"
 ```
 
-## 📈 Performance & Requirements
+## Performance & Requirements
 
 ### System Requirements
 - **Memory**: Minimum 2GB, Recommended 4GB
@@ -406,70 +493,75 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 - **Network**: Port 8001 available
 
 ### Processing Performance
-- **Analysis Time**: 2-5 seconds per image (depending on resolution)
-- **Model Inference**: ~1 second for point detection
-- **Visualization Generation**: ~1 second additional
+- **Analysis Time**: 2-5 seconds per image (depending on resolution and hardware)
+- **Model Inference**: Approximately 1 second for point detection
+- **Visualization Generation**: Approximately 1 second additional
 - **Supported Formats**: JPG, PNG, BMP, TIFF
 
 ### Image Requirements
 - **Minimum Resolution**: 100x100 pixels
-- **Maximum Resolution**: 4000x4000 pixels (auto-resized)
-- **Face Requirements**: Clear frontal face view
-- **Optimal Conditions**: Good lighting, minimal occlusion
+- **Maximum Resolution**: 4000x4000 pixels (automatically resized if larger)
+- **Face Requirements**: Clear frontal face view, minimal rotation
+- **Optimal Conditions**: Good lighting, minimal occlusion, neutral expression recommended
 
-## 🚨 Error Handling
+## Error Handling
 
 ### Common Issues
-- **No Face Detected**: Returns error with empty analysis
-- **Model Not Loaded**: Check model file paths and permissions
-- **Low Confidence**: Adjust confidence_threshold parameter
-- **Memory Issues**: Reduce image size or increase container memory
+- **No Face Detected**: Ensure clear frontal face view with adequate lighting
+- **Model Not Loaded**: Check model file paths and permissions in logs
+- **Low Confidence**: Adjust confidence_threshold parameter or improve image quality
+- **Memory Issues**: Reduce image size or increase container memory allocation
 
 ### Troubleshooting
 1. **Check Health Endpoint**: `curl http://localhost:8001/health`
-2. **Verify Model Files**: Ensure both model files are present and readable
+2. **Verify Model Files**: Ensure both model files present and readable in models/ directory
 3. **Check Logs**: `docker-compose logs antropometrico-api`
-4. **Image Quality**: Ensure clear, well-lit frontal face images
+4. **Image Quality**: Ensure clear, well-lit frontal face images without heavy occlusion
 
-## 🔄 Version History
+## Version History
 
 ### v2.1 (Current)
+
 **Breaking Changes:**
-- Eye angle and eyebrow slope calculations now return different values due to new reference system
-- Response fields `face_line_slope` removed from eyebrow analysis
-- Response fields `left_eye_slope` and `right_eye_slope` removed from eye analysis
+- Eye angle and eyebrow slope calculations now return different values due to new vertical midline reference system
+- Removed response fields: `face_line_slope` from eyebrow analysis
+- Removed response fields: `left_eye_slope` and `right_eye_slope` from eye analysis (replaced with angle measurements)
 
 **New Fields:**
-- `vertical_reference_used`: Boolean indicating if M3 was used (vs fallback point 69)
-- `vertical_reference_angle_deg`: Angle of vertical midline reference
+- `vertical_reference_used`: Boolean indicating if M3 was used as vertical reference (vs fallback point 69)
+- `vertical_reference_angle_deg`: Angle of vertical midline reference vector (point 9 to M3)
 - `perpendicular_reference_angle_deg`: Angle of perpendicular reference used for measurements
+- `calculated_c1_used`: Boolean indicating if hybrid C1 point was calculated and used
+- `c1_calculation`: Description of C1 calculation method when used
 
 **Improvements:**
-- More accurate angle measurements that account for head tilt and pose
+- More accurate angle measurements accounting for head tilt and pose variations
 - Consistent bilateral measurements for improved symmetry assessment
 - Better anatomical accuracy using facial vertical axis as reference
+- Widow's peak interference avoided through C1 calculation method
 
 ### v2.0
+
 **New Endpoints:**
-- `/analyze-eyebrows` - Focused eyebrow analysis
+- `/analyze-eyebrows` - Focused eyebrow analysis with classifications
 - `/analyze-eyes` - Eye angle and proportion analysis
 - `/analyze-face-areas` - Face area proportion analysis
-- `/get-detailed-report` - Comprehensive reporting
-- `/analyze-eye-colorimetry` - Iris color analysis
+- `/get-detailed-report` - Comprehensive reporting in text or JSON format
+- `/analyze-eye-colorimetry` - Complete iris color analysis
 - `/analyze-iris-color` - Focused iris classification
-- `/compare-eye-colors` - Color classification comparison
+- `/compare-eye-colors` - Color classification comparison across methods
 
 **Enhanced Responses:**
-- Additional analysis fields in `/analyze-anthropometric`
-- Detailed classifications and measurements
+- Additional analysis fields in `/analyze-anthropometric` response
+- Detailed classifications and measurements for all features
 - Model integration status and confidence scores
 - Enhanced error reporting and validation
 
 **Backward Compatibility:**
 - All v1.0 endpoints remain functional
-- Response format extended (not breaking from v1.0)
+- Response format extended (not breaking changes from v1.0)
 
-## 📝 Development & Testing
+## Development & Testing
 
 ### Running Tests
 ```bash
@@ -491,6 +583,6 @@ pip install -r requirements.txt
 python -m app.main
 ```
 
-## 📄 License & Credits
+## License & Credits
 
 This enhanced version includes advanced anthropometric analysis capabilities developed for comprehensive facial feature assessment. The system integrates classical facial landmark detection with custom-trained deep learning models for enhanced accuracy and detailed analysis.

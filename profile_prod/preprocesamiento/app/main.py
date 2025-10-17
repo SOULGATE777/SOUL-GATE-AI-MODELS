@@ -48,29 +48,38 @@ viz_manager = None
 async def startup_event():
     """Initialize the preprocessing pipeline on startup"""
     global pipeline, image_processor, viz_manager
-    
+
     try:
         model_path = "/app/models/profile_detection_model.pth"
-        
+        point_model_path = "/app/models/profile_aware_point_detection_model.pth"
+
         if not os.path.exists(model_path):
             logger.error(f"Model file not found at {model_path}")
             raise FileNotFoundError(f"Model file not found at {model_path}")
-        
+
+        # Check if point detection model exists
+        if os.path.exists(point_model_path):
+            logger.info(f"Point detection model found at {point_model_path}")
+        else:
+            logger.warning(f"Point detection model not found at {point_model_path} - rotation feature will be disabled")
+            point_model_path = None
+
         # Determine device
         device = 'cuda' if os.environ.get('CUDA_VISIBLE_DEVICES', '') != '-1' else 'cpu'
         logger.info(f"Using device: {device}")
-        
+
         # Initialize components
         pipeline = ProfilePreprocessingPipeline(
             model_path=model_path,
-            device=device
+            device=device,
+            point_model_path=point_model_path
         )
-        
+
         image_processor = ImageProcessor()
         viz_manager = ProfileVisualizationManager()
-        
+
         logger.info("Profile preprocessing pipeline initialized successfully!")
-        
+
     except Exception as e:
         logger.error(f"Failed to initialize pipeline: {str(e)}")
         raise e
@@ -118,11 +127,12 @@ async def preprocess_profile(
     padding_factor: float = Form(0.15),
     output_format: str = Form("JPEG"),
     quality: int = Form(95),
-    include_visualization: bool = Form(False)
+    include_visualization: bool = Form(False),
+    apply_rotation: bool = Form(True)
 ):
     """
     Complete profile preprocessing: detect faces, crop, resize and convert to base64
-    
+
     - **file**: Input image file (JPG, PNG)
     - **confidence_threshold**: Minimum confidence for face detection (0.1-0.9, default: 0.5)
     - **target_width**: Target width for cropped faces (default: 600)
@@ -131,6 +141,7 @@ async def preprocess_profile(
     - **output_format**: Output format for base64 images ('JPEG', 'PNG', default: 'JPEG')
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
+    - **apply_rotation**: Apply face rotation alignment using points 34 and 10 (default: false)
     """
     
     if pipeline is None:
@@ -174,7 +185,8 @@ async def preprocess_profile(
             target_size=(target_width, target_height),
             padding_factor=padding_factor,
             output_format=output_format,
-            quality=quality
+            quality=quality,
+            apply_rotation=apply_rotation
         )
         
         # Generate unique processing ID
@@ -190,7 +202,14 @@ async def preprocess_profile(
             "processing_parameters": results['processing_parameters'],
             "processed_faces": []
         }
-        
+
+        # Add rotation metadata if available
+        if 'rotation_metadata' in results:
+            response['rotation_metadata'] = results['rotation_metadata']
+            logger.info(f"Rotation metadata added to response: {results['rotation_metadata']}")
+        else:
+            logger.warning("No rotation_metadata in results")
+
         # Add processed faces to response
         for i, face_data in enumerate(results['processed_faces']):
             response["processed_faces"].append({
@@ -208,8 +227,11 @@ async def preprocess_profile(
         # Generate visualizations if requested
         if include_visualization and results['processed_faces']:
             try:
+                # Use the working_image from results (rotated if rotation was applied, otherwise original)
+                viz_image = results.get('working_image', image)
+
                 viz_results = viz_manager.create_complete_visualization(
-                    original_image=image,
+                    original_image=viz_image,
                     processing_result=results,
                     include_summary=True
                 )
@@ -410,6 +432,8 @@ async def get_model_info():
 @app.get("/processing-stats")
 async def get_processing_stats():
     """Get processing statistics and capabilities"""
+    rotation_available = pipeline is not None and pipeline.rotation_aligner is not None
+
     return {
         "service_info": {
             "name": "Profile Preprocessing Service",
@@ -421,7 +445,8 @@ async def get_processing_stats():
             "face_cropping": True,
             "base64_output": True,
             "batch_processing": False,
-            "visualization": True
+            "visualization": True,
+            "rotation_alignment": rotation_available
         },
         "supported_formats": {
             "input": ["JPEG", "PNG", "JPG"],
@@ -434,7 +459,8 @@ async def get_processing_stats():
             "quality": {"min": 1, "max": 100, "default": 95}
         },
         "device": str(pipeline.device) if pipeline else "unknown",
-        "model_loaded": pipeline is not None
+        "model_loaded": pipeline is not None,
+        "rotation_aligner_available": rotation_available
     }
 
 if __name__ == "__main__":
