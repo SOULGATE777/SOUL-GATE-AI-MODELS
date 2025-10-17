@@ -543,9 +543,9 @@ class ProfileAnthropometricPipeline:
             print(f"Nose tip angle: {angle_degrees:.2f} degrees")
             
             # Classify nose tip
-            if angle_degrees >= 27:
+            if angle_degrees >= 26:
                 nose_tip_label = "punta de nariz hacia arriba"
-            elif 12 <= angle_degrees < 27:
+            elif 12 <= angle_degrees < 26:
                 nose_tip_label = "punta de nariz promedio"
             else:  # < 12
                 nose_tip_label = "punta hacia abajo"
@@ -652,9 +652,9 @@ class ProfileAnthropometricPipeline:
             print(f"Chin angle (18-11): {angle_degrees:.2f} degrees")
             
             # Classify chin using the exact logic from your original code
-            if angle_degrees <= -5:
+            if angle_degrees <= -4:
                 chin_label = 'menton nervioso'
-            elif -5 < angle_degrees <= 5.5:
+            elif -4 < angle_degrees <= 5.5:
                 chin_label = 'menton biloso/linfatico'
             else:  # > 5.5
                 chin_label = 'menton sanguineo'
@@ -775,7 +775,7 @@ class ProfileAnthropometricPipeline:
         # Calculate vectors
         vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
         vector_24_4 = np.array([point_4[0] - point_24[0], point_4[1] - point_24[1]])
-        vector_18_5 = np.array([point_5[0] - point_18[0], point_5[1] - point_18[1]])
+        vector_18_3 = np.array([point_3[0] - point_18[0], point_3[1] - point_18[1]])
         vector_1_3 = np.array([point_1[0] - point_3[0], point_1[1] - point_3[1]])
         
         # Calculate slopes
@@ -792,8 +792,8 @@ class ProfileAnthropometricPipeline:
         if angle_degrees_superior < 0:
             angle_degrees_superior += 360
         
-        # Calculate inferior angle (point 5) - using 0-360° system
-        v1_u_inferior = vector_18_5 / np.linalg.norm(vector_18_5)
+        # Calculate inferior angle (point 3) - using 0-360° system
+        v1_u_inferior = vector_18_3 / np.linalg.norm(vector_18_3)
         angle_degrees_inferior = np.degrees(np.arctan2(np.cross(v1_u_inferior, v2_u), np.dot(v1_u_inferior, v2_u)))
         if angle_degrees_inferior < 0:
             angle_degrees_inferior += 360
@@ -972,10 +972,14 @@ class ProfileAnthropometricPipeline:
 
     def calculate_eye_protrusion_classification(self, point_37, point_39, point_38, head_direction):
         """
-        Calculate eye protrusion by checking if cornea (point 38) crosses the orbital plane.
+        Calculate eye protrusion by comparing the X coordinate of the cornea (point 38)
+        with the X coordinate of the orbital plane at the same Y position.
 
-        The orbital plane is defined by the vector from point 37 (orbital base) to point 39 (orbital top).
-        Eye protrusion is detected when the cornea crosses beyond this plane in the profile direction.
+        Since images are rotated to be vertical (vector 10-34 parallel to Y axis),
+        the X coordinate directly represents horizontal depth (profile direction).
+
+        The orbital plane is defined by the line from point 37 (orbital base) to point 39 (orbital top).
+        Eye protrusion is detected when the cornea extends beyond this plane in the profile direction.
 
         Args:
             point_37: Orbital base point (inner eye corner)
@@ -984,9 +988,9 @@ class ProfileAnthropometricPipeline:
             head_direction: 'left' or 'right' profile direction
 
         Returns:
-            tuple: (perpendicular_distance, classification)
-                - perpendicular_distance: signed distance from point 38 to orbital plane
-                  (positive = crosses in profile direction, negative = recessed)
+            tuple: (protrusion_distance, classification)
+                - protrusion_distance: signed X-distance from cornea to orbital plane
+                  (positive = protrusion outward, negative = recessed)
                 - classification: 'pronounced eye protrusion', 'normal eye protrusion', or 'minimal eye protrusion'
         """
         if not all([point_37, point_39, point_38]):
@@ -996,54 +1000,56 @@ class ProfileAnthropometricPipeline:
             print(f"Warning: Invalid head_direction '{head_direction}' for eye protrusion detection")
             return None, None
 
-        # Create the orbital plane vector (37 -> 39)
-        vector_37_39 = np.array([point_39[0] - point_37[0], point_39[1] - point_37[1]])
+        # Get coordinates
+        x37, y37 = point_37
+        x39, y39 = point_39
+        x38, y38 = point_38
 
-        # Create vector from point 37 to cornea (38)
-        vector_37_38 = np.array([point_38[0] - point_37[0], point_38[1] - point_37[1]])
+        # Calculate the X coordinate on the orbital plane (line 37-39) at the same Y as point 38
+        # Using linear interpolation: x = x1 + (x2 - x1) * (y - y1) / (y2 - y1)
+        if abs(y39 - y37) > 0.1:  # Avoid division by zero
+            # Interpolate X on the line 37-39 at Y position of point 38
+            t = (y38 - y37) / (y39 - y37)  # Parameter t in [0, 1] for interpolation
+            orbital_plane_x = x37 + (x39 - x37) * t
+        else:
+            # If line is horizontal, use average X
+            orbital_plane_x = (x37 + x39) / 2
 
-        # Calculate perpendicular distance using cross product
-        # Cross product in 2D: (v1_x * v2_y) - (v1_y * v2_x)
-        # This gives the signed area of the parallelogram formed by the two vectors
-        cross_product = (vector_37_39[0] * vector_37_38[1]) - (vector_37_39[1] * vector_37_38[0])
+        # Calculate protrusion distance in X direction
+        x_difference = x38 - orbital_plane_x
 
-        # Normalize by the length of the orbital plane vector to get perpendicular distance
-        orbital_plane_length = np.linalg.norm(vector_37_39)
-        perpendicular_distance = cross_product / orbital_plane_length if orbital_plane_length > 0 else 0
+        # Adjust sign based on head direction
+        # For RIGHT profile: positive X_difference = protrusion (cornea more to the right)
+        # For LEFT profile: negative X_difference = protrusion (cornea more to the left)
+        if head_direction == 'right':
+            protrusion_distance = x_difference
+        else:  # left profile
+            protrusion_distance = -x_difference
 
-        # Determine if the cornea crosses the orbital plane based on profile direction
-        # For LEFT profile: negative perpendicular distance = crossing to the left (protrusion)
-        # For RIGHT profile: positive perpendicular distance = crossing to the right (protrusion)
-
-        if head_direction == 'left':
-            # For left profile, we want negative distance (crossing left)
-            signed_distance = -perpendicular_distance
-        else:  # right profile
-            # For right profile, we want positive distance (crossing right)
-            signed_distance = perpendicular_distance
-
-        print(f"\n--- EYE PROTRUSION ANALYSIS (ORBITAL PLANE METHOD) ---")
+        print(f"\n--- EYE PROTRUSION ANALYSIS (X-COORDINATE METHOD) ---")
         print(f"Head direction: {head_direction}")
-        print(f"Orbital plane vector (37-39): [{vector_37_39[0]:.2f}, {vector_37_39[1]:.2f}]")
-        print(f"Cornea vector (37-38): [{vector_37_38[0]:.2f}, {vector_37_38[1]:.2f}]")
-        print(f"Raw perpendicular distance: {perpendicular_distance:.2f} pixels")
-        print(f"Signed distance (profile-aware): {signed_distance:.2f} pixels")
+        print(f"Point 37 (orbital base): ({x37:.2f}, {y37:.2f})")
+        print(f"Point 39 (orbital top): ({x39:.2f}, {y39:.2f})")
+        print(f"Point 38 (cornea): ({x38:.2f}, {y38:.2f})")
+        print(f"Orbital plane X at Y={y38:.2f}: {orbital_plane_x:.2f}")
+        print(f"X difference (cornea - orbital plane): {x_difference:.2f}")
+        print(f"Protrusion distance (profile-aware): {protrusion_distance:.2f} pixels")
 
-        # Classification based on signed distance
-        # ±3 pixels tolerance for "normal eye protrusion"
+        # Classification based on protrusion distance
+        # ±3 pixels tolerance for "protusion nula"
         TOLERANCE = 3.0
 
-        if signed_distance > TOLERANCE:
-            classification = "pronounced eye protrusion"
-            print(f"Classification: PRONOUNCED EYE PROTRUSION (cornea crosses orbital plane by {signed_distance:.2f} pixels)")
-        elif signed_distance < -TOLERANCE:
-            classification = "minimal eye protrusion"
-            print(f"Classification: MINIMAL EYE PROTRUSION (cornea recessed from orbital plane by {abs(signed_distance):.2f} pixels)")
+        if protrusion_distance > TOLERANCE:
+            classification = "protusion positiva"
+            print(f"Classification: PROTUSION POSITIVA (cornea extends {protrusion_distance:.2f} pixels beyond orbital plane)")
+        elif protrusion_distance < -TOLERANCE:
+            classification = "protusion negativa"
+            print(f"Classification: PROTUSION NEGATIVA (cornea recessed {abs(protrusion_distance):.2f} pixels from orbital plane)")
         else:
-            classification = "normal eye protrusion"
-            print(f"Classification: NORMAL EYE PROTRUSION (cornea within ±{TOLERANCE} pixels of orbital plane)")
+            classification = "protusion nula"
+            print(f"Classification: PROTUSION NULA (cornea within ±{TOLERANCE} pixels of orbital plane)")
 
-        return signed_distance, classification
+        return protrusion_distance, classification
     
     def create_visualization(self, original_image: np.ndarray, detected_points: List[Dict], 
                            actual_profile: str, measurements: Dict) -> str:

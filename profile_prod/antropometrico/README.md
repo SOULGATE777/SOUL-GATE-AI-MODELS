@@ -220,8 +220,8 @@ Measures the angular orientation of the nasal tip relative to a perpendicular re
 8. Clamp angle to range of -90 to +90 degrees
 
 **Classifications:**
-- **punta de nariz hacia arriba** (upturned nose): angle ≥ 27 degrees
-- **punta de nariz promedio** (average nose): 12 ≤ angle < 27 degrees
+- **punta de nariz hacia arriba** (upturned nose): angle ≥ 26 degrees
+- **punta de nariz promedio** (average nose): 12 ≤ angle < 26 degrees
 - **punta hacia abajo** (downturned nose): angle < 12 degrees
 
 #### 2.3 Nasal Dorsum Slope (Points 19 to 17)
@@ -384,8 +384,8 @@ if angle < -90: angle = 180 + angle
 ```
 
 **Classification Thresholds:**
-- **menton nervioso** (receding chin): angle ≤ -5 degrees
-- **menton biloso/linfatico** (neutral chin): -5 < angle ≤ 5.5 degrees
+- **menton nervioso** (receding chin): angle ≤ -4 degrees
+- **menton biloso/linfatico** (neutral chin): -4 < angle ≤ 5.5 degrees
 - **menton sanguineo** (protruding chin): angle > 5.5 degrees
 
 #### 5.4 Ear Implantation Angular Analysis
@@ -411,12 +411,12 @@ Measures the angle of the superior ear attachment point relative to a perpendicu
 - **implantacion alta** (high implantation): angle ≥ 351 degrees (ear attaches above reference line)
 - **implantacion estandard** (standard implantation): angle < 351 degrees
 
-##### 5.4.2 Inferior Implantation Angle (Point 18 to 5)
-Measures the angle of the inferior ear lobe attachment relative to a perpendicular reference line at the subnasale.
+##### 5.4.2 Inferior Implantation Angle (Point 18 to 3)
+Measures the angle of the inferior ear attachment relative to a perpendicular reference line at the subnasale.
 
 **Mathematical Process:**
 1. Use same perpendicular vector calculation method as superior implantation
-2. Create measurement vector: `vector_18_5 = [point_5[x] - point_18[x], point_5[y] - point_18[y]]`
+2. Create measurement vector: `vector_18_3 = [point_3[x] - point_18[x], point_3[y] - point_18[y]]`
 3. Apply same atan2 calculation for angle determination
 4. Convert to 0-360 degree system
 5. Classification uses threshold at 350 degrees
@@ -450,39 +450,41 @@ if angle > 90: angle = 180 - angle
 - **obtuse ear implantation**: angle > 120 degrees (more parallel ear axis)
 
 #### 5.5 Eye Protrusion Analysis (Points 37, 38, 39)
-Assesses the degree of eyeball protrusion relative to the orbital plane using a sophisticated geometric method.
+Assesses the degree of eyeball protrusion relative to the orbital plane using an X-coordinate comparison method optimized for vertically-rotated profile images.
 
 ##### 5.5.1 Orbital Plane Definition
-The orbital plane is defined by the vector from point 37 (orbital base, inner eye corner) to point 39 (orbital superior boundary). This plane represents the natural boundary of the eye socket.
+The orbital plane is defined by the line from point 37 (orbital base, inner eye corner) to point 39 (orbital superior boundary). This plane represents the natural boundary of the eye socket.
 
-##### 5.5.2 Perpendicular Distance Calculation
+##### 5.5.2 X-Coordinate Comparison Method
+Since images are rotated to have the face vertical (vector 10-34 parallel to Y axis), the X coordinate directly represents horizontal depth in the profile direction.
+
 **Mathematical Process:**
-1. Create orbital plane vector: `vector_37_39 = [point_39 - point_37]`
-2. Create cornea vector: `vector_37_38 = [point_38 - point_37]`
-3. Calculate 2D cross product (signed area):
-   - `cross = (vector_37_39[x] * vector_37_38[y]) - (vector_37_39[y] * vector_37_38[x])`
-4. Normalize by orbital plane length:
-   - `perpendicular_distance = cross / |vector_37_39|`
-5. Apply profile-aware sign correction:
-   - **Left Profile**: `signed_distance = -perpendicular_distance` (negative indicates protrusion leftward)
-   - **Right Profile**: `signed_distance = perpendicular_distance` (positive indicates protrusion rightward)
+1. Extract coordinates: `(x37, y37)`, `(x39, y39)`, `(x38, y38)`
+2. Calculate X coordinate on the orbital plane at the same Y position as point 38:
+   - Using linear interpolation: `t = (y38 - y37) / (y39 - y37)`
+   - `orbital_plane_x = x37 + (x39 - x37) * t`
+3. Calculate horizontal difference: `x_difference = x38 - orbital_plane_x`
+4. Apply profile-aware sign correction:
+   - **Right Profile**: `protrusion_distance = x_difference` (positive = protrusion rightward)
+   - **Left Profile**: `protrusion_distance = -x_difference` (positive = protrusion leftward)
 
 **Formula:**
 ```
-cross_product = (v_orbital[x] * v_cornea[y]) - (v_orbital[y] * v_cornea[x])
-perpendicular_distance = cross_product / |v_orbital|
-signed_distance = apply_profile_correction(perpendicular_distance, head_direction)
+t = (y38 - y37) / (y39 - y37)
+orbital_plane_x = x37 + (x39 - x37) * t
+x_difference = x38 - orbital_plane_x
+protrusion_distance = x_difference if head_direction == 'right' else -x_difference
 ```
 
 **Physical Interpretation:**
-- Positive signed distance: Cornea crosses beyond the orbital plane in the profile direction (protrusion)
-- Near-zero signed distance: Cornea aligns with the orbital plane (normal)
-- Negative signed distance: Cornea recedes behind the orbital plane (deep-set eyes)
+- Positive protrusion distance: Cornea extends beyond the orbital plane in the profile direction (eye protrudes)
+- Near-zero protrusion distance: Cornea aligns with the orbital plane (normal eye position)
+- Negative protrusion distance: Cornea recedes behind the orbital plane (deep-set eyes)
 
 **Classifications (with 3-pixel tolerance):**
-- **pronounced eye protrusion**: signed_distance > 3 pixels (eyeball noticeably protrudes beyond orbital plane)
-- **normal eye protrusion**: -3 ≤ signed_distance ≤ 3 pixels (eyeball aligned with orbital plane)
-- **minimal eye protrusion**: signed_distance < -3 pixels (deep-set eyes, eyeball recessed behind orbital plane)
+- **protusion positiva** (positive protrusion): protrusion_distance > 3 pixels (eye protrudes beyond orbital plane)
+- **protusion nula** (no protrusion): -3 ≤ protrusion_distance ≤ 3 pixels (eye aligned with orbital plane)
+- **protusion negativa** (negative protrusion): protrusion_distance < -3 pixels (deep-set eye, recessed behind orbital plane)
 
 ##### 5.5.3 Angular Analysis (Vectors 39-37 and 38-37)
 Supplementary measurement calculating the opening angle of the eye structure.
@@ -614,12 +616,12 @@ This section provides a quick reference table of all measurements, their point d
 
 | Measurement | Points Used | Reference Vector | Angle Range | Thresholds | Classifications |
 |------------|-------------|------------------|-------------|------------|-----------------|
-| **Nasal Tip Angle** | 18-17 | 24-18 (perpendicular) | -90° to +90° | ≥ 27°<br>12° to 27°<br>< 12° | punta de nariz hacia arriba<br>punta de nariz promedio<br>punta hacia abajo |
+| **Nasal Tip Angle** | 18-17 | 24-18 (perpendicular) | -90° to +90° | ≥ 26°<br>12° to 26°<br>< 12° | punta de nariz hacia arriba<br>punta de nariz promedio<br>punta hacia abajo |
 | **Nasal Dorsum Slope** | 19-17 | N/A (slope calculation) | N/A | N/A | Provides slope angle for nasal bridge assessment |
 | **Forehead Angle** | 24-33 | 24-18 | 0° to 90° | > 15°<br>11° to 15°<br>< 11° | frente inclinada hacia atras<br>frente neutra<br>frente vertical |
-| **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -5°<br>-5° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
+| **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4°<br>-4° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
 | **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | ≥ 351°<br>< 351° | implantacion alta<br>implantacion estandard |
-| **Inferior Implantation** | 18-5 | 24-18 (perpendicular) | 0° to 360° | ≥ 350°<br>< 350° | implantacion baja<br>implantacion estandard |
+| **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | ≥ 350°<br>< 350° | implantacion baja<br>implantacion estandard |
 | **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 180° | < 70°<br>70° to 110°<br>> 110° | acute mandible angle<br>normal mandible angle<br>obtuse mandible angle |
 | **Ear Implantation Intersection** | 1-3 vs 24-18 | 24-18 | 0° to 90° | < 60°<br>60° to 120°<br>> 120° | acute ear implantation<br>normal ear implantation<br>obtuse ear implantation |
 | **Eye Opening Angle** | 39-37 vs 38-37 | N/A | 0° to 90° | N/A | Supplementary angle for eye shape assessment |
@@ -628,7 +630,7 @@ This section provides a quick reference table of all measurements, their point d
 
 | Measurement | Points Used | Method | Tolerance | Classifications |
 |------------|-------------|--------|-----------|-----------------|
-| **Eye Protrusion Distance** | 37-39-38 | Perpendicular distance from cornea (38) to orbital plane (37-39) | ±3 pixels | > 3 px: pronounced eye protrusion<br>-3 to 3 px: normal eye protrusion<br>< -3 px: minimal eye protrusion |
+| **Eye Protrusion Distance** | 37-39-38 | X-coordinate comparison from cornea (38) to orbital plane line (37-39) | ±3 pixels | > 3 px: protusion positiva<br>-3 to 3 px: protusion nula<br>< -3 px: protusion negativa |
 
 ### Profile Direction Determination
 
