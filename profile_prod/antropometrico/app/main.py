@@ -314,7 +314,7 @@ async def get_visualization(filename: str):
 async def get_model_info():
     """Get information about the loaded enhanced model"""
     pipeline = get_pipeline()
-        if pipeline is None:
+    if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     
     return {
