@@ -230,8 +230,8 @@ class AnthropometricAnalyzer:
         point_9 = extended_points[8]  # chin
         point_2 = extended_points[1] # left side of face
         point_16 = extended_points[15] # right side of face
-        point_49 = extended_points[48] # left mouth
-        point_54 = extended_points[53] # right mouth
+        point_49 = extended_points[48] # left mouth corner
+        point_55 = extended_points[54] # right mouth corner
 
         # Eyebrow landmarks
         right_eyebrow_points = extended_points[17:22]
@@ -251,7 +251,7 @@ class AnthropometricAnalyzer:
         distance_34_9 = float(np.linalg.norm(point_34 - point_9))
         head_height = float(np.linalg.norm(point_69 - point_9))
         head_width = float(np.linalg.norm(point_2 - point_16))
-        mouth_length = float(np.linalg.norm(point_49 - point_54))
+        mouth_length = float(np.linalg.norm(point_49 - point_55))
         pupil_distance = float(np.linalg.norm(left_pupil - right_pupil))
         whole_chin = float(np.linalg.norm(left_chin - right_chin))
 

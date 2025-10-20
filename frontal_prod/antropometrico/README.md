@@ -353,7 +353,7 @@ Analyzes mouth structure including cupid's bow arches, lip thickness, and lip pr
 Assesses facial harmony through relationship between mouth width and interpupillary distance.
 
 **Measurement Points:**
-- **Mouth Length**: Distance between mouth corners (point 49 to point 54)
+- **Mouth Length**: Distance between mouth corners (point 49 to point 55)
 - **Pupil Distance**: Distance between pupil centers (point 70 to point 71)
 
 **Proportional Calculation**: Mouth length / Pupil distance
@@ -406,7 +406,7 @@ Calculates proportional relationships between different facial regions using pol
 - Calculation: Outer eye distance (point 37 to point 46) / Head height (point 69 to point 9)
 
 **Mouth Length Proportion:**
-- Calculation: Mouth length (point 49 to point 54) / Head width (point 2 to point 16)
+- Calculation: Mouth length (point 49 to point 55) / Head width (point 2 to point 16)
 - **Classification Thresholds:**
   - **Boca Ancha (Wide Mouth)**: Percentage > 33.5%
   - **Boca Promedio (Average Mouth)**: Percentage 32% - 33.5%
