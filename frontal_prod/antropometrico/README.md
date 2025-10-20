@@ -1,8 +1,51 @@
-# Antropometric Analysis API v2.1
+# Antropometric Analysis API v2.2
 
 Advanced anthropometric facial analysis system with comprehensive feature detection, custom model integration, and detailed reporting capabilities.
 
-## Latest Updates (v2.1)
+> **⚠️ IMPORTANT NOTE ON POINT NUMBERING:**
+> This documentation uses **dlib point numbers (1-68)** for all landmark references, NOT Python array indices (0-67).
+>
+> The system combines two detection models:
+> - **Dlib 68-point model**: Points 1-68 (standard facial landmarks)
+> - **Custom detection model**: Points M1-M13 (specialized anthropometric points)
+>
+> **Point 68 overlap:** The last dlib landmark (point 68 - inner lower lip) and the first extended point (point 68 - between eyebrows) share the same number but represent different locations. In practice:
+> - Dlib point 68 (mouth inner) is accessed via Python index `[67]`
+> - Extended point 68 (between eyebrows) is accessed via Python index `[68]`
+>
+> Extended points 68-71 are calculated or derived from model predictions and are added after the 68 dlib points in the array.
+
+## Latest Updates (v2.2)
+
+### Calibration Updates
+- **Mouth Measurement Thresholds**: Updated mouth-to-pupil proportion thresholds
+  - Boca grande: > 0.685 (previously > 1.0)
+  - Relación estándar: 0.65 - 0.685 (previously 0.7 - 1.0)
+  - Boca pequeña: < 0.65 (previously < 0.7)
+- **Eyebrow Proportions**: Now measured relative to middle third of face (point 68 to 34) instead of whole head height
+- **Cupid's Bow Measurements**: Changed from absolute distances to proportional ratios
+  - Left cupid arch: distance(52→63) / distance(51→62)
+  - Right cupid arch: distance(52→63) / distance(53→64)
+- **Lip Thickness Analysis**: Added new measurement from point 62 to 66, proportional to bottom third of face
+- **Mouth Analysis Reference**: Cupid's bow and lip thickness now proportional to bottom third (point 34 to 9) instead of whole face
+- **Eye Size Classification**: Added classification for eye-to-face proportion
+  - Ojo pequeño: < 0.74%
+  - Ojo mediano: 0.74% - 0.85%
+  - Ojo grande: > 0.85%
+- **Inner Face Size Classification**: Added classification for inner-to-outer face proportion
+  - Cara interna pequeña: < 38%
+  - Cara interna promedio: 38% - 44.5%
+  - Cara interna grande: > 44.5%
+- **Mouth Length Classification**: Added classification for mouth width relative to face width
+  - Boca ancha (Wide Mouth): > 33.5%
+  - Boca promedio (Average Mouth): 32% - 33.5%
+  - Boca angosta (Narrow Mouth): < 32%
+- **Integral Mouth Diagnosis**: Combined analysis of mouth_to_eye and mouth_length classifications
+  - Boca grande: When both mouth_to_eye = "boca grande" AND mouth_length = "boca ancha"
+  - Boca pequeña: When both mouth_to_eye = "boca pequeña" AND mouth_length = "boca angosta"
+  - Boca estandar: All other combinations
+
+## Previous Updates (v2.1)
 
 ### Critical Changes in Angle Measurement System
 - **Vertical Midline Reference**: All angle measurements now calculated relative to vertical midline (point 9 to M3) instead of horizontal baseline
@@ -143,24 +186,24 @@ Generates comprehensive analysis reports in text or JSON format.
 
 ## Facial Landmark System
 
-### Standard Landmarks (Points 0-67)
+### Standard Landmarks (Points 1-68)
 Uses dlib's 68-point facial landmark detector:
-- **Face contour (0-16)**: Jaw line from left ear to right ear
-- **Right eyebrow (17-21)**: Five points from outer to inner edge
-- **Left eyebrow (22-26)**: Five points from inner to outer edge
-- **Nose bridge (27-30)**: Four points from top to tip
-- **Nose base (31-35)**: Five points defining nostrils and base
-- **Right eye (36-41)**: Six points defining eye contour, outer to inner
-- **Left eye (42-47)**: Six points defining eye contour, inner to outer
-- **Mouth outer (48-59)**: Twelve points defining outer lip contour
-- **Mouth inner (60-67)**: Eight points defining inner lip contour
+- **Face contour (1-17)**: Jaw line from left ear to right ear
+- **Right eyebrow (18-22)**: Five points from outer to inner edge
+- **Left eyebrow (23-27)**: Five points from inner to outer edge
+- **Nose bridge (28-31)**: Four points from top to tip
+- **Nose base (32-36)**: Five points defining nostrils and base
+- **Right eye (37-42)**: Six points defining eye contour, outer to inner
+- **Left eye (43-48)**: Six points defining eye contour, inner to outer
+- **Mouth outer (49-60)**: Twelve points defining outer lip contour
+- **Mouth inner (61-68)**: Eight points defining inner lip contour
 
 ### Extended Landmarks (Points 68-71)
 Calculated or model-derived points:
 - **Point 68**: Between eyebrows (uses model point 2 when available, otherwise calculated as midpoint of highest eyebrow points)
 - **Point 69**: Top of head (uses calculated C1 point: X from M2, Y from M9 to avoid widow's peak interference; fallback to M3 or calculated estimate)
-- **Point 70**: Left pupil center (calculated as midpoint of left eye landmarks 37 and 40)
-- **Point 71**: Right pupil center (calculated as midpoint of right eye landmarks 43 and 46)
+- **Point 70**: Left pupil center (calculated as midpoint of left eye landmarks 38 and 41)
+- **Point 71**: Right pupil center (calculated as midpoint of right eye landmarks 44 and 47)
 
 ### Custom Model Points (M1-M13)
 Deep learning model detects up to 13 specialized anthropometric points:
@@ -192,26 +235,23 @@ Divides face into three vertical sections to assess proportional harmony accordi
 - **Tercio Standard (Normal)**: Proportion 0.27-0.38
 - **Tercio Corto (Short)**: Proportion < 0.27
 
-**Clinical Significance**: Ideal facial thirds should each be approximately 33% of total face height. Deviations indicate disproportionate facial development.
-
 ### 2. Eyebrow Morphometry Analysis
 
-Analyzes eyebrow length relative to corresponding eye length for aesthetic proportion assessment.
+Analyzes eyebrow length relative to the middle third of the face for aesthetic proportion assessment.
 
 **Measurement Points:**
-- **Right eyebrow length**: Distance from point 17 (outer) to point 21 (inner)
-- **Left eyebrow length**: Distance from point 26 (outer) to point 22 (inner)
-- **Right eye length**: Distance from point 36 (outer corner) to point 39 (inner corner)
-- **Left eye length**: Distance from point 42 (inner corner) to point 45 (outer corner)
+- **Right eyebrow length**: Distance from point 18 (outer) to point 22 (inner)
+- **Left eyebrow length**: Distance from point 27 (outer) to point 23 (inner)
+- **Middle third reference**: Distance from point 68 (between eyebrows) to point 34 (nose base)
+- **Right eye length**: Distance from point 37 (outer corner) to point 40 (inner corner)
+- **Left eye length**: Distance from point 43 (inner corner) to point 46 (outer corner)
 
-**Proportional Calculation**: Eyebrow length / Corresponding eye length
+**Proportional Calculation**: Eyebrow length / Middle third length
 
 **Classification Thresholds:**
-- **Ceja Corta (Short Eyebrow)**: Ratio < 1.0 (eyebrow shorter than eye)
+- **Ceja Corta (Short Eyebrow)**: Ratio < 1.0
 - **Ceja Normal (Normal Eyebrow)**: Ratio 1.0-1.4
-- **Ceja Larga (Long Eyebrow)**: Ratio > 1.4 (eyebrow significantly longer than eye)
-
-**Clinical Significance**: Normal eyebrows typically extend slightly beyond the eye length. Ratios outside normal range may indicate sparse eyebrows or structural variations.
+- **Ceja Larga (Long Eyebrow)**: Ratio > 1.4
 
 ### 3. Eyebrow Slope Analysis (Three-Segment Method)
 
@@ -223,14 +263,14 @@ Analyzes eyebrow angle in three anatomical segments relative to the perpendicula
 - **Angle Measurement**: Degrees relative to perpendicular reference
 
 **Right Eyebrow Segments** (measured from inner to outer for anatomical consistency):
-- **Portion 1**: Inner segment angle (points 21 to 20, reversed direction)
-- **Portion 2**: Middle arch segment (points 20 to 18, reversed direction)
-- **Portion 3**: Outer descending segment (points 18 to 17, reversed direction)
+- **Portion 1**: Inner segment angle (points 22 to 21, reversed direction)
+- **Portion 2**: Middle arch segment (points 21 to 19, reversed direction)
+- **Portion 3**: Outer descending segment (points 19 to 18, reversed direction)
 
 **Left Eyebrow Segments** (measured from inner to outer, natural direction):
-- **Portion 1**: Inner segment angle (points 22 to 23)
-- **Portion 2**: Middle arch segment (points 23 to 25)
-- **Portion 3**: Outer descending segment (points 25 to 26)
+- **Portion 1**: Inner segment angle (points 23 to 24)
+- **Portion 2**: Middle arch segment (points 24 to 26)
+- **Portion 3**: Outer descending segment (points 26 to 27)
 
 **Classification Thresholds (Portions 1 and 2):**
 - **Ascendente (Ascending)**: Angle 5° to 75°
@@ -242,8 +282,6 @@ Analyzes eyebrow angle in three anatomical segments relative to the perpendicula
 - **Normal**: Angle 10° to 75°
 - **Ascendente (Ascending)**: Angle < 10°
 
-**Clinical Significance**: Eyebrow shape affects facial expression perception. Ascending outer portions create a lifted appearance, while descending portions can appear sad or aged.
-
 ### 4. Eye Angle Analysis (Palpebral Fissure Inclination)
 
 Measures the inclination of both eyes relative to the perpendicular of the vertical midline reference.
@@ -254,8 +292,8 @@ Measures the inclination of both eyes relative to the perpendicular of the verti
 - **Measurement Direction**: Both eyes measured in anatomically equivalent directions for symmetry assessment
 
 **Measurement Points:**
-- **Right Eye**: From outer corner (point 36) to inner corner (point 39), reversed for rightward direction
-- **Left Eye**: From inner corner (point 42) to outer corner (point 45), natural rightward direction
+- **Right Eye**: From outer corner (point 37) to inner corner (point 40), reversed for rightward direction
+- **Left Eye**: From inner corner (point 43) to outer corner (point 46), natural rightward direction
 
 **Angle Calculation:**
 1. Calculate angle of eye line relative to perpendicular reference
@@ -264,56 +302,51 @@ Measures the inclination of both eyes relative to the perpendicular of the verti
 4. Negative values indicate downward slant at outer corner
 
 **Classification Thresholds:**
-- **Ángulo Normal (Normal Angle)**: -5° to +5° (nearly horizontal alignment with perpendicular reference)
-- **Ángulo Hacia Arriba (Upward Angle)**: > +5° (positive canthal tilt, outer corner higher than inner)
-- **Ángulo Hacia Abajo (Downward Angle)**: < -5° (negative canthal tilt, outer corner lower than inner)
-
-**Clinical Significance**: Positive canthal tilt is associated with youthful appearance and attractiveness. Negative canthal tilt can appear aged or sad.
+- **Ángulo Normal (Normal Angle)**: -5° to +5°
+- **Ángulo Hacia Arriba (Upward Angle)**: > +5°
+- **Ángulo Hacia Abajo (Downward Angle)**: < -5°
 
 ### 5. Intercanthal Distance Analysis
 
 Evaluates horizontal eye spacing proportions to classify eye separation.
 
 **Measurement Points:**
-- **Inner Eye Distance**: Distance between inner corners (point 39 to point 42)
-- **Outer Eye Distance**: Distance between outer corners (point 36 to point 45)
+- **Inner Eye Distance**: Distance between inner corners (point 40 to point 43)
+- **Outer Eye Distance**: Distance between outer corners (point 37 to point 46)
 
 **Proportional Calculation**: Inner eye distance / Outer eye distance
 
 **Classification Thresholds:**
-- **Cercanos (Hypotelorism)**: Proportion < 0.3 (eyes close together)
+- **Cercanos (Hypotelorism)**: Proportion < 0.3
 - **Standard (Normal)**: Proportion 0.3-0.37
-- **Lejanos (Hypertelorism)**: Proportion > 0.37 (eyes widely spaced)
-
-**Clinical Significance**: Abnormal intercanthal distances may indicate genetic syndromes or craniofacial conditions.
+- **Lejanos (Hypertelorism)**: Proportion > 0.37
 
 ### 6. Eyebrow-Eyelid Distance Analysis
 
 Measures vertical distance between eyebrow and upper eyelid, proportional to head height.
 
 **Measurement Points:**
-- **Left Side**: Distance from point 19 (left eyebrow) to point 37 (left upper eyelid)
-- **Right Side**: Distance from point 24 (right eyebrow) to point 44 (right upper eyelid)
+- **Left Side**: Distance from point 20 (left eyebrow) to point 38 (left upper eyelid)
+- **Right Side**: Distance from point 25 (right eyebrow) to point 45 (right upper eyelid)
 
 **Proportional Calculation**: Eyebrow-eyelid distance / Total head height (point 69 to point 9)
 
-**Clinical Significance**: This measurement assesses eyebrow position and ptosis. Low proportions may indicate brow ptosis or excess upper eyelid skin.
-
 ### 7. Mouth Morphometry Analysis
 
-Analyzes mouth structure including cupid's bow arches and lip proportions.
+Analyzes mouth structure including cupid's bow arches, lip thickness, and lip proportions.
 
-**Cupid's Bow Measurements:**
-- **Left Cupid's Arch**: Distance from point 50 to point 61
-- **Right Cupid's Arch**: Distance from point 52 to point 63
-- **Proportional Calculation**: Arch distance / Head height
+**Cupid's Bow Measurements (Proportional Ratios):**
+- **Left Cupid's Arch**: distance(52→63) / distance(51→62)
+  - Compares arch depth at one side to center reference depth
+- **Right Cupid's Arch**: distance(52→63) / distance(53→64)
+  - Compares arch depth at one side to opposite reference depth
 
-**Lip Measurements:**
+**Lip Thickness Measurements:**
+- **Total Lip Thickness**: Vertical distance from point 62 (upper lip center) to point 66 (lower lip center)
+- **Proportional Calculation**: Lip thickness distance / Bottom third length (point 34 to 9)
 - **Upper Lip Thickness**: Vertical distance from point 51 to point 62
 - **Lower Lip Thickness**: Vertical distance from point 66 to point 57
 - **Lips Ratio**: Upper lip thickness / Lower lip thickness
-
-**Clinical Significance**: Cupid's bow definition contributes to lip aesthetics. Lips ratio normally favors slightly fuller lower lip (ratio < 1.0).
 
 ### 8. Mouth-to-Eye Proportional Analysis
 
@@ -326,52 +359,65 @@ Assesses facial harmony through relationship between mouth width and interpupill
 **Proportional Calculation**: Mouth length / Pupil distance
 
 **Classification Thresholds:**
-- **Boca Grande (Large Mouth)**: Ratio > 1.0 (mouth wider than interpupillary distance)
-- **Relación Estándar (Standard Relation)**: Ratio 0.7-1.0
-- **Boca Pequeña (Small Mouth)**: Ratio < 0.7 (mouth narrower than typical)
-
-**Clinical Significance**: This proportion contributes to overall facial balance. Extreme deviations affect facial aesthetics.
+- **Boca Grande (Large Mouth)**: Ratio > 0.685
+- **Relación Estándar (Standard Relation)**: Ratio 0.65-0.685
+- **Boca Pequeña (Small Mouth)**: Ratio < 0.65
 
 ### 9. Face Area Analysis
 
 Calculates proportional relationships between different facial regions using polygon areas.
 
 **Outer Face Area:**
-- Defined by convex hull of jaw contour (points 0-16) plus all detected model points
+- Defined by convex hull of jaw contour (points 1-17) plus all detected model points
 - Represents total visible face boundary
 
 **Inner Face Area:**
-- Defined by region from eyebrows (points 17-26) to mouth (points 48-67)
+- Defined by region from eyebrows (points 18-27) to mouth (points 49-68)
 - Represents central feature-rich zone
 
 **Eye Areas:**
-- **Right Eye Area**: Polygon defined by points 36-41
-- **Left Eye Area**: Polygon defined by points 42-47
+- **Right Eye Area**: Polygon defined by points 37-42
+- **Left Eye Area**: Polygon defined by points 43-48
 
 **Proportional Calculations:**
 - **Inner/Outer Percentage**: (Inner area / Outer area) × 100
 - **Right Eye to Face Proportion**: (Right eye area / Outer face area) × 100
 - **Left Eye to Face Proportion**: (Left eye area / Outer face area) × 100
 
-**Clinical Significance**: These proportions assess facial compactness and feature distribution. Eye-to-face ratios correlate with neoteny and attractiveness.
+**Classification Thresholds (Inner Face Size):**
+- **Cara Interna Pequeña (Small Inner Face)**: < 38%
+- **Cara Interna Promedio (Average Inner Face)**: 38% - 44.5%
+- **Cara Interna Grande (Large Inner Face)**: > 44.5%
+
+**Classification Thresholds (Eye Size):**
+- **Ojo Pequeño (Small Eye)**: < 0.74%
+- **Ojo Mediano (Medium Eye)**: 0.74% - 0.85%
+- **Ojo Grande (Large Eye)**: > 0.85%
 
 ### 10. Additional Proportional Measurements
 
 **Head Width Proportion:**
 - Calculation: Head width (point 2 to point 16) / Head height (point 69 to point 9)
-- Clinical Significance: Assesses facial shape (narrow, average, wide)
 
 **Chin to Face Width Proportion:**
-- Calculation: Chin width (point 7 to point 9) / Head width (point 2 to point 16)
-- Clinical Significance: Evaluates jaw taper and chin prominence
+- Calculation: Chin width (point 8 to point 10) / Head width (point 2 to point 16)
 
 **Outer Eye Distance Proportion:**
-- Calculation: Outer eye distance (point 36 to point 45) / Head height (point 69 to point 9)
-- Clinical Significance: Assesses eye position relative to face height
+- Calculation: Outer eye distance (point 37 to point 46) / Head height (point 69 to point 9)
 
 **Mouth Length Proportion:**
 - Calculation: Mouth length (point 49 to point 54) / Head width (point 2 to point 16)
-- Clinical Significance: Evaluates mouth width relative to facial width
+- **Classification Thresholds:**
+  - **Boca Ancha (Wide Mouth)**: Percentage > 33.5%
+  - **Boca Promedio (Average Mouth)**: Percentage 32% - 33.5%
+  - **Boca Angosta (Narrow Mouth)**: Percentage < 32%
+
+**Integral Mouth Diagnosis:**
+- Combines mouth_to_eye_proportion and mouth_length_proportion classifications for comprehensive mouth size assessment
+- **Classification Logic:**
+  - **Boca Grande**: Both mouth_to_eye = "boca grande en relación a las pupilas" AND mouth_length = "boca ancha"
+  - **Boca Pequeña**: Both mouth_to_eye = "boca pequeña en relación a las pupilas" AND mouth_length = "boca angosta"
+  - **Boca Estandar**: All other combinations (mixed or standard classifications)
 
 ## Eye Colorimetry Analysis
 
@@ -520,7 +566,35 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 
 ## Version History
 
-### v2.1 (Current)
+### v2.2 (Current)
+
+**Calibration Changes:**
+- Updated mouth-to-pupil proportion classification thresholds for improved accuracy
+- Changed eyebrow proportion reference from whole head height to middle third of face
+- Modified cupid's bow measurements from absolute distances to proportional ratios
+- Added lip thickness measurement (point 62 to 66) proportional to bottom third
+- Updated mouth analysis measurements to use bottom third as reference
+
+**New Fields:**
+- `lip_thickness_distance`: Absolute distance for total lip thickness (62 to 66)
+- `lip_thickness_proportion`: Lip thickness relative to bottom third of face
+- `middle_third_length`: Reference length used for eyebrow proportions
+- `bottom_third_length`: Reference length used for mouth measurements
+- `left_eye_size_classification`: Classification label for left eye size (pequeño/mediano/grande)
+- `right_eye_size_classification`: Classification label for right eye size (pequeño/mediano/grande)
+- `inner_face_size_classification`: Classification label for inner face size (pequeña/promedio/grande)
+- `mouth_length_proportion`: Mouth width proportion relative to head width
+- `mouth_length_percentage`: Formatted percentage of mouth width (e.g., "33.50%")
+- `mouth_length_classification`: Classification label for mouth width (ancha/promedio/angosta)
+- `integral_diagnosis`: Combined mouth size diagnosis from both mouth measurements (grande/pequeña/estandar)
+
+**Modified Calculations:**
+- Eyebrow proportions now relative to middle third (point 68 to 34) instead of head height
+- Cupid's bow arches now calculated as ratios instead of proportional to head height
+  - Left: distance(52→63) / distance(51→62)
+  - Right: distance(52→63) / distance(53→64)
+
+### v2.1
 
 **Breaking Changes:**
 - Eye angle and eyebrow slope calculations now return different values due to new vertical midline reference system

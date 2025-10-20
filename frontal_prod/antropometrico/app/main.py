@@ -302,6 +302,16 @@ async def analyze_mouth(
             return JSONResponse(content={"error": "No face detected"})
 
         mouth_analysis = {
+            "integral_diagnosis": results['summary']['mouth_analysis']['integral_diagnosis'],
+            "mouth_length": {
+                "proportion": results['proportions']['mouth_length_proportion'],
+                "percentage": results['proportions']['mouth_length_proportion'] * 100,
+                "classification": analyzer._classify_mouth_length(results['proportions']['mouth_length_proportion'])
+            },
+            "mouth_to_eye": {
+                "proportion": results['proportions']['mouth_to_eye_proportion'],
+                "classification": results['summary']['mouth_analysis']['mouth_to_eye_relation']
+            },
             "cupid_arches": {
                 "left_cupid_arch_proportion": results['mouth_measurements']['left_cupid_arch_proportion'],
                 "right_cupid_arch_proportion": results['mouth_measurements']['right_cupid_arch_proportion'],
@@ -313,7 +323,6 @@ async def analyze_mouth(
                 "upper_lip_distance": results['mouth_measurements']['upper_lip_distance'],
                 "lower_lip_distance": results['mouth_measurements']['lower_lip_distance']
             },
-            "mouth_to_eye_proportion": results['proportions']['mouth_to_eye_proportion'],
             "summary": results['summary']['mouth_analysis']
         }
 
