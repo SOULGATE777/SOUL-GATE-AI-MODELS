@@ -669,21 +669,21 @@ class ProfileAnthropometricPipeline:
             )
             
             if mandible_results[0] is not None:
-                mandible_angle, ref_slope, mandible_slope = mandible_results
+                mandible_angle, ref_slope, mandible_slope, mandible_magnitude = mandible_results
                 measurements['mandible_intersection_angle'] = mandible_angle
                 measurements['reference_vector_slope'] = ref_slope
                 measurements['mandible_vector_slope'] = mandible_slope
+                measurements['mandible_vector_magnitude'] = mandible_magnitude
                 print(f"Mandible intersection angle (24_18 vs 3_9): {mandible_angle:.2f} degrees")
                 print(f"Reference slope: {ref_slope:.3f}, Mandible slope: {mandible_slope:.3f}")
+                print(f"Mandible vector magnitude: {mandible_magnitude:.2f}")
                 
                 # Optional: Add classification based on angle ranges
-                if mandible_angle < 70:
+                if mandible_angle < 20:
                     mandible_angle_class = "acute mandible angle"
-                elif 70 <= mandible_angle <= 110:
-                    mandible_angle_class = "normal mandible angle"  
                 else:
-                    mandible_angle_class = "obtuse mandible angle"
-                
+                    mandible_angle_class = "normal mandible angle"
+
                 measurements['mandible_angle_classification'] = mandible_angle_class
                 print(f"Mandible angle classification: {mandible_angle_class}")
         
@@ -848,25 +848,29 @@ class ProfileAnthropometricPipeline:
             head_direction: Left/right profile direction
             
         Returns:
-            tuple: (angle_degrees, reference_slope, mandible_slope)
+            tuple: (angle_degrees, reference_slope, mandible_slope, mandible_magnitude)
         """
         if not all([point_24, point_18, point_3, point_9]):
-            return None, None, None
+            return None, None, None, None
         
         # Create the two vectors
         vector_24_18 = np.array([point_18[0] - point_24[0], point_18[1] - point_24[1]])
         vector_3_9 = np.array([point_9[0] - point_3[0], point_9[1] - point_3[1]])
-        
+
         # Calculate slopes (rise/run)
         reference_slope = vector_24_18[1] / vector_24_18[0] if vector_24_18[0] != 0 else float('inf')
         mandible_slope = vector_3_9[1] / vector_3_9[0] if vector_3_9[0] != 0 else float('inf')
-        
-        # Normalize both vectors
-        v1_u = vector_24_18 / np.linalg.norm(vector_24_18)
-        v2_u = vector_3_9 / np.linalg.norm(vector_3_9)
-        
-        # Calculate angle using dot product
-        cos_angle = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+
+        # Calculate magnitudes using Pythagorean theorem
+        magnitude_v1 = np.sqrt(vector_24_18[0]**2 + vector_24_18[1]**2)
+        magnitude_v2 = np.sqrt(vector_3_9[0]**2 + vector_3_9[1]**2)
+
+        # Calculate dot product
+        dot_product = vector_24_18[0] * vector_3_9[0] + vector_24_18[1] * vector_3_9[1]
+
+        # Calculate angle using inverse cosine formula: θ = arccos(v1·v2 / (|v1| × |v2|))
+        cos_angle = dot_product / (magnitude_v1 * magnitude_v2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)  # Ensure value is in valid range for arccos
         angle_radians = np.arccos(abs(cos_angle))  # Use abs to always get acute angle
         angle_degrees = np.degrees(angle_radians)
         
@@ -874,11 +878,12 @@ class ProfileAnthropometricPipeline:
         if angle_degrees > 90:
             angle_degrees = 180 - angle_degrees
         
-        print(f"Reference vector (24-18): [{vector_24_18[0]:.2f}, {vector_24_18[1]:.2f}], slope: {reference_slope:.3f}")
-        print(f"Mandible vector (3-9): [{vector_3_9[0]:.2f}, {vector_3_9[1]:.2f}], slope: {mandible_slope:.3f}")
+        print(f"Reference vector (24-18): [{vector_24_18[0]:.2f}, {vector_24_18[1]:.2f}], magnitude: {magnitude_v1:.2f}, slope: {reference_slope:.3f}")
+        print(f"Mandible vector (3-9): [{vector_3_9[0]:.2f}, {vector_3_9[1]:.2f}], magnitude: {magnitude_v2:.2f}, slope: {mandible_slope:.3f}")
+        print(f"Dot product: {dot_product:.2f}")
         print(f"Mandible intersection angle: {angle_degrees:.2f} degrees")
-        
-        return angle_degrees, reference_slope, mandible_slope
+
+        return angle_degrees, reference_slope, mandible_slope, magnitude_v2
     
     def calculate_ear_implantation_angular_analysis(self, point_24, point_18, point_1, point_3, head_direction=None):
         """

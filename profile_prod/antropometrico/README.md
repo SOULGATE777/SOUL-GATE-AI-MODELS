@@ -175,14 +175,6 @@ The primary scaling measurement calculated as the Euclidean distance from the tr
 reference_distance = sqrt((point_10[x] - point_24[x])² + (point_10[y] - point_24[y])²)
 ```
 
-#### 1.2 Head Direction Determination
-Profile direction is determined via vector analysis using the reference vector from point 24 to point 18. The system calculates:
-```
-vector_24_18 = [point_18[x] - point_24[x], point_18[y] - point_24[y]]
-head_direction = "right" if vector_24_18[x] > 0 else "left"
-```
-This infallible method determines whether the face is oriented to the left or right side of the image. The head direction is critical for proper angular measurement interpretation.
-
 ### 2. Nose Analysis
 
 #### 2.1 Nasal Protrusion (Points 18 to 17)
@@ -298,31 +290,46 @@ mandibular_proportion = mandibular_distance / inferior_third_distance
 Calculates the angle between the facial reference line and the mandibular line to assess jaw alignment.
 
 **Mathematical Process:**
-1. Create reference vector: `vector_24_18 = [point_18 - point_24]`
-2. Create mandible vector: `vector_3_9 = [point_9 - point_3]`
-3. Calculate slopes for both vectors
-4. Normalize both vectors to unit length
-5. Calculate angle via dot product: `angle = arccos(abs(clip(dot(v1, v2), -1, 1)))`
-6. Normalize angle to 0-180 degree range (use absolute value for acute angle measurement)
+1. Create reference vector: `vector_24_18 = [point_18[x] - point_24[x], point_18[y] - point_24[y]]`
+2. Create mandible vector: `vector_3_9 = [point_9[x] - point_3[x], point_9[y] - point_3[y]]`
+3. Calculate slopes for both vectors: `slope = rise / run`
+4. Calculate magnitude of reference vector using Pythagorean theorem: `|v1| = √(x² + y²)`
+5. Calculate magnitude of mandible vector using Pythagorean theorem: `|v2| = √(x² + y²)`
+6. Calculate dot product of vectors: `v1·v2 = (v1[x] × v2[x]) + (v1[y] × v2[y])`
+7. Calculate angle using inverse cosine formula: `θ = arccos(v1·v2 / (|v1| × |v2|))`
+8. Normalize angle to 0-90 degree range (use absolute value for acute angle measurement)
 
 **Formula:**
 ```
 reference_slope = vector_24_18[y] / vector_24_18[x]
 mandible_slope = vector_3_9[y] / vector_3_9[x]
-cos_angle = clip(dot(v1_normalized, v2_normalized), -1, 1)
-angle = arccos(abs(cos_angle)) * (180/π)
+
+magnitude_v1 = √(vector_24_18[x]² + vector_24_18[y]²)
+magnitude_v2 = √(vector_3_9[x]² + vector_3_9[y]²)
+
+dot_product = (vector_24_18[x] × vector_3_9[x]) + (vector_24_18[y] × vector_3_9[y])
+
+cos_angle = dot_product / (magnitude_v1 × magnitude_v2)
+angle = arccos(|cos_angle|) * (180/π)
+
 if angle > 90: angle = 180 - angle
 ```
 
+**Output Measurements:**
+- `mandible_intersection_angle`: The calculated angle in degrees
+- `reference_vector_slope`: Slope of the reference vector (24-18)
+- `mandible_vector_slope`: Slope of the mandible vector (3-9)
+- `mandible_vector_magnitude`: Absolute magnitude of the mandible vector calculated via Pythagorean theorem
+- `mandible_angle_classification`: Classification based on angle thresholds
+
 **Angle Classifications:**
-- **acute mandible angle**: angle < 70 degrees (more angled jaw line)
-- **normal mandible angle**: 70 ≤ angle ≤ 110 degrees (balanced jaw alignment)
-- **obtuse mandible angle**: angle > 110 degrees (more parallel jaw line)
+- **acute mandible angle**: angle < 20 degrees (more angled jaw line)
+- **normal mandible angle**: angle ≥ 20 degrees (balanced jaw alignment)
 
 ### 5. Angular Analysis
 
 #### 5.1 Mathematical Foundation
-All angular measurements use the reference vector from point 24 to point 18 as the baseline. The system determines head direction using vector analysis as described in section 1.2.
+All angular measurements use the reference vector from point 24 to point 18 as the baseline. The profile direction (left or right) is automatically determined by the model during point detection.
 
 **Key Implementation Details:**
 - **Vector Normalization**: All vectors are normalized to unit length using `vector / norm(vector)` before angle calculations to ensure consistent results
@@ -622,7 +629,7 @@ This section provides a quick reference table of all measurements, their point d
 | **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4°<br>-4° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
 | **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | ≥ 351°<br>< 351° | implantacion alta<br>implantacion estandard |
 | **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | ≥ 350°<br>< 350° | implantacion baja<br>implantacion estandard |
-| **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 180° | < 70°<br>70° to 110°<br>> 110° | acute mandible angle<br>normal mandible angle<br>obtuse mandible angle |
+| **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 90° | < 20°<br>≥ 20° | acute mandible angle<br>normal mandible angle |
 | **Ear Implantation Intersection** | 1-3 vs 24-18 | 24-18 | 0° to 90° | < 60°<br>60° to 120°<br>> 120° | acute ear implantation<br>normal ear implantation<br>obtuse ear implantation |
 | **Eye Opening Angle** | 39-37 vs 38-37 | N/A | 0° to 90° | N/A | Supplementary angle for eye shape assessment |
 
@@ -636,8 +643,8 @@ This section provides a quick reference table of all measurements, their point d
 
 | Method | Points Used | Logic | Output |
 |--------|-------------|-------|--------|
-| **Suffix Counting** | All detected points | Count points with `_i` suffix (left) vs `_d` suffix (right); majority determines profile | left / right / unknown |
-| **Vector Analysis** | 24-18 | If `vector_24_18[x] > 0`: right profile, else: left profile | left / right |
+| **Model Classification** | Full image | Integrated ResNet-50 profile classifier automatically determines orientation during point detection | left / right |
+| **Suffix Counting (Validation)** | All detected points | Count points with `_i` suffix (left) vs `_d` suffix (right); majority validates model prediction | left / right / unknown |
 
 ### Critical Point Dependencies
 
