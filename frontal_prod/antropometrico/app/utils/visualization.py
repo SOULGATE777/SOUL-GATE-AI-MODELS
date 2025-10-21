@@ -450,13 +450,13 @@ def _draw_eye_angles(img, extended_points):
 
 def _draw_eyebrow_eyelid_distances(img, extended_points):
     """Draw eyebrow-to-eyelid distance measurement lines"""
-    # Left eye: point 19 (eyebrow) to point 37 (eyelid)
-    left_eyebrow_point = extended_points[19]
-    left_eyelid_point = extended_points[37]
+    # RIGHT eye: point 20 (eyebrow) to point 38 (eyelid) - dlib points 20 and 38
+    right_eyebrow_point = extended_points[19]  # dlib point 20, Python index 19
+    right_eyelid_point = extended_points[37]   # dlib point 38, Python index 37
 
-    # Right eye: point 24 (eyebrow) to point 44 (eyelid)
-    right_eyebrow_point = extended_points[24]
-    right_eyelid_point = extended_points[44]
+    # LEFT eye: point 25 (eyebrow) to point 45 (eyelid) - dlib points 25 and 45
+    left_eyebrow_point = extended_points[24]  # dlib point 25, Python index 24
+    left_eyelid_point = extended_points[44]   # dlib point 45, Python index 44
 
     # Draw measurement lines with distinct colors
     line_color_left = (255, 128, 0)   # Orange for left eye
@@ -490,13 +490,13 @@ def _draw_eyebrow_eyelid_distances(img, extended_points):
 def _draw_mouth_measurements(img, extended_points):
     """Draw mouth measurement lines for cupid's bow arches and lips ratio"""
     # Cupid's bow arch measurements
-    # Left cupid's arch: point 50 to point 61
-    left_cupid_point_50 = extended_points[50]
-    left_cupid_point_61 = extended_points[61]
+    # RIGHT cupid's arch base: point 51 to point 62 (lip thickness on right side)
+    right_cupid_base_51 = extended_points[51]
+    right_cupid_base_62 = extended_points[62]
 
-    # Right cupid's arch: point 52 to point 63
-    right_cupid_point_52 = extended_points[52]
-    right_cupid_point_63 = extended_points[63]
+    # LEFT cupid's arch base: point 53 to point 64 (lip thickness on left side)
+    left_cupid_base_53 = extended_points[53]
+    left_cupid_base_64 = extended_points[64]
 
     # Lips ratio measurements
     # Upper lip: point 51 to point 62
@@ -508,17 +508,17 @@ def _draw_mouth_measurements(img, extended_points):
     lower_lip_point_57 = extended_points[57]
 
     # Define colors for different measurements
-    cupid_left_color = (255, 0, 128)    # Pink for left cupid's arch
-    cupid_right_color = (128, 0, 255)   # Purple for right cupid's arch
+    cupid_left_color = (255, 0, 128)    # Pink for LEFT cupid's arch (subject's left)
+    cupid_right_color = (128, 0, 255)   # Purple for RIGHT cupid's arch (subject's right)
     upper_lip_color = (0, 255, 128)     # Green for upper lip
     lower_lip_color = (255, 128, 0)     # Orange for lower lip
     line_thickness = 2
 
     # Draw cupid's bow arch lines
-    cv2.line(img, tuple(map(int, left_cupid_point_50)), tuple(map(int, left_cupid_point_61)),
-             cupid_left_color, line_thickness)
-    cv2.line(img, tuple(map(int, right_cupid_point_52)), tuple(map(int, right_cupid_point_63)),
+    cv2.line(img, tuple(map(int, right_cupid_base_51)), tuple(map(int, right_cupid_base_62)),
              cupid_right_color, line_thickness)
+    cv2.line(img, tuple(map(int, left_cupid_base_53)), tuple(map(int, left_cupid_base_64)),
+             cupid_left_color, line_thickness)
 
     # Draw lips ratio lines
     cv2.line(img, tuple(map(int, upper_lip_point_51)), tuple(map(int, upper_lip_point_62)),
@@ -528,10 +528,10 @@ def _draw_mouth_measurements(img, extended_points):
 
     # Highlight measurement points with circles
     # Cupid's bow points
-    cv2.circle(img, tuple(map(int, left_cupid_point_50)), 2, cupid_left_color, -1)
-    cv2.circle(img, tuple(map(int, left_cupid_point_61)), 2, cupid_left_color, -1)
-    cv2.circle(img, tuple(map(int, right_cupid_point_52)), 2, cupid_right_color, -1)
-    cv2.circle(img, tuple(map(int, right_cupid_point_63)), 2, cupid_right_color, -1)
+    cv2.circle(img, tuple(map(int, right_cupid_base_51)), 2, cupid_right_color, -1)
+    cv2.circle(img, tuple(map(int, right_cupid_base_62)), 2, cupid_right_color, -1)
+    cv2.circle(img, tuple(map(int, left_cupid_base_53)), 2, cupid_left_color, -1)
+    cv2.circle(img, tuple(map(int, left_cupid_base_64)), 2, cupid_left_color, -1)
 
     # Lips ratio points
     cv2.circle(img, tuple(map(int, upper_lip_point_51)), 2, upper_lip_color, -1)
@@ -540,14 +540,14 @@ def _draw_mouth_measurements(img, extended_points):
     cv2.circle(img, tuple(map(int, lower_lip_point_57)), 2, lower_lip_color, -1)
 
     # Add point labels
-    cv2.putText(img, "50", tuple(map(int, left_cupid_point_50 + np.array([-8, -8]))),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_left_color, 1)
-    cv2.putText(img, "61", tuple(map(int, left_cupid_point_61 + np.array([3, -5]))),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_left_color, 1)
-    cv2.putText(img, "52", tuple(map(int, right_cupid_point_52 + np.array([3, -8]))),
+    cv2.putText(img, "51", tuple(map(int, right_cupid_base_51 + np.array([-5, -8]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_right_color, 1)
-    cv2.putText(img, "63", tuple(map(int, right_cupid_point_63 + np.array([-15, -5]))),
+    cv2.putText(img, "62", tuple(map(int, right_cupid_base_62 + np.array([3, -5]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_right_color, 1)
+    cv2.putText(img, "53", tuple(map(int, left_cupid_base_53 + np.array([3, -8]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_left_color, 1)
+    cv2.putText(img, "64", tuple(map(int, left_cupid_base_64 + np.array([-15, -5]))),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, cupid_left_color, 1)
 
     cv2.putText(img, "51", tuple(map(int, upper_lip_point_51 + np.array([-5, 8]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.25, upper_lip_color, 1)

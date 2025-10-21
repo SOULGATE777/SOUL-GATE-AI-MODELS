@@ -24,8 +24,8 @@ Advanced anthropometric facial analysis system with comprehensive feature detect
   - Boca pequeña: < 0.65 (previously < 0.7)
 - **Eyebrow Proportions**: Now measured relative to middle third of face (point 68 to 34) instead of whole head height
 - **Cupid's Bow Measurements**: Changed from absolute distances to proportional ratios
-  - Left cupid arch: distance(51→62) / distance(52→63) - lip thickness / bow depth
-  - Right cupid arch: distance(53→64) / distance(52→63) - lip thickness / bow depth
+  - Right cupid arch: distance(51→62) / distance(52→63) - lip thickness / bow depth
+  - Left cupid arch: distance(53→64) / distance(52→63) - lip thickness / bow depth
 - **Lip Thickness Analysis**: Added new measurement from point 52 to 58, proportional to bottom third of face
 - **Mouth Analysis Reference**: Cupid's bow and lip thickness now proportional to bottom third (point 34 to 9) instead of whole face
 - **Eye Size Classification**: Added classification for eye-to-face proportion
@@ -202,8 +202,8 @@ Uses dlib's 68-point facial landmark detector:
 Calculated or model-derived points:
 - **Point 68**: Between eyebrows (uses model point 2 when available, otherwise calculated as midpoint of highest eyebrow points)
 - **Point 69**: Top of head (uses calculated C1 point: X from M2, Y from M9 to avoid widow's peak interference; fallback to M3 or calculated estimate)
-- **Point 70**: Left pupil center (calculated as midpoint of left eye landmarks 38 and 41)
-- **Point 71**: Right pupil center (calculated as midpoint of right eye landmarks 44 and 47)
+- **Point 70**: Left pupil center (calculated as midpoint of left eye landmarks 44 and 47)
+- **Point 71**: Right pupil center (calculated as midpoint of right eye landmarks 38 and 41)
 
 ### Custom Model Points (M1-M13)
 Deep learning model detects up to 13 specialized anthropometric points:
@@ -326,8 +326,8 @@ Evaluates horizontal eye spacing proportions to classify eye separation.
 Measures vertical distance between eyebrow and upper eyelid, proportional to middle third of face.
 
 **Measurement Points:**
-- **Left Side**: Distance from point 20 (left eyebrow) to point 38 (left upper eyelid)
-- **Right Side**: Distance from point 25 (right eyebrow) to point 45 (right upper eyelid)
+- **Right Side**: Distance from point 20 (right eyebrow) to point 38 (right upper eyelid)
+- **Left Side**: Distance from point 25 (left eyebrow) to point 45 (left upper eyelid)
 
 **Proportional Calculation**: Eyebrow-eyelid distance / Middle third length (point 68 to point 34)
 
@@ -336,10 +336,10 @@ Measures vertical distance between eyebrow and upper eyelid, proportional to mid
 Analyzes mouth structure including cupid's bow arches, lip thickness, and lip proportions.
 
 **Cupid's Bow Measurements (Proportional Ratios):**
-- **Left Cupid's Arch**: distance(51→62) / distance(52→63)
-  - Proportion of lip thickness to cupid's bow depth at left side
-- **Right Cupid's Arch**: distance(53→64) / distance(52→63)
+- **Right Cupid's Arch**: distance(51→62) / distance(52→63)
   - Proportion of lip thickness to cupid's bow depth at right side
+- **Left Cupid's Arch**: distance(53→64) / distance(52→63)
+  - Proportion of lip thickness to cupid's bow depth at left side
 
 **Lip Thickness Measurements:**
 - **Total Lip Thickness**: Vertical distance from point 52 (top center of upper lip) to point 58 (bottom center of lower lip)
@@ -591,8 +591,8 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 **Modified Calculations:**
 - Eyebrow proportions now relative to middle third (point 68 to 34) instead of head height
 - Cupid's bow arches now calculated as ratios of lip thickness to bow depth
-  - Left: distance(51→62) / distance(52→63)
-  - Right: distance(53→64) / distance(52→63)
+  - Right: distance(51→62) / distance(52→63)
+  - Left: distance(53→64) / distance(52→63)
 
 ### v2.1
 

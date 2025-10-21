@@ -139,10 +139,12 @@ class AnthropometricAnalyzer:
         face_height = max(points[:, 1]) - min(points[:, 1])
         
         # Find highest points of eyebrows for fallback
-        left_eyebrow = points[17:22]  # Points 17-21
-        right_eyebrow = points[22:27]  # Points 22-26
-        
-        # Get coordinates of highest points
+        # RIGHT eyebrow: dlib points 18-22 (Python indices 17-21)
+        right_eyebrow = points[17:22]  # Points 17-21
+        # LEFT eyebrow: dlib points 23-27 (Python indices 22-26)
+        left_eyebrow = points[22:27]  # Points 22-26
+
+        # Get coordinates of highest points (lowest Y value = highest on screen)
         left_highest = left_eyebrow[np.argmin(left_eyebrow[:, 1])]
         right_highest = right_eyebrow[np.argmin(right_eyebrow[:, 1])]
         
@@ -189,11 +191,13 @@ class AnthropometricAnalyzer:
             calculated_c1 = None
         
         # Pupil points: midpoint between eye landmarks
-        left_pupil = (
+        # RIGHT pupil: midpoint of RIGHT eye (dlib points 38 and 41, indices 37 and 40)
+        right_pupil = (
             int((points[37][0] + points[40][0]) // 2),
             int((points[37][1] + points[40][1]) // 2)
         )
-        right_pupil = (
+        # LEFT pupil: midpoint of LEFT eye (dlib points 44 and 47, indices 43 and 46)
+        left_pupil = (
             int((points[43][0] + points[46][0]) // 2),
             int((points[43][1] + points[46][1]) // 2)
         )
@@ -471,13 +475,13 @@ class AnthropometricAnalyzer:
     def _calculate_eyebrow_eyelid_distances(self, extended_points):
         """Calculate eyebrow to eyelid distances as proportion to middle third of face"""
         # Get key landmarks for measurements
-        # Left eye: point 19 (eyebrow) to point 37 (eyelid)
-        left_eyebrow_point = extended_points[19]  # Left eyebrow point
-        left_eyelid_point = extended_points[37]   # Left upper eyelid point
+        # RIGHT eye: point 20 (eyebrow) to point 38 (eyelid) - dlib points 20 and 38
+        right_eyebrow_point = extended_points[19]  # dlib point 20, Python index 19 - RIGHT eyebrow
+        right_eyelid_point = extended_points[37]   # dlib point 38, Python index 37 - RIGHT upper eyelid
 
-        # Right eye: point 24 (eyebrow) to point 44 (eyelid)
-        right_eyebrow_point = extended_points[24]  # Right eyebrow point
-        right_eyelid_point = extended_points[44]   # Right upper eyelid point
+        # LEFT eye: point 25 (eyebrow) to point 45 (eyelid) - dlib points 25 and 45
+        left_eyebrow_point = extended_points[24]  # dlib point 25, Python index 24 - LEFT eyebrow
+        left_eyelid_point = extended_points[44]   # dlib point 45, Python index 44 - LEFT upper eyelid
 
         # Calculate middle third of face (point 68 to 34) for proportional measurements
         point_68 = extended_points[68]  # between eyebrows
@@ -510,23 +514,25 @@ class AnthropometricAnalyzer:
         bottom_third_length = float(np.linalg.norm(point_34 - point_9))
 
         # Cupid's bow arch measurements as proportions
-        # Left cupid's arch: (point 51 to 62) / (point 52 to 63) - lip thickness / bow depth
-        left_cupid_point_52 = extended_points[52]
-        left_cupid_point_63 = extended_points[63]
-        left_cupid_point_51 = extended_points[51]
-        left_cupid_point_62 = extended_points[62]
-        left_cupid_arch_distance = float(np.linalg.norm(left_cupid_point_52 - left_cupid_point_63))
-        left_cupid_base_distance = float(np.linalg.norm(left_cupid_point_51 - left_cupid_point_62))
-        left_cupid_arch_proportion = left_cupid_base_distance / left_cupid_arch_distance if left_cupid_arch_distance > 0 else 0
-
-        # Right cupid's arch: (point 53 to 64) / (point 52 to 63) - lip thickness / bow depth
+        # RIGHT cupid's arch: (point 51 to 62) / (point 52 to 63) - lip thickness / bow depth
+        # Points 51-52 are on subject's RIGHT side of upper lip
         right_cupid_point_52 = extended_points[52]
         right_cupid_point_63 = extended_points[63]
-        right_cupid_point_53 = extended_points[53]
-        right_cupid_point_64 = extended_points[64]
+        right_cupid_point_51 = extended_points[51]
+        right_cupid_point_62 = extended_points[62]
         right_cupid_arch_distance = float(np.linalg.norm(right_cupid_point_52 - right_cupid_point_63))
-        right_cupid_base_distance = float(np.linalg.norm(right_cupid_point_53 - right_cupid_point_64))
+        right_cupid_base_distance = float(np.linalg.norm(right_cupid_point_51 - right_cupid_point_62))
         right_cupid_arch_proportion = right_cupid_base_distance / right_cupid_arch_distance if right_cupid_arch_distance > 0 else 0
+
+        # LEFT cupid's arch: (point 53 to 64) / (point 52 to 63) - lip thickness / bow depth
+        # Points 52-53 are on subject's LEFT side of upper lip
+        left_cupid_point_52 = extended_points[52]
+        left_cupid_point_63 = extended_points[63]
+        left_cupid_point_53 = extended_points[53]
+        left_cupid_point_64 = extended_points[64]
+        left_cupid_arch_distance = float(np.linalg.norm(left_cupid_point_52 - left_cupid_point_63))
+        left_cupid_base_distance = float(np.linalg.norm(left_cupid_point_53 - left_cupid_point_64))
+        left_cupid_arch_proportion = left_cupid_base_distance / left_cupid_arch_distance if left_cupid_arch_distance > 0 else 0
 
         # Lip thickness: dlib point 52 to 58 (top center of upper lip to bottom center of lower lip)
         lip_thickness_point_52 = extended_points[51]  # dlib point 52, Python index 51
@@ -1069,8 +1075,8 @@ class AnthropometricAnalyzer:
         report.append("ANÁLISIS BUCAL:")
         report.append(f"• Diagnóstico integral: {summary.get('mouth_analysis', {}).get('integral_diagnosis', 'N/A').upper()}")
         report.append(f"• Longitud boca: {summary.get('mouth_analysis', {}).get('mouth_length_percentage', 'N/A')} - {summary.get('mouth_analysis', {}).get('mouth_length_classification', 'N/A')}")
-        report.append(f"• Arco cupido izquierdo (50-61): {summary.get('mouth_analysis', {}).get('left_cupid_arch_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('left_cupid_arch_proportion', 'N/A')})")
-        report.append(f"• Arco cupido derecho (52-63): {summary.get('mouth_analysis', {}).get('right_cupid_arch_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('right_cupid_arch_proportion', 'N/A')})")
+        report.append(f"• Arco cupido derecho (51-62): {summary.get('mouth_analysis', {}).get('right_cupid_arch_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('right_cupid_arch_proportion', 'N/A')})")
+        report.append(f"• Arco cupido izquierdo (53-64): {summary.get('mouth_analysis', {}).get('left_cupid_arch_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('left_cupid_arch_proportion', 'N/A')})")
         report.append(f"• Grosor de labios (52-58): {summary.get('mouth_analysis', {}).get('lip_thickness_distance', 'N/A')} (proporción: {summary.get('mouth_analysis', {}).get('lip_thickness_proportion', 'N/A')})")
         report.append(f"• Labio superior (52-63): {summary.get('mouth_analysis', {}).get('upper_lip_distance', 'N/A')}")
         report.append(f"• Labio inferior (67-58): {summary.get('mouth_analysis', {}).get('lower_lip_distance', 'N/A')}")
