@@ -481,7 +481,7 @@ class AnthropometricAnalyzer:
 
         # LEFT eye: point 25 (eyebrow) to point 45 (eyelid) - dlib points 25 and 45
         left_eyebrow_point = extended_points[24]  # dlib point 25, Python index 24 - LEFT eyebrow
-        left_eyelid_point = extended_points[44]   # dlib point 45, Python index 44 - LEFT upper eyelid
+        left_eyelid_point = extended_points[43]   # dlib point 45, Python index 44 - LEFT upper eyelid
 
         # Calculate middle third of face (point 68 to 34) for proportional measurements
         point_68 = extended_points[68]  # between eyebrows

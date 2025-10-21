@@ -327,7 +327,7 @@ Measures vertical distance between eyebrow and upper eyelid, proportional to mid
 
 **Measurement Points:**
 - **Right Side**: Distance from point 20 (right eyebrow) to point 38 (right upper eyelid)
-- **Left Side**: Distance from point 25 (left eyebrow) to point 45 (left upper eyelid)
+- **Left Side**: Distance from point 25 (left eyebrow) to point 44 (left upper eyelid)
 
 **Proportional Calculation**: Eyebrow-eyelid distance / Middle third length (point 68 to point 34)
 
