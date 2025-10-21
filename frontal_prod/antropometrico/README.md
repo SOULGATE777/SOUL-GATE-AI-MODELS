@@ -24,9 +24,9 @@ Advanced anthropometric facial analysis system with comprehensive feature detect
   - Boca pequeña: < 0.65 (previously < 0.7)
 - **Eyebrow Proportions**: Now measured relative to middle third of face (point 68 to 34) instead of whole head height
 - **Cupid's Bow Measurements**: Changed from absolute distances to proportional ratios
-  - Left cupid arch: distance(52→63) / distance(51→62)
-  - Right cupid arch: distance(52→63) / distance(53→64)
-- **Lip Thickness Analysis**: Added new measurement from point 62 to 66, proportional to bottom third of face
+  - Left cupid arch: distance(51→62) / distance(52→63) - lip thickness / bow depth
+  - Right cupid arch: distance(53→64) / distance(52→63) - lip thickness / bow depth
+- **Lip Thickness Analysis**: Added new measurement from point 52 to 58, proportional to bottom third of face
 - **Mouth Analysis Reference**: Cupid's bow and lip thickness now proportional to bottom third (point 34 to 9) instead of whole face
 - **Eye Size Classification**: Added classification for eye-to-face proportion
   - Ojo pequeño: < 0.74%
@@ -317,35 +317,35 @@ Evaluates horizontal eye spacing proportions to classify eye separation.
 **Proportional Calculation**: Inner eye distance / Outer eye distance
 
 **Classification Thresholds:**
-- **Cercanos (Hypotelorism)**: Proportion < 0.3
-- **Standard (Normal)**: Proportion 0.3-0.37
-- **Lejanos (Hypertelorism)**: Proportion > 0.37
+- **cercanos**: Proportion < 0.40
+- **standard**: Proportion 0.40-0.435
+- **lejanos**: Proportion > 0.435
 
 ### 6. Eyebrow-Eyelid Distance Analysis
 
-Measures vertical distance between eyebrow and upper eyelid, proportional to head height.
+Measures vertical distance between eyebrow and upper eyelid, proportional to middle third of face.
 
 **Measurement Points:**
 - **Left Side**: Distance from point 20 (left eyebrow) to point 38 (left upper eyelid)
 - **Right Side**: Distance from point 25 (right eyebrow) to point 45 (right upper eyelid)
 
-**Proportional Calculation**: Eyebrow-eyelid distance / Total head height (point 69 to point 9)
+**Proportional Calculation**: Eyebrow-eyelid distance / Middle third length (point 68 to point 34)
 
 ### 7. Mouth Morphometry Analysis
 
 Analyzes mouth structure including cupid's bow arches, lip thickness, and lip proportions.
 
 **Cupid's Bow Measurements (Proportional Ratios):**
-- **Left Cupid's Arch**: distance(52→63) / distance(51→62)
-  - Compares arch depth at one side to center reference depth
-- **Right Cupid's Arch**: distance(52→63) / distance(53→64)
-  - Compares arch depth at one side to opposite reference depth
+- **Left Cupid's Arch**: distance(51→62) / distance(52→63)
+  - Proportion of lip thickness to cupid's bow depth at left side
+- **Right Cupid's Arch**: distance(53→64) / distance(52→63)
+  - Proportion of lip thickness to cupid's bow depth at right side
 
 **Lip Thickness Measurements:**
-- **Total Lip Thickness**: Vertical distance from point 62 (upper lip center) to point 66 (lower lip center)
+- **Total Lip Thickness**: Vertical distance from point 52 (top center of upper lip) to point 58 (bottom center of lower lip)
 - **Proportional Calculation**: Lip thickness distance / Bottom third length (point 34 to 9)
-- **Upper Lip Thickness**: Vertical distance from point 51 to point 62
-- **Lower Lip Thickness**: Vertical distance from point 66 to point 57
+- **Upper Lip Thickness**: Vertical distance from point 52 to point 63
+- **Lower Lip Thickness**: Vertical distance from point 67 to point 58
 - **Lips Ratio**: Upper lip thickness / Lower lip thickness
 
 ### 8. Mouth-to-Eye Proportional Analysis
@@ -572,11 +572,11 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 - Updated mouth-to-pupil proportion classification thresholds for improved accuracy
 - Changed eyebrow proportion reference from whole head height to middle third of face
 - Modified cupid's bow measurements from absolute distances to proportional ratios
-- Added lip thickness measurement (point 62 to 66) proportional to bottom third
+- Added lip thickness measurement (point 52 to 58) proportional to bottom third
 - Updated mouth analysis measurements to use bottom third as reference
 
 **New Fields:**
-- `lip_thickness_distance`: Absolute distance for total lip thickness (62 to 66)
+- `lip_thickness_distance`: Absolute distance for total lip thickness (52 to 58)
 - `lip_thickness_proportion`: Lip thickness relative to bottom third of face
 - `middle_third_length`: Reference length used for eyebrow proportions
 - `bottom_third_length`: Reference length used for mouth measurements
@@ -590,9 +590,9 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 
 **Modified Calculations:**
 - Eyebrow proportions now relative to middle third (point 68 to 34) instead of head height
-- Cupid's bow arches now calculated as ratios instead of proportional to head height
-  - Left: distance(52→63) / distance(51→62)
-  - Right: distance(52→63) / distance(53→64)
+- Cupid's bow arches now calculated as ratios of lip thickness to bow depth
+  - Left: distance(51→62) / distance(52→63)
+  - Right: distance(53→64) / distance(52→63)
 
 ### v2.1
 
