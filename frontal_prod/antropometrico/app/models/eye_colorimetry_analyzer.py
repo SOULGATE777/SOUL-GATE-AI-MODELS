@@ -32,56 +32,64 @@ class EyeColorimetryAnalyzer:
             self.predictor = None
         
         # Define eye color ranges based on RGB values
+        # INCLUSIVE CRITERIA: If multiple matches, return all with equal percentages
         self.eye_color_ranges = {
             'color_de_ojo_negro/cafe_oscuro': {
                 'r_range': (0, 120),
                 'g_range': (0, 100),
                 'b_range': (0, 60),
                 'conditions': None
-            }, 
-            
+            },
+
             'cafe_claro/hazel': {
-                'r_range': (120, 160),
-                'g_range': (90, 130),
-                'b_range': (60, 100),
+                'r_range': (120, 180),
+                'g_range': (80, 140),
+                'b_range': (30, 100),
                 'conditions': 'r > g'
             },
-           
+
             'amarillo': {
-                'r_range': (180, 255),
-                'g_range': (140, 255),
+                'r_range': (120, 255),
+                'g_range': (120, 255),
                 'b_range': (0, 160),
-                'conditions': 'rg_similar_and_dominant'
+                'conditions': 'rg_similar_and_dominant_v2'
             },
-          
+
             'verde': {
-                'r_range': (0, 100),
+                'r_range': (0, 150),
                 'g_range': (70, 255),
-                'b_range': (0, 100),
-                'conditions': 'g > r'
+                'b_range': (0, 110),
+                'conditions': 'g >= r'
             },
-            
+
             'azul_claro/gris': {
                 'r_range': (0, 220),
                 'g_range': (80, 255),
-                'b_range': (80, 255),
-                'conditions': 'gb_dominant_balanced'
+                'b_range': (70, 255),
+                'conditions': 'gb_dominant_balanced_v2'
             },
-            
+
+            'gris': {
+                'r_range': (0, 220),
+                'g_range': (60, 255),
+                'b_range': (70, 255),
+                'conditions': 'gray_conditions'
+            },
+
             'azul_oscuro': {
-                'r_range': (50, 90),
-                'g_range': (50, 120),
-                'b_range': (70, 190),
-                'conditions': 'g > r and b > g'
+                'r_range': (0, 90),
+                'g_range': (0, 120),
+                'b_range': (70, 135),
+                'conditions': 'g >= r and b >= g'
             },
-         
+
             'azul_intenso/morado': {
                 'r_range': (0, 140),
                 'g_range': (0, 130),
-                'b_range': (120, 255),
+                'b_range': (135, 255),
                 'conditions': 'b > g'
             },
-            
+
             'azul_verde': {
                 'r_range': (60, 85),
                 'g_range': (70, 170),
@@ -388,91 +396,148 @@ class EyeColorimetryAnalyzer:
     def check_color_conditions(self, r, g, b, conditions):
         """
         Check specific color conditions for eye color classification.
-        
+
         Args:
             r, g, b (int): RGB values
             conditions (str): Condition type to check
-            
+
         Returns:
             bool: Whether conditions are met
         """
         if conditions is None:
             return True
-        
+
         if conditions == 'r > g':
             return r > g
-        
+
         elif conditions == 'g > r':
             return g > r
-        
+
+        elif conditions == 'g >= r':
+            return g >= r
+
         elif conditions == 'b > g':
             return b > g
-        
+
         elif conditions == 'g > r and b > g':
             return g > r and b > g
-        
+
+        elif conditions == 'g >= r and b >= g':
+            return g >= r and b >= g
+
         elif conditions == 'rg_similar_and_dominant':
-            # R y G dentro del 20% de cada uno, R o G mas del doble que B
+            # OLD: R y G dentro del 20% de cada uno, R o G mas del doble que B
             rg_similar = abs(r - g) / max(r, g, 1) <= 0.2
             dominant_over_b = (r >= 2 * b) or (g >= 2 * b)
             return rg_similar and dominant_over_b
-        
+
+        elif conditions == 'rg_similar_and_dominant_v2':
+            # NEW: R y G dentro del 30% de cada uno, B menos del 60% que R o G
+            rg_similar = abs(r - g) / max(r, g, 1) <= 0.3
+            b_less_than_rg = (b < 0.6 * r) or (b < 0.6 * g)
+            return rg_similar and b_less_than_rg
+
         elif conditions == 'gb_dominant_balanced':
-            # G y B mayor que R, G no mayor a B mas del 40%
+            # OLD: G y B mayor que R, G no mayor a B mas del 40%
             gb_dominant = g > r and b > r
             g_not_too_dominant = abs(g - b) / max(g, b, 1) <= 0.4
             return gb_dominant and g_not_too_dominant
-        
+
+        elif conditions == 'gb_dominant_balanced_v2':
+            # NEW: G y B mayor o igual a R, G no mas del 40% mayor a B
+            gb_dominant = g >= r and b >= r
+            g_not_too_dominant = abs(g - b) / max(g, b, 1) <= 0.4
+            return gb_dominant and g_not_too_dominant
+
+        elif conditions == 'gray_conditions':
+            # NEW: G no mas del 40% mayor que B
+            g_not_too_dominant = abs(g - b) / max(g, b, 1) <= 0.4
+            return g_not_too_dominant
+
         elif conditions == 'turquoise_conditions':
             # G mayor a B, R menor que 50% de G, B mayor que R
             return g > b and r < (0.5 * g) and b > r
-        
+
         return False
     
     def classify_eye_color_new_system(self, color_analysis, use_dominant=False):
         """
-        Classify eye color based on the new RGB range system.
-        
+        Classify eye color based on the new RGB range system with INCLUSIVE criteria.
+        If multiple categories match, returns all matches with equal percentages.
+
         Args:
             color_analysis (dict): Results from analyze_colors
             use_dominant (bool): If True, use dominant color; if False, use average color
-            
+
         Returns:
-            str: Classified eye color according to new system
+            dict: {
+                'classifications': [list of matching color names],
+                'percentages': [list of percentages for each match],
+                'primary_classification': 'string of all matches separated by /'
+            }
         """
         if "error" in color_analysis:
-            return "unknown"
-        
+            return {
+                'classifications': ['unknown'],
+                'percentages': [100.0],
+                'primary_classification': 'unknown'
+            }
+
         if use_dominant:
             # Use the most dominant color from clustering
             if "dominant_colors" in color_analysis and len(color_analysis["dominant_colors"]) > 0:
                 dominant_color_rgb = color_analysis["dominant_colors"][0][0]
                 r, g, b = dominant_color_rgb
             else:
-                return "unknown"
+                return {
+                    'classifications': ['unknown'],
+                    'percentages': [100.0],
+                    'primary_classification': 'unknown'
+                }
         else:
             # Use average color
             avg_color = color_analysis["average_color_rgb"]
             r, g, b = avg_color
-        
-        # Check each color category
+
+        # Collect ALL matching categories (INCLUSIVE approach)
+        matching_colors = []
+
         for color_name, color_data in self.eye_color_ranges.items():
             r_range = color_data['r_range']
             g_range = color_data['g_range']
             b_range = color_data['b_range']
             conditions = color_data['conditions']
-            
+
             # Check if RGB values are within ranges
             r_in_range = r_range[0] <= r <= r_range[1]
             g_in_range = g_range[0] <= g <= g_range[1]
             b_in_range = b_range[0] <= b <= b_range[1]
-            
+
             if r_in_range and g_in_range and b_in_range:
                 # Check additional conditions if any
                 if self.check_color_conditions(r, g, b, conditions):
-                    return color_name
-        
-        return "no_clasificado"
+                    matching_colors.append(color_name)
+
+        # If no matches, return unclassified
+        if len(matching_colors) == 0:
+            return {
+                'classifications': ['no_clasificado'],
+                'percentages': [100.0],
+                'primary_classification': 'no_clasificado'
+            }
+
+        # Calculate equal percentages for all matches
+        percentage_per_match = 100.0 / len(matching_colors)
+        percentages = [percentage_per_match] * len(matching_colors)
+
+        # Create combined classification string
+        primary_classification = ' / '.join(matching_colors)
+
+        return {
+            'classifications': matching_colors,
+            'percentages': percentages,
+            'primary_classification': primary_classification
+        }
     
     def classify_eye_color_hsv(self, color_analysis):
         """
@@ -589,8 +654,10 @@ class EyeColorimetryAnalyzer:
                                 "iris_rgb_dominant": iris_classification_rgb_dom
                             }
                         }
-                        
-                        print(f"✅ {eye_side} eye analysis complete: {iris_classification_rgb_avg}")
+
+                        # Get primary classification for logging
+                        iris_primary = iris_classification_rgb_avg.get('primary_classification', 'unknown') if isinstance(iris_classification_rgb_avg, dict) else iris_classification_rgb_avg
+                        print(f"✅ {eye_side} eye analysis complete: {iris_primary}")
                         
                     except Exception as e:
                         print(f"❌ Error analyzing {eye_side} eye: {str(e)}")

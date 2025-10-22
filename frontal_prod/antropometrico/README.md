@@ -44,6 +44,21 @@ Advanced anthropometric facial analysis system with comprehensive feature detect
   - Boca grande: When both mouth_to_eye = "boca grande" AND mouth_length = "boca ancha"
   - Boca pequeña: When both mouth_to_eye = "boca pequeña" AND mouth_length = "boca angosta"
   - Boca estandar: All other combinations
+- **Eyebrow-Eyelid Position Classification**: Classification based on eyebrow-eyelid distance proportion
+  - high_eyebrows: > 0.31
+  - normal_eyebrows: 0.225 - 0.31
+  - low_eyebrows: < 0.225
+- **Lip Thickness Classification**: Classification based on total lip thickness proportion
+  - thick_lips: > 30%
+  - normal_lips: 18% - 30%
+  - thin_lips: < 18%
+- **Upper Lip Thickness Classification**: Classification based on lips ratio (upper/lower lip)
+  - thick_upper_lip: > 67%
+  - normal_upper_lip: 49% - 67%
+  - thin_upper_lip: < 49%
+- **Cupid's Arch Classification**: Classification based on cupid's arch proportion
+  - cupid_arch: > 1 (cupid's bow present)
+  - no_cupid_arch: ≤ 1 (no cupid's bow)
 
 ## Previous Updates (v2.1)
 
@@ -331,6 +346,11 @@ Measures vertical distance between eyebrow and upper eyelid, proportional to mid
 
 **Proportional Calculation**: Eyebrow-eyelid distance / Middle third length (point 68 to point 34)
 
+**Classification Thresholds:**
+- **high_eyebrows**: Proportion > 0.31
+- **normal_eyebrows**: Proportion 0.225-0.31
+- **low_eyebrows**: Proportion < 0.225
+
 ### 7. Mouth Morphometry Analysis
 
 Analyzes mouth structure including cupid's bow arches, lip thickness, and lip proportions.
@@ -341,12 +361,26 @@ Analyzes mouth structure including cupid's bow arches, lip thickness, and lip pr
 - **Left Cupid's Arch**: distance(53→64) / distance(52→63)
   - Proportion of lip thickness to cupid's bow depth at left side
 
+**Cupid's Arch Classification Thresholds:**
+- **cupid_arch**: Proportion > 1 (cupid's bow present)
+- **no_cupid_arch**: Proportion ≤ 1 (no cupid's bow)
+
 **Lip Thickness Measurements:**
 - **Total Lip Thickness**: Vertical distance from point 52 (top center of upper lip) to point 58 (bottom center of lower lip)
 - **Proportional Calculation**: Lip thickness distance / Bottom third length (point 34 to 9)
 - **Upper Lip Thickness**: Vertical distance from point 52 to point 63
 - **Lower Lip Thickness**: Vertical distance from point 67 to point 58
 - **Lips Ratio**: Upper lip thickness / Lower lip thickness
+
+**Lip Thickness Classification Thresholds:**
+- **thick_lips**: Proportion > 30%
+- **normal_lips**: Proportion 18%-30%
+- **thin_lips**: Proportion < 18%
+
+**Upper Lip Thickness Classification Thresholds (based on lips ratio):**
+- **thick_upper_lip**: Ratio > 67%
+- **normal_upper_lip**: Ratio 49%-67%
+- **thin_upper_lip**: Ratio < 49%
 
 ### 8. Mouth-to-Eye Proportional Analysis
 
@@ -421,22 +455,47 @@ Calculates proportional relationships between different facial regions using pol
 
 ## Eye Colorimetry Analysis
 
-Advanced iris color classification using multiple methodologies.
+Advanced iris color classification using multiple methodologies with **INCLUSIVE CRITERIA**: if an eye color matches multiple categories, all matches are returned with equal percentages.
 
 ### Color Detection Methods
 1. **HSV-based Classification**: Uses hue, saturation, and value (brightness) analysis
 2. **RGB Average Classification**: Analyzes average RGB values within iris region
 3. **RGB Dominant Classification**: Uses K-means clustering to identify dominant colors
 
-### Color Categories
+### Inclusive Classification System
+When RGB values match multiple eye color categories, the system returns ALL matching classifications with equal percentages:
+- **Single Match**: `{"classifications": ["verde"], "percentages": [100.0], "primary_classification": "verde"}`
+- **Two Matches**: `{"classifications": ["azul_claro/gris", "gris"], "percentages": [50.0, 50.0], "primary_classification": "azul_claro/gris / gris"}`
+
+### Color Categories and RGB Ranges
+
 - **color_de_ojo_negro/cafe_oscuro**: Very dark brown/black eyes
+  - R: 0-120, G: 0-100, B: 0-60
+  - No additional conditions
 - **cafe_claro/hazel**: Light brown/hazel eyes
-- **verde**: Green eyes
-- **azul_claro/gris**: Light blue/gray eyes
-- **azul_oscuro**: Dark blue eyes
-- **azul_intenso/morado**: Intense blue/violet eyes
+  - R: 120-180, G: 80-140, B: 30-100
+  - Condition: R > G
 - **amarillo**: Amber/yellow eyes
+  - R: 120-255, G: 120-255, B: 0-160
+  - Conditions: R and G within 30% of each other, B less than 60% of R or G
+- **verde**: Green eyes
+  - R: 0-150, G: 70-255, B: 0-110
+  - Condition: G >= R
+- **azul_claro/gris**: Light blue/gray eyes
+  - R: 0-220, G: 80-255, B: 70-255
+  - Conditions: G >= R and B >= R, G not more than 40% greater than B
+- **gris**: Gray eyes
+  - R: 0-220, G: 60-255, B: 70-255
+  - Condition: G not more than 40% greater than B
+- **azul_oscuro**: Dark blue eyes
+  - R: 0-90, G: 0-120, B: 70-135
+  - Conditions: G >= R and B >= G
+- **azul_intenso/morado**: Intense blue/violet eyes
+  - R: 0-140, G: 0-130, B: 135-255
+  - Condition: B > G
 - **azul_verde**: Blue-green/turquoise eyes
+  - R: 60-85, G: 70-170, B: 69-169
+  - Conditions: G > B, R < 50% of G, B > R
 
 ### Analysis Process
 1. **Landmark Detection**: Identifies eye regions using facial landmarks
@@ -587,6 +646,12 @@ curl -X POST "http://localhost:8001/analyze-iris-color" \
 - `mouth_length_percentage`: Formatted percentage of mouth width (e.g., "33.50%")
 - `mouth_length_classification`: Classification label for mouth width (ancha/promedio/angosta)
 - `integral_diagnosis`: Combined mouth size diagnosis from both mouth measurements (grande/pequeña/estandar)
+- `left_eyebrow_eyelid_classification`: Classification for left eyebrow position (high_eyebrows/normal_eyebrows/low_eyebrows)
+- `right_eyebrow_eyelid_classification`: Classification for right eyebrow position (high_eyebrows/normal_eyebrows/low_eyebrows)
+- `lip_thickness_classification`: Classification for lip thickness (thick_lips/normal_lips/thin_lips)
+- `upper_lip_thickness_classification`: Classification for upper lip thickness (thick_upper_lip/normal_upper_lip/thin_upper_lip)
+- `left_cupid_arch_classification`: Classification for left cupid's arch presence (cupid_arch/no_cupid_arch)
+- `right_cupid_arch_classification`: Classification for right cupid's arch presence (cupid_arch/no_cupid_arch)
 
 **Modified Calculations:**
 - Eyebrow proportions now relative to middle third (point 68 to 34) instead of head height

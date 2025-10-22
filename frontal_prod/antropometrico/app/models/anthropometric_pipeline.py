@@ -811,7 +811,9 @@ class AnthropometricAnalyzer:
                 "right_eye_face_proportion": f"{eye_face_proportions['right_eye_proportion']:.2f}%",
                 "right_eye_size_classification": self._classify_eye_size(eye_face_proportions['right_eye_proportion']),
                 "left_eyebrow_eyelid_proportion": f"{eyebrow_eyelid_distances['left_eyebrow_eyelid_proportion']:.4f}",
+                "left_eyebrow_eyelid_classification": self._classify_eyebrow_eyelid_position(eyebrow_eyelid_distances['left_eyebrow_eyelid_proportion']),
                 "right_eyebrow_eyelid_proportion": f"{eyebrow_eyelid_distances['right_eyebrow_eyelid_proportion']:.4f}",
+                "right_eyebrow_eyelid_classification": self._classify_eyebrow_eyelid_position(eyebrow_eyelid_distances['right_eyebrow_eyelid_proportion']),
                 "left_eyebrow_eyelid_distance": f"{eyebrow_eyelid_distances['left_eyebrow_eyelid_distance']:.1f}px",
                 "right_eyebrow_eyelid_distance": f"{eyebrow_eyelid_distances['right_eyebrow_eyelid_distance']:.1f}px"
             },
@@ -831,12 +833,16 @@ class AnthropometricAnalyzer:
                     self._classify_mouth_length(proportions['mouth_length_proportion'])
                 ),
                 "left_cupid_arch_proportion": f"{mouth_measurements['left_cupid_arch_proportion']:.4f}",
+                "left_cupid_arch_classification": self._classify_cupid_arch(mouth_measurements['left_cupid_arch_proportion']),
                 "right_cupid_arch_proportion": f"{mouth_measurements['right_cupid_arch_proportion']:.4f}",
+                "right_cupid_arch_classification": self._classify_cupid_arch(mouth_measurements['right_cupid_arch_proportion']),
                 "left_cupid_arch_distance": f"{mouth_measurements['left_cupid_arch_distance']:.1f}px",
                 "right_cupid_arch_distance": f"{mouth_measurements['right_cupid_arch_distance']:.1f}px",
                 "lip_thickness_proportion": f"{mouth_measurements['lip_thickness_proportion']:.4f}",
+                "lip_thickness_classification": self._classify_lip_thickness(mouth_measurements['lip_thickness_proportion']),
                 "lip_thickness_distance": f"{mouth_measurements['lip_thickness_distance']:.1f}px",
                 "lips_ratio": f"{mouth_measurements['lips_ratio']:.4f}",
+                "upper_lip_thickness_classification": self._classify_upper_lip_thickness(mouth_measurements['lips_ratio']),
                 "upper_lip_distance": f"{mouth_measurements['upper_lip_distance']:.1f}px",
                 "lower_lip_distance": f"{mouth_measurements['lower_lip_distance']:.1f}px"
             },
@@ -930,6 +936,42 @@ class AnthropometricAnalyzer:
             return 'cara interna promedio'
         else:  # percentage > 44.5
             return 'cara interna grande'
+
+    def _classify_eyebrow_eyelid_position(self, proportion):
+        """Classify eyebrow position based on eyebrow-eyelid proportion"""
+        if proportion > 0.31:
+            return 'high_eyebrows'
+        elif 0.225 <= proportion <= 0.31:
+            return 'normal_eyebrows'
+        else:  # proportion < 0.225
+            return 'low_eyebrows'
+
+    def _classify_lip_thickness(self, proportion):
+        """Classify lip thickness based on lip thickness proportion (as percentage)"""
+        percentage = proportion * 100
+        if percentage > 30:
+            return 'thick_lips'
+        elif 18 <= percentage <= 30:
+            return 'normal_lips'
+        else:  # percentage < 18
+            return 'thin_lips'
+
+    def _classify_upper_lip_thickness(self, ratio):
+        """Classify upper lip thickness based on lips ratio (as percentage)"""
+        percentage = ratio * 100
+        if percentage > 67:
+            return 'thick_upper_lip'
+        elif 49 <= percentage <= 67:
+            return 'normal_upper_lip'
+        else:  # percentage < 49
+            return 'thin_upper_lip'
+
+    def _classify_cupid_arch(self, proportion):
+        """Classify cupid's arch presence based on proportion"""
+        if proportion > 1:
+            return 'cupid_arch'
+        else:  # proportion <= 1
+            return 'no_cupid_arch'
 
     def _convert_slope_to_degrees(self, slope):
         """Convert slope to degrees"""
