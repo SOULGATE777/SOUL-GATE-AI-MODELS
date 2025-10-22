@@ -6,6 +6,9 @@ The Profile Anthropometric Analysis module is an advanced facial analysis system
 
 This system provides precise measurements of facial features, proportional relationships, angular characteristics, and constitutional classifications based on established anthropometric principles. The module is designed for professional use in facial analysis applications requiring detailed morphological assessments.
 
+> **⚠️ IMPORTANT NOTE ON PROFILE ORIENTATION:**
+> Profile side (left/right) is **primarily determined by the integrated ResNet-50 profile classifier model** during point detection. The reference vector (point 24 to point 18) mentioned throughout this documentation is used **exclusively as a geometric baseline for angular measurements**, NOT for determining profile orientation. Any geometric-based orientation logic serves only as a fallback mechanism in the rare event that the model fails to determine profile side.
+
 ## Features
 
 ### Core Capabilities
@@ -161,7 +164,7 @@ Points may include suffixes to indicate profile side:
 - **_d suffix**: Points detected on the right profile
 - Points without suffix are profile-agnostic landmarks
 
-The system automatically filters spurious predictions by counting left and right suffixes to determine the dominant profile side, removing false positives from the minority side.
+The system uses an integrated ResNet-50 profile classifier to automatically determine the profile orientation (left/right) during point detection. Points with suffixes that don't match the detected profile side are filtered out as spurious predictions.
 
 ## Measurements and Classifications
 
@@ -192,9 +195,9 @@ nasal_proportion = nasal_protrusion_distance / reference_distance
 ```
 
 **Classifications:**
-- **nariz protruyente** (protruding nose): proportion > 0.2
-- **nariz normal** (normal nose): 0.17 ≤ proportion ≤ 0.2
-- **nariz corta** (short nose): proportion < 0.17
+- **nariz protruyente** (protruding nose): proportion > 0.185
+- **nariz normal** (normal nose): 0.16 ≤ proportion ≤ 0.185
+- **nariz corta** (short nose): proportion < 0.16
 
 #### 2.2 Nasal Tip Angle (Points 18 to 17)
 Measures the angular orientation of the nasal tip relative to a perpendicular reference line. This indicates whether the nose points upward, forward, or downward.
@@ -472,15 +475,15 @@ Since images are rotated to have the face vertical (vector 10-34 parallel to Y a
    - `orbital_plane_x = x37 + (x39 - x37) * t`
 3. Calculate horizontal difference: `x_difference = x38 - orbital_plane_x`
 4. Apply profile-aware sign correction:
-   - **Right Profile**: `protrusion_distance = x_difference` (positive = protrusion rightward)
-   - **Left Profile**: `protrusion_distance = -x_difference` (positive = protrusion leftward)
+   - **Right Profile**: `protrusion_distance = -x_difference` (positive = protrusion forward/leftward from face)
+   - **Left Profile**: `protrusion_distance = x_difference` (positive = protrusion forward/rightward from face)
 
 **Formula:**
 ```
 t = (y38 - y37) / (y39 - y37)
 orbital_plane_x = x37 + (x39 - x37) * t
 x_difference = x38 - orbital_plane_x
-protrusion_distance = x_difference if head_direction == 'right' else -x_difference
+protrusion_distance = -x_difference if head_direction == 'right' else x_difference
 ```
 
 **Physical Interpretation:**
@@ -488,9 +491,9 @@ protrusion_distance = x_difference if head_direction == 'right' else -x_differen
 - Near-zero protrusion distance: Cornea aligns with the orbital plane (normal eye position)
 - Negative protrusion distance: Cornea recedes behind the orbital plane (deep-set eyes)
 
-**Classifications (with 3-pixel tolerance):**
-- **protusion positiva** (positive protrusion): protrusion_distance > 3 pixels (eye protrudes beyond orbital plane)
-- **protusion nula** (no protrusion): -3 ≤ protrusion_distance ≤ 3 pixels (eye aligned with orbital plane)
+**Classifications:**
+- **protusion positiva** (positive protrusion): protrusion_distance > 0 pixels (eye protrudes beyond orbital plane)
+- **protusion nula** (no protrusion): -3 ≤ protrusion_distance ≤ 0 pixels (eye aligned with orbital plane)
 - **protusion negativa** (negative protrusion): protrusion_distance < -3 pixels (deep-set eye, recessed behind orbital plane)
 
 ##### 5.5.3 Angular Analysis (Vectors 39-37 and 38-37)
@@ -608,7 +611,7 @@ This section provides a quick reference table of all measurements, their point d
 | Measurement | Points Used | Normalization | Thresholds | Classifications |
 |------------|-------------|---------------|------------|-----------------|
 | **Reference Distance** | 24-10 | None (baseline) | N/A | Primary scaling factor for all proportional measurements |
-| **Nasal Protrusion** | 18-17 | Divide by reference distance | > 0.2<br>0.17-0.2<br>< 0.17 | nariz protruyente<br>nariz normal<br>nariz corta |
+| **Nasal Protrusion** | 18-17 | Divide by reference distance | > 0.185<br>0.16-0.185<br>< 0.16 | nariz protruyente<br>nariz normal<br>nariz corta |
 | **Superior Third** | 34-22 | Divide by reference distance | N/A | tercio superior (proportional measurement) |
 | **Middle Third** | 22-18 | Divide by reference distance | N/A | tercio medio (proportional measurement) |
 | **Inferior Third** | 18-10 | Divide by reference distance | N/A | tercio inferior (proportional measurement) |
@@ -637,7 +640,7 @@ This section provides a quick reference table of all measurements, their point d
 
 | Measurement | Points Used | Method | Tolerance | Classifications |
 |------------|-------------|--------|-----------|-----------------|
-| **Eye Protrusion Distance** | 37-39-38 | X-coordinate comparison from cornea (38) to orbital plane line (37-39) | ±3 pixels | > 3 px: protusion positiva<br>-3 to 3 px: protusion nula<br>< -3 px: protusion negativa |
+| **Eye Protrusion Distance** | 37-39-38 | X-coordinate comparison from cornea (38) to orbital plane line (37-39) | Range: -3 to 0 | > 0 px: protusion positiva<br>-3 to 0 px: protusion nula<br>< -3 px: protusion negativa |
 
 ### Profile Direction Determination
 

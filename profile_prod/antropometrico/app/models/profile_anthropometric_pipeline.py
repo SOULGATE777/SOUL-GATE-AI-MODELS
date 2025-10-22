@@ -273,9 +273,9 @@ class ProfileAnthropometricPipeline:
             print(f"Proportion between points 18 and 17: {normalized_distance_18_17:.3f}")
             
             # Classify nose
-            if normalized_distance_18_17 > 0.2:
+            if normalized_distance_18_17 > 0.185:
                 nose_label = "nariz protruyente"
-            elif 0.17 <= normalized_distance_18_17 <= 0.2:
+            elif 0.16 <= normalized_distance_18_17 <= 0.185:
                 nose_label = "nariz normal"
             else:
                 nose_label = "nariz corta"
@@ -1024,12 +1024,12 @@ class ProfileAnthropometricPipeline:
         x_difference = x38 - orbital_plane_x
 
         # Adjust sign based on head direction
-        # For RIGHT profile: positive X_difference = protrusion (cornea more to the right)
-        # For LEFT profile: negative X_difference = protrusion (cornea more to the left)
+        # For RIGHT profile: negative X_difference = protrusion (cornea more to the left, away from face)
+        # For LEFT profile: positive X_difference = protrusion (cornea more to the right, away from face)
         if head_direction == 'right':
-            protrusion_distance = x_difference
-        else:  # left profile
             protrusion_distance = -x_difference
+        else:  # left profile
+            protrusion_distance = x_difference
 
         print(f"\n--- EYE PROTRUSION ANALYSIS (X-COORDINATE METHOD) ---")
         print(f"Head direction: {head_direction}")
@@ -1041,18 +1041,16 @@ class ProfileAnthropometricPipeline:
         print(f"Protrusion distance (profile-aware): {protrusion_distance:.2f} pixels")
 
         # Classification based on protrusion distance
-        # ±3 pixels tolerance for "protusion nula"
-        TOLERANCE = 3.0
-
-        if protrusion_distance > TOLERANCE:
+        # New thresholds: positive > 0, nula between -3 and 0, negativa < -3
+        if protrusion_distance > 0:
             classification = "protusion positiva"
             print(f"Classification: PROTUSION POSITIVA (cornea extends {protrusion_distance:.2f} pixels beyond orbital plane)")
-        elif protrusion_distance < -TOLERANCE:
+        elif protrusion_distance < -3.0:
             classification = "protusion negativa"
             print(f"Classification: PROTUSION NEGATIVA (cornea recessed {abs(protrusion_distance):.2f} pixels from orbital plane)")
         else:
             classification = "protusion nula"
-            print(f"Classification: PROTUSION NULA (cornea within ±{TOLERANCE} pixels of orbital plane)")
+            print(f"Classification: PROTUSION NULA (cornea within range -3 to 0 pixels of orbital plane)")
 
         return protrusion_distance, classification
     
