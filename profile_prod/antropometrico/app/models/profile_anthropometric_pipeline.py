@@ -680,9 +680,9 @@ class ProfileAnthropometricPipeline:
                 
                 # Optional: Add classification based on angle ranges
                 if mandible_angle < 20:
-                    mandible_angle_class = "acute mandible angle"
-                else:
                     mandible_angle_class = "normal mandible angle"
+                else:
+                    mandible_angle_class = "forward mandible angle"
 
                 measurements['mandible_angle_classification'] = mandible_angle_class
                 print(f"Mandible angle classification: {mandible_angle_class}")
@@ -819,9 +819,18 @@ class ProfileAnthropometricPipeline:
         elif angle_degrees_intersection < 0:
             angle_degrees_intersection = abs(angle_degrees_intersection)
         
-        # Classify angles (converted from negative thresholds to 0-360° system)
-        classification_superior = "implantacion alta" if angle_degrees_superior >= 351 else "implantacion estandard"
-        classification_inferior = "implantacion baja" if angle_degrees_inferior >= 350 else "implantacion estandard"
+        # Classify angles
+        # Superior: alta if >= 10 and <= 170, estandard if > 170 or < 10
+        if angle_degrees_superior >= 10 and angle_degrees_superior <= 170:
+            classification_superior = "implantacion alta"
+        else:
+            classification_superior = "implantacion estandard"
+
+        # Inferior: baja if >= 180 and <= 360, estandard if < 180
+        if angle_degrees_inferior >= 180 and angle_degrees_inferior <= 360:
+            classification_inferior = "implantacion baja"
+        else:
+            classification_inferior = "implantacion estandard"
         
         # Classify intersection angle
         if angle_degrees_intersection > 90:

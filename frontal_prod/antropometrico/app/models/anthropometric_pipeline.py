@@ -441,8 +441,7 @@ class AnthropometricAnalyzer:
         # Calculate eye angles
         # Right eye: REVERSE direction (outer to inner) - goes rightward anatomically
         right_eye_angle = math.atan2(right_inner[1] - right_outer[1], right_inner[0] - right_outer[0])
-        # Left eye: calculate from inner to outer (goes rightward in image, matches right anatomically)
-        # This ensures both eyes with same tilt produce same angle value
+        # Left eye: calculate from inner to outer (goes rightward in image)
         left_eye_angle = math.atan2(left_outer[1] - left_inner[1], left_outer[0] - left_inner[0])
 
         # Calculate relative to perpendicular reference
@@ -462,7 +461,9 @@ class AnthropometricAnalyzer:
 
         # Convert to degrees
         right_angle_deg = math.degrees(right_relative_angle)
-        left_angle_deg = math.degrees(left_relative_angle)
+        # NEGATE left eye angle to ensure symmetrical eyes produce same sign
+        # This mirrors the left eye angle to match anatomical expectations
+        left_angle_deg = -math.degrees(left_relative_angle)
 
         return {
             'left_eye_angle': left_angle_deg,
@@ -481,7 +482,7 @@ class AnthropometricAnalyzer:
 
         # LEFT eye: point 25 (eyebrow) to point 45 (eyelid) - dlib points 25 and 45
         left_eyebrow_point = extended_points[24]  # dlib point 25, Python index 24 - LEFT eyebrow
-        left_eyelid_point = extended_points[43]   # dlib point 45, Python index 44 - LEFT upper eyelid
+        left_eyelid_point = extended_points[44]   # dlib point 45, Python index 44 - LEFT upper eyelid
 
         # Calculate middle third of face (point 68 to 34) for proportional measurements
         point_68 = extended_points[68]  # between eyebrows
@@ -514,25 +515,24 @@ class AnthropometricAnalyzer:
         bottom_third_length = float(np.linalg.norm(point_34 - point_9))
 
         # Cupid's bow arch measurements as proportions
-        # RIGHT cupid's arch: (point 51 to 62) / (point 52 to 63) - lip thickness / bow depth
-        # Points 51-52 are on subject's RIGHT side of upper lip
-        right_cupid_point_52 = extended_points[52]
-        right_cupid_point_63 = extended_points[63]
-        right_cupid_point_51 = extended_points[51]
-        right_cupid_point_62 = extended_points[62]
-        right_cupid_arch_distance = float(np.linalg.norm(right_cupid_point_52 - right_cupid_point_63))
-        right_cupid_base_distance = float(np.linalg.norm(right_cupid_point_51 - right_cupid_point_62))
-        right_cupid_arch_proportion = right_cupid_base_distance / right_cupid_arch_distance if right_cupid_arch_distance > 0 else 0
+        # Denominator (midline reference): dlib points 52→63 (upper lip center vertical)
+        midline_point_52 = extended_points[51]  # dlib point 52, Python index 51
+        midline_point_63 = extended_points[62]  # dlib point 63, Python index 62
+        midline_distance = float(np.linalg.norm(midline_point_52 - midline_point_63))
 
-        # LEFT cupid's arch: (point 53 to 64) / (point 52 to 63) - lip thickness / bow depth
-        # Points 52-53 are on subject's LEFT side of upper lip
-        left_cupid_point_52 = extended_points[52]
-        left_cupid_point_63 = extended_points[63]
-        left_cupid_point_53 = extended_points[53]
-        left_cupid_point_64 = extended_points[64]
-        left_cupid_arch_distance = float(np.linalg.norm(left_cupid_point_52 - left_cupid_point_63))
-        left_cupid_base_distance = float(np.linalg.norm(left_cupid_point_53 - left_cupid_point_64))
-        left_cupid_arch_proportion = left_cupid_base_distance / left_cupid_arch_distance if left_cupid_arch_distance > 0 else 0
+        # RIGHT cupid's arch: dlib points 51→62 / midline (52→63)
+        # Subject's RIGHT side of face (left side of image)
+        right_cupid_point_51 = extended_points[50]  # dlib point 51, Python index 50
+        right_cupid_point_62 = extended_points[61]  # dlib point 62, Python index 61
+        right_cupid_arch_distance = float(np.linalg.norm(right_cupid_point_51 - right_cupid_point_62))
+        right_cupid_arch_proportion = right_cupid_arch_distance / midline_distance if midline_distance > 0 else 0
+
+        # LEFT cupid's arch: dlib points 53→64 / midline (52→63)
+        # Subject's LEFT side of face (right side of image)
+        left_cupid_point_53 = extended_points[52]  # dlib point 53, Python index 52
+        left_cupid_point_64 = extended_points[63]  # dlib point 64, Python index 63
+        left_cupid_arch_distance = float(np.linalg.norm(left_cupid_point_53 - left_cupid_point_64))
+        left_cupid_arch_proportion = left_cupid_arch_distance / midline_distance if midline_distance > 0 else 0
 
         # Lip thickness: dlib point 52 to 58 (top center of upper lip to bottom center of lower lip)
         lip_thickness_point_52 = extended_points[51]  # dlib point 52, Python index 51
@@ -555,8 +555,9 @@ class AnthropometricAnalyzer:
         lips_ratio = upper_lip_distance / lower_lip_distance if lower_lip_distance > 0 else 0
 
         print(f"DEBUG: Mouth Measurements:")
-        print(f"   Left cupid's arch (52-63): {left_cupid_arch_distance:.1f}px (proportion: {left_cupid_arch_proportion:.4f})")
-        print(f"   Right cupid's arch (52-63): {right_cupid_arch_distance:.1f}px (proportion: {right_cupid_arch_proportion:.4f})")
+        print(f"   Midline reference (52-63): {midline_distance:.1f}px")
+        print(f"   Right cupid's arch (51-62): {right_cupid_arch_distance:.1f}px (proportion: {right_cupid_arch_proportion:.4f})")
+        print(f"   Left cupid's arch (53-64): {left_cupid_arch_distance:.1f}px (proportion: {left_cupid_arch_proportion:.4f})")
         print(f"   Lip thickness (52-58): {lip_thickness_distance:.1f}px (proportion: {lip_thickness_proportion:.4f})")
         print(f"   Upper lip distance (52-63): {upper_lip_distance:.1f}px")
         print(f"   Lower lip distance (67-58): {lower_lip_distance:.1f}px")
@@ -805,7 +806,9 @@ class AnthropometricAnalyzer:
             "eye_analysis": {
                 "internal_proportion": self._label_proportion(proportions['eye_distance_proportion'], 'proporcion interna ojos'),
                 "left_eye_angle": self._classify_eye_angle(eye_angles['left_eye_angle']),
+                "left_eye_angle_degrees": f"{eye_angles['left_eye_angle']:.2f}°",
                 "right_eye_angle": self._classify_eye_angle(eye_angles['right_eye_angle']),
+                "right_eye_angle_degrees": f"{eye_angles['right_eye_angle']:.2f}°",
                 "left_eye_face_proportion": f"{eye_face_proportions['left_eye_proportion']:.2f}%",
                 "left_eye_size_classification": self._classify_eye_size(eye_face_proportions['left_eye_proportion']),
                 "right_eye_face_proportion": f"{eye_face_proportions['right_eye_proportion']:.2f}%",

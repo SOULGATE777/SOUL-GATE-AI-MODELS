@@ -326,8 +326,8 @@ if angle > 90: angle = 180 - angle
 - `mandible_angle_classification`: Classification based on angle thresholds
 
 **Angle Classifications:**
-- **acute mandible angle**: angle < 20 degrees (more angled jaw line)
-- **normal mandible angle**: angle ≥ 20 degrees (balanced jaw alignment)
+- **normal mandible angle**: angle < 20 degrees (balanced jaw alignment)
+- **forward mandible angle**: angle ≥ 20 degrees (more forward jaw line)
 
 ### 5. Angular Analysis
 
@@ -415,11 +415,11 @@ Measures the angle of the superior ear attachment point relative to a perpendicu
 5. Convert negative angles to 0-360 degree system: if angle < 0, add 360
 6. Classification uses threshold in the 351-360 degree range
 
-**Implementation Note:** The system uses a 0-360 degree measurement system converted from the original negative threshold system. An angle ≥ 351 degrees (equivalent to ≤ -9 degrees in the -180 to +180 system) indicates high implantation.
+**Implementation Note:** The system uses a 0-360 degree measurement system. An angle between 10-170 degrees indicates high implantation.
 
 **Classifications:**
-- **implantacion alta** (high implantation): angle ≥ 351 degrees (ear attaches above reference line)
-- **implantacion estandard** (standard implantation): angle < 351 degrees
+- **implantacion alta** (high implantation): 10 ≤ angle ≤ 170 degrees (ear attaches above reference line)
+- **implantacion estandard** (standard implantation): angle > 170 or angle < 10 degrees
 
 ##### 5.4.2 Inferior Implantation Angle (Point 18 to 3)
 Measures the angle of the inferior ear attachment relative to a perpendicular reference line at the subnasale.
@@ -429,11 +429,11 @@ Measures the angle of the inferior ear attachment relative to a perpendicular re
 2. Create measurement vector: `vector_18_3 = [point_3[x] - point_18[x], point_3[y] - point_18[y]]`
 3. Apply same atan2 calculation for angle determination
 4. Convert to 0-360 degree system
-5. Classification uses threshold at 350 degrees
+5. Classification uses threshold at 180 degrees
 
 **Classifications:**
-- **implantacion baja** (low implantation): angle ≥ 350 degrees (ear lobe hangs below reference line)
-- **implantacion estandard** (standard implantation): angle < 350 degrees
+- **implantacion baja** (low implantation): 180 ≤ angle ≤ 360 degrees (ear lobe hangs below reference line)
+- **implantacion estandard** (standard implantation): angle < 180 degrees
 
 ##### 5.4.3 Ear Implantation Vector Intersection (Vectors 24-18 and 1-3)
 Measures the overall angle between the facial reference line and the ear implantation axis.
@@ -630,9 +630,9 @@ This section provides a quick reference table of all measurements, their point d
 | **Nasal Dorsum Slope** | 19-17 | N/A (slope calculation) | N/A | N/A | Provides slope angle for nasal bridge assessment |
 | **Forehead Angle** | 24-33 | 24-18 | 0° to 90° | > 15°<br>11° to 15°<br>< 11° | frente inclinada hacia atras<br>frente neutra<br>frente vertical |
 | **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4°<br>-4° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
-| **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | ≥ 351°<br>< 351° | implantacion alta<br>implantacion estandard |
-| **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | ≥ 350°<br>< 350° | implantacion baja<br>implantacion estandard |
-| **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 90° | < 20°<br>≥ 20° | acute mandible angle<br>normal mandible angle |
+| **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | 10° to 170°<br>> 170° or < 10° | implantacion alta<br>implantacion estandard |
+| **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | 180° to 360°<br>< 180° | implantacion baja<br>implantacion estandard |
+| **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 90° | < 20°<br>≥ 20° | normal mandible angle<br>forward mandible angle |
 | **Ear Implantation Intersection** | 1-3 vs 24-18 | 24-18 | 0° to 90° | < 60°<br>60° to 120°<br>> 120° | acute ear implantation<br>normal ear implantation<br>obtuse ear implantation |
 | **Eye Opening Angle** | 39-37 vs 38-37 | N/A | 0° to 90° | N/A | Supplementary angle for eye shape assessment |
 

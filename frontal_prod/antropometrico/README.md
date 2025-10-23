@@ -313,8 +313,9 @@ Measures the inclination of both eyes relative to the perpendicular of the verti
 **Angle Calculation:**
 1. Calculate angle of eye line relative to perpendicular reference
 2. Normalize to range [-180°, +180°]
-3. Positive values indicate upward slant at outer corner
-4. Negative values indicate downward slant at outer corner
+3. Left eye angle is negated to ensure symmetrical eyes produce consistent signs
+4. Positive values indicate upward slant at outer corner
+5. Negative values indicate downward slant at outer corner
 
 **Classification Thresholds:**
 - **Ángulo Normal (Normal Angle)**: -5° to +5°
@@ -342,7 +343,7 @@ Measures vertical distance between eyebrow and upper eyelid, proportional to mid
 
 **Measurement Points:**
 - **Right Side**: Distance from point 20 (right eyebrow) to point 38 (right upper eyelid)
-- **Left Side**: Distance from point 25 (left eyebrow) to point 44 (left upper eyelid)
+- **Left Side**: Distance from point 25 (left eyebrow) to point 45 (left upper eyelid)
 
 **Proportional Calculation**: Eyebrow-eyelid distance / Middle third length (point 68 to point 34)
 
