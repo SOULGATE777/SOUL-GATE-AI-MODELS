@@ -349,10 +349,10 @@ def _get_extended_points_from_landmarks(landmarks, img_shape, model_predictions)
     face_height = max(points[:, 1]) - min(points[:, 1])
     
     # Find highest points of eyebrows
-    left_eyebrow = points[17:22]
-    right_eyebrow = points[22:27]
-    left_highest = left_eyebrow[np.argmin(left_eyebrow[:, 1])]
+    right_eyebrow = points[17:22]  # Dlib points 18-22 = RIGHT eyebrow
+    left_eyebrow = points[22:27]   # Dlib points 23-27 = LEFT eyebrow
     right_highest = right_eyebrow[np.argmin(right_eyebrow[:, 1])]
+    left_highest = left_eyebrow[np.argmin(left_eyebrow[:, 1])]
     
     # Point 68: Between eyebrows
     if 2 in model_predictions:
@@ -454,9 +454,9 @@ def _draw_eyebrow_eyelid_distances(img, extended_points):
     right_eyebrow_point = extended_points[19]  # dlib point 20, Python index 19
     right_eyelid_point = extended_points[37]   # dlib point 38, Python index 37
 
-    # LEFT eye: point 25 (eyebrow) to point 45 (eyelid) - dlib points 25 and 45
+    # LEFT eye: point 25 (eyebrow) to point 44 (eyelid) - dlib points 25 and 44
     left_eyebrow_point = extended_points[24]  # dlib point 25, Python index 24
-    left_eyelid_point = extended_points[44]   # dlib point 45, Python index 44
+    left_eyelid_point = extended_points[43]   # dlib point 44, Python index 43
 
     # Draw measurement lines with distinct colors
     line_color_left = (255, 128, 0)   # Orange for left eye
@@ -477,14 +477,14 @@ def _draw_eyebrow_eyelid_distances(img, extended_points):
     cv2.circle(img, tuple(map(int, right_eyebrow_point)), 3, line_color_right, -1)
     cv2.circle(img, tuple(map(int, right_eyelid_point)), 3, line_color_right, -1)
 
-    # Add point labels
-    cv2.putText(img, "19", tuple(map(int, left_eyebrow_point + np.array([5, -5]))),
+    # Add point labels (dlib point numbers)
+    cv2.putText(img, "25", tuple(map(int, left_eyebrow_point + np.array([5, -5]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_left, 1)
-    cv2.putText(img, "37", tuple(map(int, left_eyelid_point + np.array([5, 5]))),
+    cv2.putText(img, "44", tuple(map(int, left_eyelid_point + np.array([5, 5]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_left, 1)
-    cv2.putText(img, "24", tuple(map(int, right_eyebrow_point + np.array([-15, -5]))),
+    cv2.putText(img, "20", tuple(map(int, right_eyebrow_point + np.array([-15, -5]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_right, 1)
-    cv2.putText(img, "44", tuple(map(int, right_eyelid_point + np.array([-15, 5]))),
+    cv2.putText(img, "38", tuple(map(int, right_eyelid_point + np.array([-15, 5]))),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.3, line_color_right, 1)
 
 def _draw_mouth_measurements(img, extended_points):

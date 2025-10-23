@@ -222,10 +222,10 @@ class AnthropometricAnalyzer:
     def _calculate_proportions(self, extended_points):
         """Calculate facial proportions"""
         # Get key landmarks
-        left_inner_eye = extended_points[39]  
-        right_inner_eye = extended_points[42]  
-        left_outter_eye = extended_points[36] 
-        right_outter_eye = extended_points[44]
+        right_inner_eye = extended_points[39]  # Point 40 - RIGHT eye inner corner
+        left_inner_eye = extended_points[42]   # Point 43 - LEFT eye inner corner
+        right_outter_eye = extended_points[36] # Point 37 - RIGHT eye outer corner
+        left_outter_eye = extended_points[45]  # Point 46 - LEFT eye outer corner
         
         # Calculate distances
         point_69 = extended_points[69]  # top of head
@@ -372,14 +372,14 @@ class AnthropometricAnalyzer:
 
     def _calculate_eyebrow_proportions(self, extended_points):
         """Calculate eyebrow length proportional to middle third of face and eye length ratio"""
-        # Right eyebrow points (17-21)
-        right_eyebrow_inner = extended_points[17]  # Most inner point
-        right_eyebrow_outer = extended_points[21]  # Most outer point
+        # Right eyebrow points (18-22 dlib): outer (temporal) to inner (nasal)
+        right_eyebrow_outer = extended_points[17]  # Point 18 - outer/temporal end
+        right_eyebrow_inner = extended_points[21]  # Point 22 - inner/nasal end
         right_eyebrow_length = float(np.linalg.norm(right_eyebrow_outer - right_eyebrow_inner))
 
-        # Left eyebrow points (22-26)
-        left_eyebrow_inner = extended_points[26]  # Most inner point
-        left_eyebrow_outer = extended_points[22]  # Most outer point
+        # Left eyebrow points (23-27 dlib): inner (nasal) to outer (temporal)
+        left_eyebrow_inner = extended_points[22]  # Point 23 - inner/nasal end
+        left_eyebrow_outer = extended_points[26]  # Point 27 - outer/temporal end
         left_eyebrow_length = float(np.linalg.norm(left_eyebrow_outer - left_eyebrow_inner))
 
         # Right eye length (36-39)
