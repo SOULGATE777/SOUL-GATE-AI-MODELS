@@ -312,15 +312,15 @@ class AnthropometricAnalyzer:
         # Calculate perpendicular to vertical midline (this is our "horizontal" reference)
         perpendicular_ref_angle = vertical_ref_angle + math.pi / 2
 
-        # Eyebrow points
-        # Right eyebrow (17-21): points go from outer to inner (right to left in image)
-        # Left eyebrow (22-26): points go from inner to outer (left to right in image)
-        right_eyebrow_points = extended_points[17:22]
-        left_eyebrow_points = extended_points[22:27]
+        # Eyebrow points - BOTH analyzed MEDIAL→LATERAL for consistency
+        # RIGHT eyebrow (dlib 18-22): natural order is lateral→medial, so REVERSE to medial→lateral
+        # LEFT eyebrow (dlib 23-27): natural order is already medial→lateral
+        right_eyebrow_points = extended_points[17:22][::-1]  # Reversed: [22, 21, 20, 19, 18] medial→lateral
+        left_eyebrow_points = extended_points[22:27]  # Natural: [23, 24, 25, 26, 27] medial→lateral
 
         def get_angle_relative_to_perpendicular(p1, p2):
-            """Calculate angle relative to perpendicular of vertical midline"""
-            # Calculate angle of segment
+            """Calculate angle relative to perpendicular of vertical midline (for LEFT eyebrow)"""
+            # Calculate angle of segment from p1 to p2
             segment_angle = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
             # Calculate relative to perpendicular reference
             relative_angle = segment_angle - perpendicular_ref_angle
@@ -332,9 +332,9 @@ class AnthropometricAnalyzer:
             # Convert to degrees
             return math.degrees(relative_angle)
 
-        def get_angle_relative_to_perpendicular_reversed(p1, p2):
-            """Calculate angle with reversed direction for mirrored features"""
-            # Reverse the direction: calculate from p2 to p1 instead
+        def get_angle_relative_to_perpendicular_mirrored(p1, p2):
+            """Calculate angle relative to perpendicular for RIGHT eyebrow (mirrored for symmetry)"""
+            # For right eyebrow: reverse direction (p2→p1) so symmetrical eyebrows produce same angles
             segment_angle = math.atan2(p1[1] - p2[1], p1[0] - p2[0])
             # Calculate relative to perpendicular reference
             relative_angle = segment_angle - perpendicular_ref_angle
@@ -347,15 +347,18 @@ class AnthropometricAnalyzer:
             return math.degrees(relative_angle)
 
         # Calculate angles
-        # Right eyebrow: REVERSE direction (inner to outer) to go rightward anatomically
+        # RIGHT eyebrow: medial→lateral anatomically [22→21→20→19→18]
+        # Uses MIRRORED calculation so symmetrical eyebrows produce same angles as left
+        # Portions: 1st(22-21 medial), 2nd(21-19 middle), 3rd(19-18 lateral)
         right_eyebrow_angles = {
-            "portion_1": get_angle_relative_to_perpendicular_reversed(right_eyebrow_points[0], right_eyebrow_points[1]),
-            "portion_2": get_angle_relative_to_perpendicular_reversed(right_eyebrow_points[1], right_eyebrow_points[3]),
-            "portion_3": get_angle_relative_to_perpendicular_reversed(right_eyebrow_points[3], right_eyebrow_points[4])
+            "portion_1": get_angle_relative_to_perpendicular_mirrored(right_eyebrow_points[0], right_eyebrow_points[1]),
+            "portion_2": get_angle_relative_to_perpendicular_mirrored(right_eyebrow_points[1], right_eyebrow_points[3]),
+            "portion_3": get_angle_relative_to_perpendicular_mirrored(right_eyebrow_points[3], right_eyebrow_points[4])
         }
 
-        # Left eyebrow: natural order (inner to outer, goes rightward) - matches right anatomically
-        # This ensures symmetrical eyebrows produce same angle values
+        # LEFT eyebrow: medial→lateral anatomically [23→24→25→26→27]
+        # Uses standard calculation (left-to-right on screen matches medial→lateral)
+        # Portions: 1st(23-24 medial), 2nd(24-26 middle), 3rd(26-27 lateral)
         left_eyebrow_angles = {
             "portion_1": get_angle_relative_to_perpendicular(left_eyebrow_points[0], left_eyebrow_points[1]),
             "portion_2": get_angle_relative_to_perpendicular(left_eyebrow_points[1], left_eyebrow_points[3]),
@@ -826,6 +829,26 @@ class AnthropometricAnalyzer:
                 "left_eyebrow_proportion": eyebrow_proportions['left_eyebrow_proportion'],
                 "right_eyebrow_proportion": eyebrow_proportions['right_eyebrow_proportion']
             },
+            "eyebrow_slope_analysis": {
+                "right_eyebrow_slopes": {
+                    "portion_1_angle": f"{slopes['right_eyebrow']['portion_1']:.2f}°",
+                    "portion_1_classification": self._label_proportion(slopes['right_eyebrow']['portion_1'], 'portion_1'),
+                    "portion_2_angle": f"{slopes['right_eyebrow']['portion_2']:.2f}°",
+                    "portion_2_classification": self._label_proportion(slopes['right_eyebrow']['portion_2'], 'portion_2'),
+                    "portion_3_angle": f"{slopes['right_eyebrow']['portion_3']:.2f}°",
+                    "portion_3_classification": self._label_proportion(slopes['right_eyebrow']['portion_3'], 'portion_3')
+                },
+                "left_eyebrow_slopes": {
+                    "portion_1_angle": f"{slopes['left_eyebrow']['portion_1']:.2f}°",
+                    "portion_1_classification": self._label_proportion(slopes['left_eyebrow']['portion_1'], 'portion_1'),
+                    "portion_2_angle": f"{slopes['left_eyebrow']['portion_2']:.2f}°",
+                    "portion_2_classification": self._label_proportion(slopes['left_eyebrow']['portion_2'], 'portion_2'),
+                    "portion_3_angle": f"{slopes['left_eyebrow']['portion_3']:.2f}°",
+                    "portion_3_classification": self._label_proportion(slopes['left_eyebrow']['portion_3'], 'portion_3')
+                },
+                "vertical_reference_used": slopes.get('vertical_reference_used', False),
+                "vertical_reference_angle": f"{slopes.get('vertical_reference_angle_deg', 0):.2f}°"
+            },
             "mouth_analysis": {
                 "mouth_to_eye_relation": self._label_proportion(proportions['mouth_to_eye_proportion'], 'relacion boca - pupilas'),
                 "mouth_length_proportion": f"{proportions['mouth_length_proportion']:.4f}",
@@ -1027,14 +1050,12 @@ class AnthropometricAnalyzer:
             elif proportion > 0.435:
                 return 'lejanos'
         elif section_name in ["portion_1", "portion_2"]:
-            if 75 >= proportion > 5:
+            if proportion > 5:
                 return f'{section_name} - Acendente'
-            elif 5 >= proportion > -1.0:
+            elif -1 <= proportion <= 5:
                 return f'{section_name} - Recto'
-            elif proportion <= 0.0:
+            else:  # proportion < -1
                 return f'{section_name} - Decendente'
-            else:
-                return f'{section_name} - Unknown angle'
         elif section_name == "portion_3":
             if proportion > 75:
                 return f'{section_name} - Decendente'

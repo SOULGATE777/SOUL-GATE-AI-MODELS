@@ -206,7 +206,10 @@ async def analyze_eyebrows(
                 "right_eyebrow": analyzer._classify_eyebrow_length(results['eyebrow_proportions']['right_eyebrow_proportion'])
             },
             "slopes": results['slopes'],
-            "summary": results['summary']['eyebrow_analysis']
+            "summary": {
+                "length_analysis": results['summary']['eyebrow_analysis'],
+                "slope_analysis": results['summary']['eyebrow_slope_analysis']
+            }
         }
         
         return JSONResponse(content=eyebrow_analysis)

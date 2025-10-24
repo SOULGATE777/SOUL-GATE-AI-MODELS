@@ -15,7 +15,16 @@ Advanced anthropometric facial analysis system with comprehensive feature detect
 >
 > Extended points 68-71 are calculated or derived from model predictions and are added after the 68 dlib points in the array.
 
-## Latest Updates (v2.2)
+## Latest Updates (v2.2.1)
+
+### Eyebrow Slope Analysis Corrections (2025-10-24)
+- **Fixed Right Eyebrow Direction**: Right eyebrow points now reversed to ensure medial→lateral consistency (points [22, 21, 20, 19, 18])
+- **Implemented Mirrored Angle Calculation**: Right eyebrow now uses mirrored calculation (p2→p1 vector) to ensure symmetrical eyebrows produce identical angles
+- **Corrected Classification Thresholds**: Fixed broken logic for portions 1 & 2
+  - Before (broken): `Recto` condition caught angles from -1° to 5°, `Descendente` condition never properly triggered
+  - After (fixed): `Ascendente` > 5°, `Recto` -1° to 5°, `Descendente` < -1°
+- **Added Slope Classifications to Summary**: Eyebrow slope angle classifications now included in API response summary (previously only in detailed report)
+- **Enhanced Documentation**: Added detailed explanation of mirrored calculation technique and anatomical consistency
 
 ### Calibration Updates
 - **Mouth Measurement Thresholds**: Updated mouth-to-pupil proportion thresholds
@@ -270,27 +279,39 @@ Analyzes eyebrow length relative to the middle third of the face for aesthetic p
 
 ### 3. Eyebrow Slope Analysis (Three-Segment Method)
 
-Analyzes eyebrow angle in three anatomical segments relative to the perpendicular of the vertical midline reference.
+Analyzes eyebrow angle in three anatomical segments relative to the perpendicular of the vertical midline reference. Both eyebrows are analyzed in a **consistent medial→lateral anatomical direction** with **mirrored angle calculations** to ensure symmetrical eyebrows produce identical angle values.
 
 **Reference System:**
 - **Vertical Midline**: Vector from point 9 (chin) to M3 (top of head)
 - **Perpendicular Reference**: 90-degree rotation of vertical midline, serves as "horizontal" baseline
 - **Angle Measurement**: Degrees relative to perpendicular reference
 
-**Right Eyebrow Segments** (measured from inner to outer for anatomical consistency):
-- **Portion 1**: Inner segment angle (points 22 to 21, reversed direction)
-- **Portion 2**: Middle arch segment (points 21 to 19, reversed direction)
-- **Portion 3**: Outer descending segment (points 19 to 18, reversed direction)
+**Anatomical Direction Consistency:**
+Both eyebrows are analyzed **medial→lateral** (from nose to temple):
+- **Right Eyebrow**: Dlib natural order (18→22) is lateral→medial, so points are **reversed** to [22, 21, 20, 19, 18] for medial→lateral consistency
+- **Left Eyebrow**: Dlib natural order (23→27) is already medial→lateral, no reversal needed
 
-**Left Eyebrow Segments** (measured from inner to outer, natural direction):
-- **Portion 1**: Inner segment angle (points 23 to 24)
-- **Portion 2**: Middle arch segment (points 24 to 26)
-- **Portion 3**: Outer descending segment (points 26 to 27)
+**Mirrored Angle Calculation Technique:**
+To ensure symmetrical eyebrows produce identical angles, the right eyebrow uses a **mirrored calculation**:
+- **Left Eyebrow**: Standard angle calculation (p1→p2 vector direction)
+- **Right Eyebrow**: Mirrored calculation (p2→p1 vector direction, reversed)
+
+This compensates for the fact that even with medial→lateral anatomical ordering, the eyebrows point in opposite directions on screen (left goes →, right goes ←). The mirroring ensures that horizontal eyebrows on both sides report ~0° instead of 0° and 180°.
+
+**Right Eyebrow Segments** (medial→lateral with mirrored angles):
+- **Portion 1**: Medial segment angle (points 22 to 21, mirrored calculation)
+- **Portion 2**: Middle arch segment (points 21 to 19, mirrored calculation)
+- **Portion 3**: Lateral descending segment (points 19 to 18, mirrored calculation)
+
+**Left Eyebrow Segments** (medial→lateral with standard angles):
+- **Portion 1**: Medial segment angle (points 23 to 24, standard calculation)
+- **Portion 2**: Middle arch segment (points 24 to 26, standard calculation)
+- **Portion 3**: Lateral descending segment (points 26 to 27, standard calculation)
 
 **Classification Thresholds (Portions 1 and 2):**
-- **Ascendente (Ascending)**: Angle 5° to 75°
+- **Ascendente (Ascending)**: Angle > 5°
 - **Recto (Straight)**: Angle -1° to 5°
-- **Descendente (Descending)**: Angle ≤ 0°
+- **Descendente (Descending)**: Angle < -1°
 
 **Classification Thresholds (Portion 3):**
 - **Descendente (Descending)**: Angle > 75°
