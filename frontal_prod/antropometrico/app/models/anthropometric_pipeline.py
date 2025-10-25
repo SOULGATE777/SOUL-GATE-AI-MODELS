@@ -360,9 +360,9 @@ class AnthropometricAnalyzer:
         # Uses standard calculation (left-to-right on screen matches medial→lateral)
         # Portions: 1st(23-24 medial), 2nd(24-26 middle), 3rd(26-27 lateral)
         left_eyebrow_angles = {
-            "portion_1": get_angle_relative_to_perpendicular(left_eyebrow_points[0], left_eyebrow_points[1]),
-            "portion_2": get_angle_relative_to_perpendicular(left_eyebrow_points[1], left_eyebrow_points[3]),
-            "portion_3": get_angle_relative_to_perpendicular(left_eyebrow_points[3], left_eyebrow_points[4])
+            "portion_1": -get_angle_relative_to_perpendicular(left_eyebrow_points[0], left_eyebrow_points[1]),
+            "portion_2": -get_angle_relative_to_perpendicular(left_eyebrow_points[1], left_eyebrow_points[3]),
+            "portion_3": -get_angle_relative_to_perpendicular(left_eyebrow_points[3], left_eyebrow_points[4])
         }
 
         return {
@@ -1057,12 +1057,12 @@ class AnthropometricAnalyzer:
             else:  # proportion < -1
                 return f'{section_name} - Decendente'
         elif section_name == "portion_3":
-            if proportion > 75:
-                return f'{section_name} - Decendente'
-            elif 10 <= proportion <= 75:
-                return f'{section_name} - Normal'
-            elif proportion < 10:
+            if proportion > 10:
                 return f'{section_name} - Acendente'
+            elif -20 <= proportion <= 10:
+                return f'{section_name} - Normal'
+            elif proportion < -20:
+                return f'{section_name} - Decendente'
             else:
                 return f'{section_name} - Unknown angle'
         return 'Unknown'
