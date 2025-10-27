@@ -216,8 +216,8 @@ Measures the angular orientation of the nasal tip relative to a perpendicular re
 
 **Classifications:**
 - **punta de nariz hacia arriba** (upturned nose): angle ≥ 26 degrees
-- **punta de nariz promedio** (average nose): 12 ≤ angle < 26 degrees
-- **punta hacia abajo** (downturned nose): angle < 12 degrees
+- **punta de nariz promedio** (average nose): 4 ≤ angle < 26 degrees
+- **punta hacia abajo** (downturned nose): angle < 4 degrees
 
 #### 2.3 Nasal Dorsum Slope (Points 19 to 17)
 Calculates the slope of the nasal dorsum line for angular assessment.
@@ -429,11 +429,11 @@ Measures the angle of the inferior ear attachment relative to a perpendicular re
 2. Create measurement vector: `vector_18_3 = [point_3[x] - point_18[x], point_3[y] - point_18[y]]`
 3. Apply same atan2 calculation for angle determination
 4. Convert to 0-360 degree system
-5. Classification uses threshold at 180 degrees
+5. Classification uses threshold wrapping around 0°/360° boundary
 
 **Classifications:**
-- **implantacion baja** (low implantation): 180 ≤ angle ≤ 360 degrees (ear lobe hangs below reference line)
-- **implantacion estandard** (standard implantation): angle < 180 degrees
+- **implantacion baja** (low implantation): angle ≥ 170 degrees OR angle ≤ 10 degrees (ear lobe hangs below reference line, wraps around circle)
+- **implantacion estandard** (standard implantation): 10 < angle < 170 degrees
 
 ##### 5.4.3 Ear Implantation Vector Intersection (Vectors 24-18 and 1-3)
 Measures the overall angle between the facial reference line and the ear implantation axis.
@@ -626,12 +626,12 @@ This section provides a quick reference table of all measurements, their point d
 
 | Measurement | Points Used | Reference Vector | Angle Range | Thresholds | Classifications |
 |------------|-------------|------------------|-------------|------------|-----------------|
-| **Nasal Tip Angle** | 18-17 | 24-18 (perpendicular) | -90° to +90° | ≥ 26°<br>12° to 26°<br>< 12° | punta de nariz hacia arriba<br>punta de nariz promedio<br>punta hacia abajo |
+| **Nasal Tip Angle** | 18-17 | 24-18 (perpendicular) | -90° to +90° | ≥ 26°<br>4° to 26°<br>< 4° | punta de nariz hacia arriba<br>punta de nariz promedio<br>punta hacia abajo |
 | **Nasal Dorsum Slope** | 19-17 | N/A (slope calculation) | N/A | N/A | Provides slope angle for nasal bridge assessment |
 | **Forehead Angle** | 24-33 | 24-18 | 0° to 90° | > 15°<br>11° to 15°<br>< 11° | frente inclinada hacia atras<br>frente neutra<br>frente vertical |
 | **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4°<br>-4° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
 | **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | 10° to 170°<br>> 170° or < 10° | implantacion alta<br>implantacion estandard |
-| **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | 180° to 360°<br>< 180° | implantacion baja<br>implantacion estandard |
+| **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | ≥ 170° or ≤ 10°<br>10° < angle < 170° | implantacion baja<br>implantacion estandard |
 | **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 90° | < 20°<br>≥ 20° | normal mandible angle<br>forward mandible angle |
 | **Ear Implantation Intersection** | 1-3 vs 24-18 | 24-18 | 0° to 90° | < 60°<br>60° to 120°<br>> 120° | acute ear implantation<br>normal ear implantation<br>obtuse ear implantation |
 | **Eye Opening Angle** | 39-37 vs 38-37 | N/A | 0° to 90° | N/A | Supplementary angle for eye shape assessment |

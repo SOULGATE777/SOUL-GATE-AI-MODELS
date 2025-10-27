@@ -545,9 +545,9 @@ class ProfileAnthropometricPipeline:
             # Classify nose tip
             if angle_degrees >= 26:
                 nose_tip_label = "punta de nariz hacia arriba"
-            elif 12 <= angle_degrees < 26:
+            elif 4 <= angle_degrees < 26:
                 nose_tip_label = "punta de nariz promedio"
-            else:  # < 12
+            else:  # < 4
                 nose_tip_label = "punta hacia abajo"
             
             measurements['nose_tip_classification'] = nose_tip_label
@@ -826,8 +826,8 @@ class ProfileAnthropometricPipeline:
         else:
             classification_superior = "implantacion estandard"
 
-        # Inferior: baja if >= 180 and <= 360, estandard if < 180
-        if angle_degrees_inferior >= 180 and angle_degrees_inferior <= 360:
+        # Inferior: baja if >= 170 or <= 10 (wrapping around 0°/360°), estandard otherwise
+        if angle_degrees_inferior >= 170 or angle_degrees_inferior <= 10:
             classification_inferior = "implantacion baja"
         else:
             classification_inferior = "implantacion estandard"
