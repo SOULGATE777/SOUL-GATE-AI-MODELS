@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import dlib
 import os
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,6 +15,16 @@ from sklearn.preprocessing import LabelEncoder
 import torchvision.transforms as transforms
 from typing import Dict, List, Tuple, Optional, Any
 import timm  # For EfficientNet
+
+# Import centralized threshold validation from common module
+# This ensures consistent threshold application per Umbrales_Rasgos.txt
+try:
+    from common import ThresholdValidator, ModuleType
+    THRESHOLD_VALIDATOR_AVAILABLE = True
+except ImportError:
+    # Fallback if common module not available (development mode)
+    THRESHOLD_VALIDATOR_AVAILABLE = False
+    print("Warning: common.ThresholdValidator not available, using fallback thresholds")
 
 class FasterRCNNDetector:
     """Faster R-CNN detector for FRENTE and rostro_menton regions"""
@@ -247,6 +258,15 @@ class EspejoAnalyzer:
         self.binary_encoder = None
         self.frente_encoder = None
         self.rostro_encoder = None
+        
+        # Initialize centralized threshold validator
+        # Uses thresholds from common/threshold_config.py (Single Source of Truth)
+        if THRESHOLD_VALIDATOR_AVAILABLE:
+            self.threshold_validator = ThresholdValidator()
+            print("✓ ThresholdValidator initialized from common module")
+        else:
+            self.threshold_validator = None
+            print("⚠ ThresholdValidator not available, using fallback thresholds")
         
         # Load models
         self._load_models()
@@ -626,107 +646,123 @@ class EspejoAnalyzer:
         return transform(square_image)
     
     def _apply_frente_decision_tree(self, predictions, probabilities, face_proportion):
-        """Apply decision tree rules for FRENTE region"""
+        """Apply decision tree rules for FRENTE region
+        
+        Thresholds from common/threshold_config.py (Single Source of Truth):
+        - General threshold: >18% to be considered valid
+        - Reference: Umbrales_Rasgos.txt line 55: "toma todo diagnostico mayor del 18%"
+        """
         applied_rules = []
         pred_dict = {pred: prob for pred, prob in zip(predictions, probabilities)}
         
-        # Apply exclusion rules
-        excluded_preds = []
+        # Use centralized ThresholdValidator if available
+        if self.threshold_validator is not None:
+            try:
+                valid_preds, validator_rules = self.threshold_validator.validate_predictions(
+                    ModuleType.ESPEJO_FRENTE,
+                    pred_dict
+                )
+                applied_rules.extend(validator_rules)
+                
+                if not valid_preds:
+                    applied_rules.append("All predictions below threshold, returning highest confidence")
+                    return predictions[0], applied_rules
+                
+                # Select highest confidence from validated predictions
+                top_valid = max(valid_preds.items(), key=lambda x: x[1])
+                top_pred, top_prob = top_valid
+                
+                applied_rules.append(f"Returning highest confidence accepted prediction: {top_pred}")
+                return top_pred, applied_rules
+                
+            except Exception as e:
+                applied_rules.append(f"ThresholdValidator error: {e}, using fallback")
         
-        # Always exclude mercurio_triangulo
-        if 'mercurio_triangulo' in pred_dict:
-            excluded_preds.append('mercurio_triangulo')
-            applied_rules.append("mercurio_triangulo always excluded")
+        # Fallback: Use hardcoded thresholds (aligned with Umbrales_Rasgos.txt)
+        GENERAL_THRESHOLD = 0.18  # Umbrales_Rasgos.txt line 55
         
-        # Confidence-based exclusions
-        exclusion_rules = {
-            'solar_lunar_combined': 0.19,
-            'neptuno_combined': 0.20,
-            'jupiter_aplio_base_ancha': 0.20,
-            'venus_corazon_o_trapezoide_angosto': 0.50
-        }
+        accepted_preds = {}
+        for pred, prob in pred_dict.items():
+            if prob >= GENERAL_THRESHOLD:
+                accepted_preds[pred] = prob
+                applied_rules.append(f"Accepted {pred} (confidence {prob:.1%} >= {GENERAL_THRESHOLD:.1%})")
+            else:
+                applied_rules.append(f"Rejected {pred} (confidence {prob:.1%} < {GENERAL_THRESHOLD:.1%})")
         
-        for pred, threshold in exclusion_rules.items():
-            if pred in pred_dict and pred_dict[pred] < threshold:
-                excluded_preds.append(pred)
-                applied_rules.append(f"Excluded {pred} (confidence {pred_dict[pred]:.1%} < {threshold:.1%})")
-        
-        # Apply proportion-based rules
-        if 'neptuno_combined' in pred_dict and 'neptuno_combined' not in excluded_preds:
-            if face_proportion < 0.25:
-                excluded_preds.append('neptuno_combined')
-                applied_rules.append(f"neptuno + proportion {face_proportion:.3f} < 0.25 → excluded")
-            elif face_proportion <= 0.4:
-                excluded_preds.append('neptuno_combined')
-                applied_rules.append(f"neptuno + proportion {face_proportion:.3f} ≤ 0.4 → excluded")
-        
-        # Return highest confidence remaining prediction
-        remaining_preds = {pred: prob for pred, prob in pred_dict.items() if pred not in excluded_preds}
-        
-        if not remaining_preds:
-            applied_rules.append("All predictions excluded, returning highest confidence")
+        if not accepted_preds:
+            applied_rules.append("All predictions below threshold, returning highest confidence")
             return predictions[0], applied_rules
         
-        top_remaining = max(remaining_preds.items(), key=lambda x: x[1])
-        top_pred, top_prob = top_remaining
+        top_accepted = max(accepted_preds.items(), key=lambda x: x[1])
+        top_pred, top_prob = top_accepted
         
-        applied_rules.append(f"Returning highest confidence remaining prediction: {top_pred}")
+        applied_rules.append(f"Returning highest confidence accepted prediction: {top_pred}")
         return top_pred, applied_rules
     
     def _apply_rostro_menton_decision_tree(self, predictions, probabilities, face_proportion):
-        """Apply decision tree rules for rostro_menton region with updated calibration"""
+        """Apply decision tree rules for rostro_menton region
+        
+        Thresholds from common/threshold_config.py (Single Source of Truth):
+        - General threshold: >18% to be considered valid
+        - Exception: venus_corazon requires >40%
+        - Exception: pluton_hexagonal requires >7%
+        - Reference: Umbrales_Rasgos.txt lines 17, 22-23
+        """
         applied_rules = []
         pred_dict = {pred: prob for pred, prob in zip(predictions, probabilities)}
 
-        # Check for solo diagnosis rules first (high confidence = exclusive diagnosis)
-        solo_diagnosis_rules = {
-            'saturno_trapezoide_base_angosta': 0.60,
-            'venus_corazon': 0.65,
-            'luna_jupiter_combined': 0.10,
-            'mercurio_triangular': 0.35,
-            'pluton_hexagonal': 0.45,
-            'marte_tierra_rectangulo': 0.88,
-            'sol_neptuno_combined': 0.10
-        }
-
-        for pred, threshold in solo_diagnosis_rules.items():
-            if pred in pred_dict and pred_dict[pred] >= threshold:
-                applied_rules.append(f"Solo diagnosis: {pred} (confidence {pred_dict[pred]:.1%} ≥ {threshold:.1%})")
-
-                # Apply proportion-based splitting for solo diagnosis
-                final_diagnosis = self._apply_proportion_based_splitting(pred, face_proportion, applied_rules)
+        # Use centralized ThresholdValidator if available
+        if self.threshold_validator is not None:
+            try:
+                valid_preds, validator_rules = self.threshold_validator.validate_predictions(
+                    ModuleType.ESPEJO_ROSTRO,
+                    pred_dict
+                )
+                applied_rules.extend(validator_rules)
+                
+                if not valid_preds:
+                    applied_rules.append("All predictions below threshold, returning highest confidence")
+                    final_diagnosis = self._apply_proportion_based_splitting(predictions[0], face_proportion, applied_rules)
+                    return final_diagnosis, applied_rules
+                
+                # Select highest confidence from validated predictions
+                top_valid = max(valid_preds.items(), key=lambda x: x[1])
+                top_pred, top_prob = top_valid
+                
+                # Apply proportion-based splitting
+                final_diagnosis = self._apply_proportion_based_splitting(top_pred, face_proportion, applied_rules)
+                
+                applied_rules.append(f"Final diagnosis after decision tree: {final_diagnosis}")
                 return final_diagnosis, applied_rules
+                
+            except Exception as e:
+                applied_rules.append(f"ThresholdValidator error: {e}, using fallback")
 
-        # Apply exclusion rules (updated thresholds)
-        excluded_preds = []
-
-        exclusion_rules = {
-            'venus_corazon': 0.35,
-            'pluton_hexagonal': 0.15,
-            'luna_jupiter_combined': 0.03,
-            'saturno_trapezoide_base_angosta': 0.23,
-            'mercurio_triangular': 0.17,
-            'sol_neptuno_combined': 0.04,
-            'marte_tierra_rectangulo': 0.30
+        # Fallback: Use hardcoded thresholds (aligned with Umbrales_Rasgos.txt)
+        GENERAL_THRESHOLD = 0.18  # Umbrales_Rasgos.txt line 17
+        THRESHOLDS = {
+            'venus_corazon': 0.40,       # Umbrales_Rasgos.txt line 23: >40%
+            'pluton_hexagonal': 0.07,    # Umbrales_Rasgos.txt line 22: >7%
+            # All others use general threshold of 18%
         }
 
-        for pred, threshold in exclusion_rules.items():
-            if pred in pred_dict and pred_dict[pred] < threshold:
-                excluded_preds.append(pred)
-                applied_rules.append(f"Excluded {pred} (confidence {pred_dict[pred]:.1%} < {threshold:.1%})")
+        accepted_preds = {}
+        for pred, prob in pred_dict.items():
+            threshold = THRESHOLDS.get(pred, GENERAL_THRESHOLD)
+            if prob >= threshold:
+                accepted_preds[pred] = prob
+                applied_rules.append(f"Accepted {pred} (confidence {prob:.1%} >= {threshold:.1%})")
+            else:
+                applied_rules.append(f"Rejected {pred} (confidence {prob:.1%} < {threshold:.1%})")
 
-        # Get remaining predictions after exclusions
-        remaining_preds = {pred: prob for pred, prob in pred_dict.items() if pred not in excluded_preds}
-
-        if not remaining_preds:
-            applied_rules.append("All predictions excluded, returning highest confidence")
+        if not accepted_preds:
+            applied_rules.append("All predictions below threshold, returning highest confidence")
             final_diagnosis = self._apply_proportion_based_splitting(predictions[0], face_proportion, applied_rules)
             return final_diagnosis, applied_rules
 
-        # Apply inclusive criteria - if multiple diagnoses meet thresholds, use highest confidence
-        # But first check for proportion-based overrides
-        top_remaining = max(remaining_preds.items(), key=lambda x: x[1])
-        top_pred, top_prob = top_remaining
+        # Select highest confidence from accepted predictions
+        top_accepted = max(accepted_preds.items(), key=lambda x: x[1])
+        top_pred, top_prob = top_accepted
 
         # Apply proportion-based splitting
         final_diagnosis = self._apply_proportion_based_splitting(top_pred, face_proportion, applied_rules)

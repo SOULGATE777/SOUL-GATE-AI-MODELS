@@ -197,7 +197,11 @@ async def analyze_profile_morphological(
                     "top_tags": cls.get("top_tags", []),  # New format with top 2 tags
                     # For backward compatibility, provide primary tag info
                     "classified_tag": cls["top_tags"][0]["tag"] if cls.get("top_tags") else cls.get("tag", ""),
-                    "tag_confidence": cls["top_tags"][0]["confidence"] if cls.get("top_tags") else cls.get("tag_confidence", 0.0)
+                    "tag_confidence": cls["top_tags"][0]["confidence"] if cls.get("top_tags") else cls.get("tag_confidence", 0.0),
+                    # Threshold validation fields from common/threshold_config.py
+                    "passes_threshold": cls.get("passes_threshold", True),
+                    "threshold_applied": cls.get("threshold_applied"),
+                    "threshold_rule": cls.get("threshold_rule", "No threshold validation available")
                 } for cls in results["landmark_classifications"]
             ],
             "anthropometric_points": [

@@ -9,6 +9,7 @@ services:
     volumes:
       - ./results:/app/results
       - ./models:/app/models:ro
+      - ../../common:/app/common:ro
     environment:
       - CUDA_VISIBLE_DEVICES=0
       - PYTHONUNBUFFERED=1

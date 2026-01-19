@@ -9,6 +9,16 @@ import json
 from typing import List, Dict, Any, Tuple
 from PIL import Image as PILImage
 
+# Import centralized threshold validation from common module
+# This ensures consistent threshold application per Umbrales_Rasgos.txt
+try:
+    from common import ThresholdValidator, ModuleType
+    THRESHOLD_VALIDATOR_AVAILABLE = True
+except ImportError:
+    # Fallback if common module not available (development mode)
+    THRESHOLD_VALIDATOR_AVAILABLE = False
+    print("Warning: common.ThresholdValidator not available, using fallback thresholds")
+
 class FacialLandmarkClassifier(torch.nn.Module):
     """Shape classifier for facial landmarks (45 classes)"""
     def __init__(self, num_classes):
@@ -153,6 +163,15 @@ class FacialAnalysisPipeline:
             self.size_model = self._load_size_model(size_model_path)
             print(f"Eyebrow size model loaded for classes: {self.eyebrow_classes}")
 
+        # Initialize centralized threshold validator
+        # Uses thresholds from common/threshold_config.py (Single Source of Truth)
+        if THRESHOLD_VALIDATOR_AVAILABLE:
+            self.threshold_validator = ThresholdValidator()
+            print("✓ ThresholdValidator initialized from common module")
+        else:
+            self.threshold_validator = None
+            print("⚠ ThresholdValidator not available, thresholds not applied")
+
         # Define transforms
         self.detection_transform = transforms.Compose([
             transforms.ToTensor()
@@ -265,6 +284,58 @@ class FacialAnalysisPipeline:
         # If no specific mapping, return the prediction (for backward compatibility)
         predicted_idx = self.shape_tags.index(predicted_tag) if predicted_tag in self.shape_tags else 0
         return predicted_tag, probabilities[predicted_idx].item()
+
+    def _validate_diagnosis_threshold(self, landmark_class: str, tag_name: str, confidence: float) -> Dict[str, Any]:
+        """
+        Validate diagnosis against thresholds from common/threshold_config.py
+        
+        Thresholds are per Umbrales_Rasgos.txt document (lines 129-280).
+        The diagnosis key is constructed as: landmark_class + '_' + tag_name
+        Example: 'cj_d' + 'cv' = 'cj_d_cv' (ceja derecha curva, threshold 50%)
+        
+        Args:
+            landmark_class: The detected landmark (e.g., 'cj_d', 'oj_i', 'bc')
+            tag_name: The classification tag (e.g., 'cv', 'al', 'lunar')
+            confidence: The classification confidence (0.0 - 1.0)
+            
+        Returns:
+            Dict with 'passes', 'threshold', and 'rule' keys
+        """
+        # Construct the full diagnosis key
+        diagnosis_key = f"{landmark_class}_{tag_name}"
+        
+        # Use centralized ThresholdValidator if available
+        if self.threshold_validator is not None:
+            try:
+                # Get rules for FRONTAL_MORFOLOGICO module
+                from common.threshold_config import FRONTAL_MORFOLOGICO_RULES
+                
+                if diagnosis_key in FRONTAL_MORFOLOGICO_RULES:
+                    rule = FRONTAL_MORFOLOGICO_RULES[diagnosis_key]
+                    passes = confidence >= rule.threshold
+                    return {
+                        'passes': passes,
+                        'threshold': rule.threshold,
+                        'rule': f"{'Accepted' if passes else 'Rejected'} {diagnosis_key} ({confidence:.1%} {'≥' if passes else '<'} {rule.threshold:.1%})"
+                    }
+                else:
+                    # No specific threshold for this diagnosis
+                    # Per Umbrales_Rasgos.txt line 73: use 15-point difference rule
+                    return {
+                        'passes': True,  # No threshold = passes by default
+                        'threshold': None,
+                        'rule': f"No threshold defined for {diagnosis_key}, accepted by default"
+                    }
+                    
+            except Exception as e:
+                print(f"ThresholdValidator error for {diagnosis_key}: {e}")
+        
+        # Fallback: No threshold validation available
+        return {
+            'passes': True,
+            'threshold': None,
+            'rule': f"Threshold validation not available for {diagnosis_key}"
+        }
 
     def process_image(self, image_path_or_array, confidence_threshold=0.5, output_path=None, display=False) -> Tuple[List[Dict[str, Any]], np.ndarray]:
         """Process a single image and detect/classify facial landmarks with bbox confinement and eyebrow size"""
@@ -396,6 +467,14 @@ class FacialAnalysisPipeline:
                 if size_tag is not None:
                     result['size_tag'] = size_tag
                     result['size_confidence'] = float(size_confidence)
+
+                # Apply threshold validation from common/threshold_config.py
+                threshold_result = self._validate_diagnosis_threshold(
+                    landmark_class, tag_name, tag_confidence
+                )
+                result['passes_threshold'] = threshold_result['passes']
+                result['threshold_applied'] = threshold_result['threshold']
+                result['threshold_rule'] = threshold_result['rule']
 
                 results.append(result)
 

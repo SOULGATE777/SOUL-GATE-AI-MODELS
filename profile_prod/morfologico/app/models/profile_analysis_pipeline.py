@@ -11,8 +11,21 @@ from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 import logging
 from collections import defaultdict
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
+
+# Import centralized threshold validation from common module
+# This ensures consistent threshold application per Umbrales_Rasgos.txt
+try:
+    from common import ThresholdValidator, ModuleType
+    from common.threshold_config import PROFILE_MORFOLOGICO_RULES
+    THRESHOLD_VALIDATOR_AVAILABLE = True
+except ImportError:
+    # Fallback if common module not available (development mode)
+    THRESHOLD_VALIDATOR_AVAILABLE = False
+    PROFILE_MORFOLOGICO_RULES = {}
+    logger.warning("common.ThresholdValidator not available, using fallback thresholds")
 
 # Excluded classes (same across all models)
 EXCLUDED_CLASSES = ['cabello_tapando_frente', 'cabello_tapando_oreja', 'objeto']
@@ -68,6 +81,15 @@ class ProfileAnalysisPipeline:
         self.classifier_model = self._load_classifier_model(classifier_model_path)
         self.point_model = self._load_point_model(point_model_path)
         logger.info("All models loaded successfully!")
+        
+        # Initialize centralized threshold validator
+        # Uses thresholds from common/threshold_config.py (Single Source of Truth)
+        if THRESHOLD_VALIDATOR_AVAILABLE:
+            self.threshold_validator = ThresholdValidator()
+            logger.info("✓ ThresholdValidator initialized from common module")
+        else:
+            self.threshold_validator = None
+            logger.warning("⚠ ThresholdValidator not available, thresholds not applied")
     
     def _load_bbox_model(self, model_path):
         """Load the bounding box detection model (model 1)"""
@@ -300,6 +322,54 @@ class ProfileAnalysisPipeline:
         
         return detected_objects
     
+    def _validate_diagnosis_threshold(self, landmark_class: str, tag_name: str, confidence: float) -> Dict[str, Any]:
+        """
+        Validate diagnosis against thresholds from common/threshold_config.py
+        
+        Thresholds are per Umbrales_Rasgos.txt document (lines 293-373).
+        The diagnosis key is constructed as: landmark_class + '_' + tag_name
+        Example: 'lobulo_izquierdo' + 'pegado' = 'lobulo_izquierdo_pegado' (threshold 60%)
+        
+        Args:
+            landmark_class: The detected landmark (e.g., 'lobulo_izquierdo', 'submenton', 'frente')
+            tag_name: The classification tag (e.g., 'pegado', 'visible', 'f_rd_incl')
+            confidence: The classification confidence (0.0 - 1.0)
+            
+        Returns:
+            Dict with 'passes', 'threshold', and 'rule' keys
+        """
+        # Construct the full diagnosis key
+        diagnosis_key = f"{landmark_class}_{tag_name}"
+        
+        # Use centralized ThresholdValidator if available
+        if self.threshold_validator is not None and PROFILE_MORFOLOGICO_RULES:
+            try:
+                if diagnosis_key in PROFILE_MORFOLOGICO_RULES:
+                    rule = PROFILE_MORFOLOGICO_RULES[diagnosis_key]
+                    passes = confidence >= rule.threshold
+                    return {
+                        'passes': passes,
+                        'threshold': rule.threshold,
+                        'rule': f"{'Accepted' if passes else 'Rejected'} {diagnosis_key} ({confidence:.1%} {'≥' if passes else '<'} {rule.threshold:.1%})"
+                    }
+                else:
+                    # No specific threshold for this diagnosis
+                    return {
+                        'passes': True,  # No threshold = passes by default
+                        'threshold': None,
+                        'rule': f"No threshold defined for {diagnosis_key}, accepted by default"
+                    }
+                    
+            except Exception as e:
+                logger.error(f"ThresholdValidator error for {diagnosis_key}: {e}")
+        
+        # Fallback: No threshold validation available
+        return {
+            'passes': True,
+            'threshold': None,
+            'rule': f"Threshold validation not available for {diagnosis_key}"
+        }
+    
     def classify_landmarks(self, original_image, detected_objects, image_size=224):
         """Classify landmark tags using model 2 - returns top 2 predictions"""
         classifications = []
@@ -354,11 +424,19 @@ class ProfileAnalysisPipeline:
                             })
                     
                     if top_tags:  # Only add if we have valid tags
+                        # Apply threshold validation for top tag
+                        threshold_result = self._validate_diagnosis_threshold(
+                            obj['class'], top_tags[0]['tag'], top_tags[0]['confidence']
+                        )
+                        
                         classifications.append({
                             'bbox': bbox,
                             'original_class': obj['class'],
                             'top_tags': top_tags,  # Changed from single 'tag' to 'top_tags' list
-                            'bbox_confidence': obj['confidence']
+                            'bbox_confidence': obj['confidence'],
+                            'passes_threshold': threshold_result['passes'],
+                            'threshold_applied': threshold_result['threshold'],
+                            'threshold_rule': threshold_result['rule']
                         })
         
         return classifications

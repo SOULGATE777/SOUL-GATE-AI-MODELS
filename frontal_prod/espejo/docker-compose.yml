@@ -9,6 +9,7 @@ services:
     volumes:
       - ./models:/app/models:ro
       - ./results:/app/results
+      - ../../common:/app/common:ro
     environment:
       - CUDA_VISIBLE_DEVICES=0
       - PYTHONPATH=/app
