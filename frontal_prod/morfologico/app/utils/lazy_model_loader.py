@@ -8,7 +8,7 @@ en lugar de cargarlos todos en el startup de la aplicación.
 import time
 import gc
 import logging
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Dict, List
 from threading import Lock
 
 try:
@@ -138,7 +138,7 @@ class MultiModelLoader:
     """
 
     def __init__(self):
-        self._loaders: dict[str, LazyModelLoader] = {}
+        self._loaders: Dict[str, LazyModelLoader] = {}
         self._lock = Lock()
 
     def register_model(self, name: str, load_func: Callable[[], Any]) -> None:
@@ -203,7 +203,7 @@ class MultiModelLoader:
             for name, loader in self._loaders.items()
         }
 
-    def get_loaded_models(self) -> list[str]:
+    def get_loaded_models(self) -> List[str]:
         """Retorna lista de modelos actualmente cargados."""
         return [
             name for name, loader in self._loaders.items()

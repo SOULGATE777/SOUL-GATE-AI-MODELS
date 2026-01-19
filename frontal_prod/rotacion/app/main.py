@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,24 +118,26 @@ async def analyze_frontal_rotation(
     file: UploadFile = File(...),
     confidence_threshold: float = Form(0.5),
     include_visualization: bool = Form(True),
-    enhance_image: bool = Form(True),
-    pipeline: FrontalRotationPipeline = Depends(get_pipeline),
-    processor: ImageProcessor = Depends(get_image_processor),
-    visualizer: FrontalRotationVisualizer = Depends(get_visualizer)
+    enhance_image: bool = Form(True)
 ):
     """
     Complete frontal face rotation analysis to assess viability for anthropometric and morphological analysis
-    
+
     Args:
         file: Frontal face image file
         confidence_threshold: Minimum confidence threshold (0.0-1.0)
         include_visualization: Whether to generate visualization
         enhance_image: Whether to apply image enhancement
-        
+
     Returns:
         Complete rotation analysis results with viability assessment
     """
     try:
+        # Get models (lazy load if needed)
+        pipeline = get_pipeline()
+        processor = get_image_processor()
+        visualizer = get_visualizer()
+
         # Validate file
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
@@ -220,21 +222,23 @@ async def analyze_frontal_rotation(
 @app.post("/classify-rotation")
 async def classify_rotation(
     file: UploadFile = File(...),
-    confidence_threshold: float = Form(0.5),
-    pipeline: FrontalRotationPipeline = Depends(get_pipeline),
-    processor: ImageProcessor = Depends(get_image_processor)
+    confidence_threshold: float = Form(0.5)
 ):
     """
     Simple frontal rotation classification without full analysis
-    
+
     Args:
         file: Frontal face image file
         confidence_threshold: Minimum confidence threshold (0.0-1.0)
-        
+
     Returns:
         Simple rotation classification results
     """
     try:
+        # Get models (lazy load if needed)
+        pipeline = get_pipeline()
+        processor = get_image_processor()
+
         # Validate file
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
@@ -278,21 +282,23 @@ async def classify_rotation(
 @app.post("/assess-viability")
 async def assess_viability(
     file: UploadFile = File(...),
-    confidence_threshold: float = Form(0.5),
-    pipeline: FrontalRotationPipeline = Depends(get_pipeline),
-    processor: ImageProcessor = Depends(get_image_processor)
+    confidence_threshold: float = Form(0.5)
 ):
     """
     Assess frontal face viability for anthropometric and morphological analysis
-    
+
     Args:
         file: Frontal face image file
         confidence_threshold: Minimum confidence threshold (0.0-1.0)
-        
+
     Returns:
         Viability assessment results
     """
     try:
+        # Get models (lazy load if needed)
+        pipeline = get_pipeline()
+        processor = get_image_processor()
+
         # Validate file
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
@@ -334,19 +340,21 @@ async def assess_viability(
 
 @app.post("/assess-image-quality")
 async def assess_image_quality(
-    file: UploadFile = File(...),
-    processor: ImageProcessor = Depends(get_image_processor)
+    file: UploadFile = File(...)
 ):
     """
     Assess basic image quality metrics without rotation analysis
-    
+
     Args:
         file: Frontal face image file
-        
+
     Returns:
         Image quality assessment results
     """
     try:
+        # Get models (lazy load if needed)
+        processor = get_image_processor()
+
         # Validate file
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
@@ -388,8 +396,9 @@ async def assess_image_quality(
         raise HTTPException(status_code=500, detail=f"Assessment failed: {str(e)}")
 
 @app.get("/model-info")
-async def get_model_info(pipeline: FrontalRotationPipeline = Depends(get_pipeline)):
+async def get_model_info():
     """Get information about the loaded frontal rotation model"""
+    pipeline = get_pipeline()
     return {
         "model_classes": pipeline.class_names,
         "num_classes": pipeline.num_classes,
@@ -412,21 +421,23 @@ async def get_visualization(filename: str):
 @app.post("/batch-analyze")
 async def batch_analyze_rotation(
     files: list[UploadFile] = File(...),
-    confidence_threshold: float = Form(0.5),
-    pipeline: FrontalRotationPipeline = Depends(get_pipeline),
-    processor: ImageProcessor = Depends(get_image_processor)
+    confidence_threshold: float = Form(0.5)
 ):
     """
     Batch process multiple frontal face images for rotation analysis
-    
+
     Args:
         files: List of frontal face image files
         confidence_threshold: Minimum confidence threshold (0.0-1.0)
-        
+
     Returns:
         Batch analysis results
     """
     try:
+        # Get models (lazy load if needed)
+        pipeline = get_pipeline()
+        processor = get_image_processor()
+
         if len(files) > 10:
             raise HTTPException(status_code=400, detail="Maximum 10 files allowed per batch")
         
