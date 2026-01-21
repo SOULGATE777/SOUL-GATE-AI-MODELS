@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 import cv2
@@ -17,6 +18,15 @@ app = FastAPI(
     title="Espejo Analysis API",
     description="Advanced mirror face analysis with anthropometric measurements, decision tree classification, and hybrid splitting for facial diagnosis",
     version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Initialize lazy model loader

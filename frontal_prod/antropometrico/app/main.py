@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 import cv2
@@ -18,6 +19,15 @@ app = FastAPI(
     title="Antropometrico Analysis API",
     description="Advanced anthropometric facial analysis with custom point detection and comprehensive features",
     version="2.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Initialize lazy model loader
