@@ -164,9 +164,10 @@ class AgeEstimationPipeline:
                     "height": int(face_height),
                     "area": int(face_area)
                 },
-                "image_coverage_ratio": round(coverage_ratio, 4),
-                "detection_confidence": round(quality_score, 4),
-                "age_confidence": round(age_confidence, 4),
+                # Convertir explícitamente a float nativo de Python para evitar errores de serialización JSON
+                "image_coverage_ratio": float(round(coverage_ratio, 4)),
+                "detection_confidence": float(round(quality_score, 4)),
+                "age_confidence": float(round(age_confidence, 4)),
                 "orientation": orientation,
                 "quality_assessment": {
                     "detection_quality": "excellent" if quality_score > 0.9 else 
@@ -225,13 +226,14 @@ class AgeEstimationPipeline:
             detection_score = getattr(face, 'det_score', 0.8)
             age_confidence = min(detection_score * 0.9, 0.95)  # Conservative confidence
             
+            # Convertir explícitamente a tipos nativos de Python para serialización JSON
             return {
-                "estimated_age": round(estimated_age, 1),
+                "estimated_age": float(round(estimated_age, 1)),
                 "age_category": age_category,
-                "confidence": round(age_confidence, 3),
+                "confidence": float(round(age_confidence, 3)),
                 "age_range": {
-                    "min": max(1, round(estimated_age - 3)),
-                    "max": min(100, round(estimated_age + 3))
+                    "min": int(max(1, round(estimated_age - 3))),
+                    "max": int(min(100, round(estimated_age + 3)))
                 },
                 "reliability": "high" if age_confidence > 0.8 else 
                              "medium" if age_confidence > 0.6 else "low"
@@ -358,7 +360,7 @@ class AgeEstimationPipeline:
                     "analysis_id": analysis_id,
                     "success": False,
                     "error": validation_msg,
-                    "processing_time": time.time() - start_time
+                    "processing_time": float(round(time.time() - start_time, 3))
                 }
             
             # Detect faces
@@ -368,7 +370,7 @@ class AgeEstimationPipeline:
                     "analysis_id": analysis_id,
                     "success": False,
                     "error": detection_msg,
-                    "processing_time": time.time() - start_time
+                    "processing_time": float(round(time.time() - start_time, 3))
                 }
             
             # Use the first (largest) face
@@ -393,12 +395,12 @@ class AgeEstimationPipeline:
             results = {
                 "analysis_id": analysis_id,
                 "success": True,
-                "processing_time": round(processing_time, 3),
+                "processing_time": float(round(processing_time, 3)),
                 "image_info": {
                     "path": image_path,
                     "dimensions": {
-                        "width": image.shape[1],
-                        "height": image.shape[0]
+                        "width": int(image.shape[1]),
+                        "height": int(image.shape[0])
                     }
                 },
                 "face_detection": {
@@ -434,7 +436,7 @@ class AgeEstimationPipeline:
                 "analysis_id": analysis_id,
                 "success": False,
                 "error": f"Pipeline error: {str(e)}",
-                "processing_time": time.time() - start_time
+                "processing_time": float(round(time.time() - start_time, 3))
             }
     
     async def batch_estimate_ages(self, image_paths: List[str], 
@@ -470,9 +472,9 @@ class AgeEstimationPipeline:
             "batch_id": batch_id,
             "total_images": len(image_paths),
             "successful_analyses": successful_analyses,
-            "success_rate": round(successful_analyses / len(image_paths), 3),
-            "total_processing_time": round(time.time() - start_time, 3),
-            "average_processing_time": round((time.time() - start_time) / len(image_paths), 3),
+            "success_rate": float(round(successful_analyses / len(image_paths), 3)),
+            "total_processing_time": float(round(time.time() - start_time, 3)),
+            "average_processing_time": float(round((time.time() - start_time) / len(image_paths), 3)),
             "individual_results": results,
             "batch_summary": {
                 "ages_estimated": [r["age_estimation"]["estimated_age"] 
@@ -485,7 +487,7 @@ class AgeEstimationPipeline:
         # Calculate batch statistics
         if successful_analyses > 0:
             ages = batch_results["batch_summary"]["ages_estimated"]
-            batch_results["batch_summary"]["average_age"] = round(sum(ages) / len(ages), 1)
+            batch_results["batch_summary"]["average_age"] = float(round(sum(ages) / len(ages), 1))
             
             # Count age categories
             categories = [r["age_estimation"]["age_category"] 
