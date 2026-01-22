@@ -901,11 +901,11 @@ class AnthropometricAnalyzer:
     def _classify_mouth_length(self, proportion):
         """Classify mouth length based on proportion to head width (as percentage)"""
         percentage = proportion * 100
-        if percentage > 33.5:
+        if percentage > 37:
             return 'boca ancha'
-        elif 32 <= percentage <= 33.5:
+        elif 34 <= percentage <= 37:
             return 'boca promedio'
-        else:  # percentage < 32
+        else:  # percentage < 34
             return 'boca angosta'
 
     def _integral_mouth_diagnosis(self, mouth_to_eye_classification, mouth_length_classification):
@@ -958,9 +958,9 @@ class AnthropometricAnalyzer:
         """Classify inner face size based on inner-to-outer face proportion percentage"""
         if percentage < 38:
             return 'cara interna pequeña'
-        elif 38 <= percentage <= 44.5:
+        elif 38 <= percentage <= 42.3:
             return 'cara interna promedio'
-        else:  # percentage > 44.5
+        else:  # percentage > 43.3
             return 'cara interna grande'
 
     def _classify_eyebrow_eyelid_position(self, proportion):
@@ -1036,9 +1036,9 @@ class AnthropometricAnalyzer:
             else:
                 return 'tercio inferior standard'
         elif section_name == "relacion boca - pupilas":
-            if proportion > 0.685:
+            if proportion > 0.76:
                 return 'boca grande en relación a las pupilas'
-            elif proportion < 0.65:
+            elif proportion < 0.73:
                 return 'boca pequeña en relación a las pupilas'
             else:
                 return 'relación boca-pupilas estándar'
