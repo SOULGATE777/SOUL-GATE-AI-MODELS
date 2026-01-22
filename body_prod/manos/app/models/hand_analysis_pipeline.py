@@ -153,27 +153,27 @@ class HandAnalysisPipeline:
         self.palm_color_ranges = {
             'rosa/sanguineo-linfatico oscuro': {
                 'r_range': (185, 255),
-                'g_range': (130, 185),
-                'b_range': (130, 185),
-                'condition': 'R mayor a G por mas de 20%'
+                'g_range': (130, 210),
+                'b_range': (130, 200),
+                'condition': 'R mayor a G por mas de 15%'
             },
             'rojo/sanguineo': {
                 'r_range': (185, 255),
-                'g_range': (0, 145),
-                'b_range': (0, 145),
-                'condition': 'R mayor que G y B por mas de 20%'
+                'g_range': (0, 130),
+                'b_range': (0, 130),
+                'condition': 'R mayor que G y B por mas de 30%'
             },
             'amarillo/nervioso': {
                 'r_range': (0, 245),
                 'g_range': (80, 255),
                 'b_range': (0, 160),
-                'condition': 'R y G dentro del 35% de cada uno, B mas del 20% menor que el mayor de los 2 de R o G'
+                'condition': 'R y G dentro del 32% de cada uno, B mas del 30% menor que el mayor de los 2 de R o G, G mas del 30% mayor que B'
             },
             'blanco/linfatico': {
                 'r_range': (180, 255),
                 'g_range': (150, 255),
                 'b_range': (105, 255),
-                'condition': 'mínimo 2 de los 3 arriba de 150'
+                'condition': 'mínimo 2 de los 3 arriba de 170'
             },
             'bilioso/cafe_o_oscuro': {
                 'r_range': (0, 210),
@@ -260,34 +260,55 @@ class HandAnalysisPipeline:
             condition_met = False
             
             if color_type == 'rosa/sanguineo-linfatico oscuro':
-                # R mayor a G por mas de 20%
+                # R mayor a G por mas de 15%
                 if r_in_range and g_in_range and b_in_range:
-                    condition_met = r > g * 1.2
+                    # Obtenemos el valor mayor entre r y g
+                    max_value = max(r, g)
+                    # Para que entre en esta condicion r tiene que ser el mayor de los 3 colores
+                    if max_value == r:
+                        # Diferencia entre los 2 colores
+                        difference = abs(r - g)
+                        # La diferencia tiene que ser mayor al 15% del valor mayor entre r y g                    
+                        condition_met = difference > max_value * 0.15
                     
             elif color_type == 'rojo/sanguineo':
-                # R mayor que G y B por mas de 20%
+                # R mayor que G y B por mas de 30%
                 if r_in_range and g_in_range and b_in_range:
-                    condition_met = r > g * 1.2 and r > b * 1.2
+                    # Obtenemos el valor mayor entre r, g y b
+                    max_value = max(r, g, b)
+                    # Para que entre en esta condicion r tiene que ser el mayor de los 3 colores
+                    if max_value == r:
+                        # Diferencia entre los r y g
+                        rg_difference = abs(r - g)
+                        # Diferencia entre los r y b
+                        rb_difference = abs(r - b)
+                        # La diferencia tiene que ser mayor al 30% del r
+                        max_difference = max_value * 0.3
+                        condition_met = rg_difference > max_difference and rb_difference > max_difference
+
                     
             elif color_type == 'amarillo/nervioso':
-                # R y G dentro del 35% de cada uno, B mas del 20% menor que el mayor de los 2 de R o G
+                # R y G dentro del 32% de cada uno, 
+                # B mas del 30% menor que el mayor de los 2 de R o G, 
+                # G mas del 30% mayor que B
                 if r_in_range and g_in_range and b_in_range:
-                    rg_close = abs(r - g) <= max(r, g) * 0.35
-                    max_rg = max(r, g)
-                    b_lower = b < max_rg * 0.8
-                    condition_met = rg_close and b_lower
+                    rg_max = max(r, g) # El mayor de los 2 de R o G
+                    rg_close = abs(r - g) <= max(r, g) * 0.32 #R y G dentro del 32% de cada uno, 
+                    b_lower = b < rg_max * 0.70 # B menor que rg_max (R o G) menos 30%
+                    g_bigger = g * 0.7 > b # G menos 30% tiene que ser mayor que B
+                    condition_met = rg_close and b_lower and g_bigger
                     
             elif color_type == 'blanco/linfatico':
-                # mínimo 2 de los 3 arriba de 150
+                # mínimo 2 de los 3 arriba de 170
                 if r_in_range and g_in_range and b_in_range:
-                    high_values = sum([r > 150, g > 150, b > 150])
-                    condition_met = high_values >= 2
+                    high_values = sum([r > 170, g > 170, b > 170])
+                    condition_met = high_values >= 2 # Considera 2 y 3
                     
             elif color_type == 'bilioso/cafe_o_oscuro':
                 # mínimo 2 de los 3 valores menor de 175
                 if r_in_range and g_in_range and b_in_range:
                     low_values = sum([r < 175, g < 175, b < 175])
-                    condition_met = low_values >= 2
+                    condition_met = low_values >= 2 # Considera 2 y 3
             
             if condition_met:
                 matches.append(color_type)
