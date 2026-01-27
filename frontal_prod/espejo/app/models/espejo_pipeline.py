@@ -651,6 +651,9 @@ class EspejoAnalyzer:
         Thresholds from common/threshold_config.py (Single Source of Truth):
         - General threshold: >18% to be considered valid
         - Reference: Umbrales_Rasgos.txt line 55: "toma todo diagnostico mayor del 18%"
+        
+        Returns:
+            String with all accepted predictions separated by commas (highest confidence first), and applied rules
         """
         applied_rules = []
         pred_dict = {pred: prob for pred, prob in zip(predictions, probabilities)}
@@ -668,12 +671,13 @@ class EspejoAnalyzer:
                     applied_rules.append("All predictions below threshold, returning highest confidence")
                     return predictions[0], applied_rules
                 
-                # Select highest confidence from validated predictions
-                top_valid = max(valid_preds.items(), key=lambda x: x[1])
-                top_pred, top_prob = top_valid
+                # Return ALL validated predictions sorted by confidence (highest first) as comma-separated string
+                sorted_valid_preds = sorted(valid_preds.items(), key=lambda x: x[1], reverse=True)
+                accepted_diagnoses = [pred for pred, prob in sorted_valid_preds]
+                result_string = ', '.join(accepted_diagnoses)
                 
-                applied_rules.append(f"Returning highest confidence accepted prediction: {top_pred}")
-                return top_pred, applied_rules
+                applied_rules.append(f"Returning all {len(accepted_diagnoses)} accepted predictions: {result_string}")
+                return result_string, applied_rules
                 
             except Exception as e:
                 applied_rules.append(f"ThresholdValidator error: {e}, using fallback")
@@ -693,11 +697,13 @@ class EspejoAnalyzer:
             applied_rules.append("All predictions below threshold, returning highest confidence")
             return predictions[0], applied_rules
         
-        top_accepted = max(accepted_preds.items(), key=lambda x: x[1])
-        top_pred, top_prob = top_accepted
+        # Sort accepted predictions by confidence (highest first) and join with commas
+        sorted_accepted = sorted(accepted_preds.items(), key=lambda x: x[1], reverse=True)
+        accepted_diagnoses = [pred for pred, prob in sorted_accepted]
+        result_string = ', '.join(accepted_diagnoses)
         
-        applied_rules.append(f"Returning highest confidence accepted prediction: {top_pred}")
-        return top_pred, applied_rules
+        applied_rules.append(f"Returning all {len(accepted_diagnoses)} accepted predictions: {result_string}")
+        return result_string, applied_rules
     
     def _apply_rostro_menton_decision_tree(self, predictions, probabilities, face_proportion):
         """Apply decision tree rules for rostro_menton region
@@ -707,6 +713,9 @@ class EspejoAnalyzer:
         - Exception: venus_corazon requires >40%
         - Exception: pluton_hexagonal requires >7%
         - Reference: Umbrales_Rasgos.txt lines 17, 22-23
+        
+        Returns:
+            String with all accepted predictions (after proportion splitting) separated by commas, and applied rules
         """
         applied_rules = []
         pred_dict = {pred: prob for pred, prob in zip(predictions, probabilities)}
@@ -725,15 +734,17 @@ class EspejoAnalyzer:
                     final_diagnosis = self._apply_proportion_based_splitting(predictions[0], face_proportion, applied_rules)
                     return final_diagnosis, applied_rules
                 
-                # Select highest confidence from validated predictions
-                top_valid = max(valid_preds.items(), key=lambda x: x[1])
-                top_pred, top_prob = top_valid
+                # Apply proportion-based splitting to ALL validated predictions
+                sorted_valid_preds = sorted(valid_preds.items(), key=lambda x: x[1], reverse=True)
+                final_diagnoses = []
                 
-                # Apply proportion-based splitting
-                final_diagnosis = self._apply_proportion_based_splitting(top_pred, face_proportion, applied_rules)
+                for pred, prob in sorted_valid_preds:
+                    split_diagnosis = self._apply_proportion_based_splitting(pred, face_proportion, applied_rules)
+                    final_diagnoses.append(split_diagnosis)
                 
-                applied_rules.append(f"Final diagnosis after decision tree: {final_diagnosis}")
-                return final_diagnosis, applied_rules
+                result_string = ', '.join(final_diagnoses)
+                applied_rules.append(f"Final diagnoses after decision tree: {result_string}")
+                return result_string, applied_rules
                 
             except Exception as e:
                 applied_rules.append(f"ThresholdValidator error: {e}, using fallback")
@@ -760,15 +771,17 @@ class EspejoAnalyzer:
             final_diagnosis = self._apply_proportion_based_splitting(predictions[0], face_proportion, applied_rules)
             return final_diagnosis, applied_rules
 
-        # Select highest confidence from accepted predictions
-        top_accepted = max(accepted_preds.items(), key=lambda x: x[1])
-        top_pred, top_prob = top_accepted
+        # Apply proportion-based splitting to ALL accepted predictions
+        sorted_accepted = sorted(accepted_preds.items(), key=lambda x: x[1], reverse=True)
+        final_diagnoses = []
+        
+        for pred, prob in sorted_accepted:
+            split_diagnosis = self._apply_proportion_based_splitting(pred, face_proportion, applied_rules)
+            final_diagnoses.append(split_diagnosis)
 
-        # Apply proportion-based splitting
-        final_diagnosis = self._apply_proportion_based_splitting(top_pred, face_proportion, applied_rules)
-
-        applied_rules.append(f"Final diagnosis after decision tree: {final_diagnosis}")
-        return final_diagnosis, applied_rules
+        result_string = ', '.join(final_diagnoses)
+        applied_rules.append(f"Final diagnoses after decision tree: {result_string}")
+        return result_string, applied_rules
 
     def _apply_proportion_based_splitting(self, prediction, face_proportion, applied_rules):
         """Apply proportion-based diagnosis splitting based on face height/width ratio"""
@@ -843,41 +856,63 @@ class EspejoAnalyzer:
         applied_rules.append(f"No proportion rule for {prediction}, keeping original diagnosis")
         return prediction
     
-    def _apply_hybrid_class_splitting(self, final_diagnosis, face_proportion, forehead_proportion, region_type):
-        """Apply hybrid class splitting"""
+    def _apply_hybrid_class_splitting(self, final_diagnoses, face_proportion, forehead_proportion, region_type):
+        """Apply hybrid class splitting to diagnoses (can be comma-separated string or single diagnosis)
+        
+        Args:
+            final_diagnoses: String with comma-separated diagnoses or single diagnosis string
+            face_proportion: Face height/width proportion
+            forehead_proportion: Forehead proportion
+            region_type: 'FRENTE' or 'rostro_menton'
+        
+        Returns:
+            String with comma-separated split diagnoses and applied rules
+        """
         applied_rules = []
         
+        # Split comma-separated string into list if needed
+        if isinstance(final_diagnoses, str):
+            if ',' in final_diagnoses:
+                diagnosis_list = [d.strip() for d in final_diagnoses.split(',')]
+            else:
+                diagnosis_list = [final_diagnoses]
+        else:
+            diagnosis_list = [str(final_diagnoses)]
+        
+        split_diagnoses = []
+        
         if region_type == 'FRENTE':
-            # Check for solar_lunar_combined specifically
-            if final_diagnosis.lower() == 'solar_lunar_combined':
-                if forehead_proportion is not None:
-                    if forehead_proportion < 0.35:
-                        applied_rules.append(f"solar_lunar_combined + forehead proportion {forehead_proportion:.3f} < 0.35 → luna")
-                        return 'luna', applied_rules
+            # Apply splitting to each diagnosis
+            for final_diagnosis in diagnosis_list:
+                # Check for solar_lunar_combined specifically
+                if final_diagnosis.lower() == 'solar_lunar_combined':
+                    if forehead_proportion is not None:
+                        if forehead_proportion < 0.35:
+                            applied_rules.append(f"solar_lunar_combined + forehead proportion {forehead_proportion:.3f} < 0.35 → luna")
+                            split_diagnoses.append('luna')
+                        else:
+                            applied_rules.append(f"solar_lunar_combined + forehead proportion {forehead_proportion:.3f} ≥ 0.35 → solar")
+                            split_diagnoses.append('solar')
                     else:
-                        applied_rules.append(f"solar_lunar_combined + forehead proportion {forehead_proportion:.3f} ≥ 0.35 → solar")
-                        return 'solar', applied_rules
+                        applied_rules.append("solar_lunar_combined detected but forehead proportion N/A → no splitting")
+                        split_diagnoses.append(final_diagnosis)
                 else:
-                    applied_rules.append("solar_lunar_combined detected but forehead proportion N/A → no splitting")
-                    return final_diagnosis, applied_rules
+                    split_diagnoses.append(final_diagnosis)
             
-            applied_rules.append("No hybrid splitting needed for FRENTE")
-            return final_diagnosis, applied_rules
+            if not any('solar_lunar_combined' in str(d).lower() for d in diagnosis_list):
+                applied_rules.append("No hybrid splitting needed for FRENTE")
+            
+            # Return comma-separated string
+            return ', '.join(split_diagnoses), applied_rules
         
         elif region_type == 'rostro_menton':
-            # Use the new proportion-based splitting function for all rostro_menton diagnoses
-            # This handles all the complex proportion rules including the new calibrations
-            split_diagnosis = self._apply_proportion_based_splitting(final_diagnosis, face_proportion, applied_rules)
-
-            # If the diagnosis changed, it means splitting was applied
-            if split_diagnosis != final_diagnosis:
-                applied_rules.append(f"Hybrid splitting applied: {final_diagnosis} → {split_diagnosis}")
-                return split_diagnosis, applied_rules
-
-            applied_rules.append("No hybrid splitting needed for rostro_menton")
-            return final_diagnosis, applied_rules
+            # For rostro_menton, proportion splitting was already applied in decision tree
+            # Just return the diagnoses as-is
+            applied_rules.append("Proportion-based splitting already applied in decision tree")
+            applied_rules.append("No additional hybrid splitting needed for rostro_menton")
+            return final_diagnoses, applied_rules
         
-        return final_diagnosis, applied_rules
+        return final_diagnoses, applied_rules
     
     def _classify_mirror_images(self, right_mirrored_face, left_mirrored_face, right_face_prop, left_face_prop, right_forehead_prop, left_forehead_prop):
         """Classify mirror images with decision tree and hybrid splitting"""
