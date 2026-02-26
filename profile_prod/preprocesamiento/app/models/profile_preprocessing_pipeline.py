@@ -325,7 +325,10 @@ class ProfilePreprocessingPipeline:
         # Add rotation metadata if rotation was attempted
         if rotation_metadata is not None:
             result['rotation_metadata'] = rotation_metadata
-            logger.info(f"Added rotation_metadata to result: {rotation_metadata}")
+            if rotation_metadata.get('rotation_applied'):
+                logger.info(f"Added rotation_metadata to result: {rotation_metadata}")
+            else:
+                logger.debug("Rotation not applied (e.g. required points not detected): %s", rotation_metadata.get('error', 'Unknown'))
 
         return result
     

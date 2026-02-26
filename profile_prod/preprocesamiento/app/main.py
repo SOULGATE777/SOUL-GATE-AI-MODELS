@@ -235,7 +235,11 @@ async def preprocess_profile(
         # Add rotation metadata if available
         if 'rotation_metadata' in results:
             response['rotation_metadata'] = results['rotation_metadata']
-            logger.info(f"Rotation metadata added to response: {results['rotation_metadata']}")
+            meta = results['rotation_metadata']
+            if meta.get('rotation_applied'):
+                logger.info(f"Rotation metadata added to response: {meta}")
+            else:
+                logger.debug("Rotation not applied: %s", meta.get('error', 'Unknown'))
         else:
             logger.warning("No rotation_metadata in results")
 

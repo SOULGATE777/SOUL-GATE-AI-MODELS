@@ -163,7 +163,7 @@ async def analyze_profile_rotation(
         if not processor.validate_image_dimensions(image):
             raise HTTPException(
                 status_code=400, 
-                detail="Image dimensions too small. Minimum size: 224x224 pixels"
+                detail="Image dimensions too small. Minimum size: 64x64 pixels"
             )
         
         # Prepare image for analysis

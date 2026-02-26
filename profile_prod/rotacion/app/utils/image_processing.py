@@ -13,7 +13,7 @@ class ImageProcessor:
     """
     
     def __init__(self):
-        self.min_image_size = 224
+        self.min_image_size = 64
         self.max_image_size = 2048
     
     def read_image_from_bytes(self, image_data: bytes) -> Optional[np.ndarray]:
