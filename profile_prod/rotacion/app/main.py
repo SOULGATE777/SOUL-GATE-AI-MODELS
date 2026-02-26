@@ -156,7 +156,10 @@ async def analyze_profile_rotation(
         if image is None:
             raise HTTPException(status_code=400, detail="Invalid image file")
         
-        # Validate image dimensions
+        # Resize if image exceeds max dimension (avoid 400 on large uploads)
+        image = processor.resize_image_if_needed(image, max_size=processor.max_image_size)
+        
+        # Validate image dimensions (min size)
         if not processor.validate_image_dimensions(image):
             raise HTTPException(
                 status_code=400, 
@@ -257,6 +260,9 @@ async def classify_rotation(
         if image is None:
             raise HTTPException(status_code=400, detail="Invalid image file")
         
+        # Resize if image exceeds max dimension
+        image = processor.resize_image_if_needed(image, max_size=processor.max_image_size)
+        
         # Prepare image for analysis
         processed_image = processor.prepare_image_for_analysis(image)
         
@@ -316,6 +322,9 @@ async def assess_viability(
         
         if image is None:
             raise HTTPException(status_code=400, detail="Invalid image file")
+        
+        # Resize if image exceeds max dimension
+        image = processor.resize_image_if_needed(image, max_size=processor.max_image_size)
         
         # Prepare image for analysis
         processed_image = processor.prepare_image_for_analysis(image)

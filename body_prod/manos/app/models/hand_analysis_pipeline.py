@@ -336,17 +336,31 @@ class HandAnalysisPipeline:
             
         Returns:
             dict: Complete analysis results
+            
+        Raises:
+            ValueError: If image cannot be loaded or both CNN and colorimetry fail with known errors
         """
         logger.info(f"Analyzing hand image: {image_path}")
         
         if not os.path.exists(image_path):
-            raise ValueError(f"Image not found at {image_path}")
+            raise ValueError(f"Image file not found: {image_path}")
+        
+        # Validate image can be loaded by OpenCV (avoids opaque failures later)
+        probe = cv2.imread(image_path)
+        if probe is None:
+            raise ValueError("Could not load image (invalid or unsupported format)")
+        h, w = probe.shape[:2]
+        if h < 10 or w < 10:
+            raise ValueError("Image dimensions too small for analysis")
+        del probe
         
         results = {
             'image_path': image_path,
             'bbox': bbox,
             'analysis_type': 'comprehensive_hand_analysis'
         }
+        cnn_error = None
+        colorimetry_error = None
         
         # 1. CNN Hand Side Classification
         try:
@@ -371,37 +385,31 @@ class HandAnalysisPipeline:
                 results['cnn_prediction'] = None
                 logger.warning("CNN model not available")
         except Exception as e:
-            logger.error(f"Error in CNN prediction: {e}")
+            cnn_error = str(e).strip() or repr(e) or "Unknown CNN error"
+            logger.error("Error in CNN prediction: %s", cnn_error, exc_info=True)
             results['cnn_prediction'] = None
         
         # 2. Colorimetry Analysis
         if include_colorimetry:
             try:
-                # Load and process image
                 image = cv2.imread(image_path)
                 if image is None:
-                    raise ValueError(f"Could not load image: {image_path}")
+                    raise ValueError("Could not load image for colorimetry")
                 
-                # If bbox provided, crop to that region
                 if bbox:
                     x_min, y_min, x_max, y_max = bbox
                     palm_image = image[int(y_min):int(y_max), int(x_min):int(x_max)]
+                    if palm_image.size == 0:
+                        raise ValueError("Bounding box produced empty crop")
                 else:
                     palm_image = image
                 
-                # Create skin mask
                 skin_mask = self.colorimetry_analyzer.create_skin_mask(palm_image)
-                
-                # Analyze colors
                 color_analysis = self.colorimetry_analyzer.analyze_colors(palm_image, skin_mask)
                 
                 if color_analysis is not None:
                     results['colorimetry'] = color_analysis
-                    
-                    # Extract top 3 dominant colors for classification (exclude average)
                     top_3_colors = color_analysis['dominant_colors'][:3]
-                    
-                    # Color Classification for each of the top 3 dominant colors
                     color_classifications = {}
                     for i, (color, percentage) in enumerate(top_3_colors):
                         classification = self.classify_color_type(color)
@@ -410,9 +418,7 @@ class HandAnalysisPipeline:
                             'percentage': percentage,
                             'classification': classification
                         }
-                    
                     results['color_classification'] = color_classifications
-                    
                     logger.info(f"Colorimetry analysis completed: {color_analysis['total_pixels']} pixels analyzed")
                 else:
                     results['colorimetry'] = None
@@ -420,9 +426,16 @@ class HandAnalysisPipeline:
                     logger.warning("No skin pixels found for colorimetry analysis")
                     
             except Exception as e:
-                logger.error(f"Error in colorimetry analysis: {e}")
+                colorimetry_error = str(e).strip() or repr(e) or "Unknown colorimetry error"
+                logger.error("Error in colorimetry analysis: %s", colorimetry_error, exc_info=True)
                 results['colorimetry'] = None
                 results['color_classification'] = None
+        
+        # If both parts failed and we have error messages, fail the request with a clear reason
+        if (results.get('cnn_prediction') is None and results.get('colorimetry') is None and
+                (cnn_error or colorimetry_error)):
+            parts = [p for p in [("CNN", cnn_error), ("colorimetry", colorimetry_error)] if p[1]]
+            raise ValueError("Hand analysis failed: " + "; ".join(f"{k}: {v}" for k, v in parts))
         
         logger.info("Hand analysis completed")
         return results

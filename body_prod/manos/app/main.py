@@ -188,9 +188,12 @@ async def analyze_hand_comprehensive(
         
         return JSONResponse(content=results)
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in comprehensive hand analysis: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        err_msg = str(e).strip() if str(e).strip() else (repr(e) or "Hand analysis failed")
+        logger.error("Error in comprehensive hand analysis: %s", err_msg, exc_info=True)
+        raise HTTPException(status_code=500, detail=err_msg)
 
 @app.post("/classify-hand-side")
 async def classify_hand_side(
