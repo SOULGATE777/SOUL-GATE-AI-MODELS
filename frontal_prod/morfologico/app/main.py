@@ -59,15 +59,19 @@ def _load_point_detector():
 
 @app.on_event("startup")
 async def startup_event():
-    """Register models for lazy loading (no actual loading here)"""
-    print("🚀 Initializing Facial Recognition API with lazy loading...")
+    """Register and eagerly load models at startup to eliminate cold-start latency"""
+    print("🚀 Initializing Facial Recognition API with eager loading...")
 
-    # Register models without loading them
+    # Register models
     model_loader.register_model("facial_pipeline", _load_facial_pipeline)
     model_loader.register_model("point_detector", _load_point_detector)
 
-    print("✅ Models registered for lazy loading. They will load on first request.")
-    print("💾 RAM saved: Models will only load when needed!")
+    # Eagerly load both models now so the first request is not delayed
+    import asyncio
+    await asyncio.to_thread(get_facial_pipeline)
+    await asyncio.to_thread(get_point_detector)
+
+    print("✅ Models pre-loaded successfully. Ready to serve requests without cold-start.")
 
 # Helper functions to get models
 def get_facial_pipeline():
