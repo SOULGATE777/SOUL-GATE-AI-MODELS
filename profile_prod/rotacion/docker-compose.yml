@@ -6,6 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: profile_rotation_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8011 --workers 3
     ports:
       - "8011:8011"
     volumes:
@@ -27,4 +28,4 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
