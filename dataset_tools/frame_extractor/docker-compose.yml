@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  frame_extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: soul-ai/frame_extractor:latest
+    container_name: frame_extractor
+    ports:
+      - "8020:8020"
+    environment:
+      # AWS credentials — set these in your shell or a .env file
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8020/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
