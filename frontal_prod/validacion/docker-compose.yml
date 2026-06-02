@@ -2,6 +2,7 @@ services:
   validacion:
     build: .
     container_name: sg_validacion
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --workers 4
     ports:
       - "8002:8002"
     volumes:
