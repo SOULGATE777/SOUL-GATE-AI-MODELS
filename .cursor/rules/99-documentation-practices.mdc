@@ -1,0 +1,243 @@
+---
+globs:
+  - "**/*"
+description: "Documentation practices - How AI must maintain and use project knowledge"
+---
+
+# Documentation Practices & Knowledge Management
+
+## OBJETIVO
+
+Este project usa Markdown files en `/docs` para mantener memoria persistente y conocimiento del proyecto. Este rule define cómo el AI DEBE usar y mantener estos documentos.
+
+---
+
+## CORE PRINCIPLES (CRÍTICO)
+
+### 1. MUST Consult Before Acting
+
+**Antes de comenzar cualquier nueva feature o tarea compleja**, el AI DEBE:
+
+```
+1. Leer @docs/project-overview.md para entender contexto
+2. Consultar @docs/architecture.md para decisiones arquitectónicas
+3. Revisar @docs/newfeature-implementation.md si implementas features de NewFeature.md
+```
+
+**Ejemplo**:
+```
+User: "Implementa los nuevos umbrales de NewFeature.md para el módulo Espejo"
+
+AI Response:
+1. [Lee @docs/newfeature-implementation.md]
+2. [Verifica estado actual de implementación]
+3. [Consulta @docs/architecture.md para entender módulo Espejo]
+4. [Procede con implementación]
+5. [Actualiza @docs/newfeature-implementation.md con progreso]
+```
+
+---
+
+## DOCUMENTATION FILES (ESTRUCTURA)
+
+### `/docs` contiene:
+
+```
+docs/
+├── project-overview.md          # Overview del proyecto
+├── tech-stack.md                # Stack tecnológico completo
+├── architecture.md              # Arquitectura de microservicios
+├── deployment-guide.md          # Guía de deployment
+├── newfeature-implementation.md # Tracking de NewFeature.md
+├── testing-guide.md             # Cómo escribir tests
+└── troubleshooting.md           # Common issues
+```
+
+---
+
+## UPDATE OBLIGATIONS (OBLIGATORIO)
+
+### MUST actualizar docs cuando:
+
+#### 1. Implementas Features de NewFeature.md
+
+**MUST update** `@docs/newfeature-implementation.md`:
+
+```markdown
+## [Fecha] - Implementación de Umbrales Espejo
+
+### Cambios Realizados
+- Actualizado `espejo_pipeline.py` líneas 234-256
+- Umbrales: Venus 40%, Plutón 7%, General 18%
+- Tests: `test_espejo_thresholds.py`
+
+### Estado
+- ✅ Umbrales implementados
+- ✅ Tests passing
+- ⏳ Pendiente: Validación en producción
+```
+
+#### 2. Cambias Arquitectura
+
+**MUST update** `@docs/architecture.md`:
+
+```markdown
+## [Fecha] - Nueva Service: Age Estimation
+
+### Razón
+- Requirement de estimación de edad facial
+- InsightFace library
+
+### Decisiones
+- Puerto 8013
+- InsightFace + ONNX Runtime
+- Similar pattern a otros servicios
+```
+
+#### 3. Modificas Tech Stack
+
+**MUST update** `@docs/tech-stack.md`:
+
+```markdown
+### [Fecha] - Agregado: pytest-cov
+
+**Versión**: 4.1.0
+**Razón**: Coverage reporting para CI/CD
+**Usado en**: Todos los servicios (gradual adoption)
+```
+
+---
+
+## KNOWLEDGE GRAPH (MCP MEMORY)
+
+### MUST también actualizar Memory MCP
+
+Cuando hagas cambios significativos, **DEBE** registrarlos en Memory:
+
+```python
+# Ejemplo
+mcp_memory_add_observations([{
+    "entityName": "espejo_service",
+    "contents": [
+        "Umbrales actualizados según NewFeature.md: Venus 40%, Plutón 7%",
+        "Implementado 2025-12-12",
+        "Tests en test_espejo_thresholds.py"
+    ]
+}])
+```
+
+---
+
+## SYNCING RULES & DOCS (OBLIGATORIO)
+
+### Cuando cambias High-Level Practices:
+
+Si modificas:
+- **Architecture** → Update `@docs/architecture.md`
+- **Testing strategy** → Update `@docs/testing-guide.md`
+- **Deployment process** → Update `@docs/deployment-guide.md`
+
+---
+
+## README SYNCHRONIZATION (RECOMENDADO)
+
+### SHOULD mantener READMEs sincronizados
+
+Cuando modificas un servicio:
+1. Update el código
+2. Update el README.md del servicio si:
+   - Cambian endpoints
+   - Cambian parámetros
+   - Cambian response formats
+   - Se agregan features nuevas
+
+---
+
+## AI WORKFLOW EXAMPLE (COMPLETO)
+
+### Scenario: User pide "Implementa NewFeature.md para Espejo"
+
+```
+PASO 1: CONSULTAR
+- Lee @docs/newfeature-implementation.md
+- Lee @docs/architecture.md (módulo Espejo)
+- Consulta Memory MCP para contexto de espejo_service
+
+PASO 2: PLANIFICAR
+- Identifica archivos a modificar
+- Verifica umbrales requeridos vs actuales
+- Propone plan al usuario
+
+PASO 3: IMPLEMENTAR
+- Modifica espejo_pipeline.py
+- Actualiza tests
+- Verifica que pasan
+
+PASO 4: DOCUMENTAR (CRÍTICO)
+- Update @docs/newfeature-implementation.md con cambios
+- Update Memory MCP con observations
+- Update README.md de espejo/ si es necesario
+- Registra decisiones en @docs/architecture.md si aplica
+
+PASO 5: VALIDAR
+- Tests passing
+- Docs actualizadas
+- Memory actualizada
+```
+
+---
+
+## NEWFEATURE.MD TRACKING (CRÍTICO)
+
+### Special attention para `NewFeature.md`
+
+**Path**: `/home/mitza/proyectos/SOUL-GATE/NewFeature.md`
+
+Este documento define cambios de umbrales y reglas de negocio. Cuando implementes algo de este documento:
+
+1. **MUST read** el archivo completo primero
+2. **MUST track** en `@docs/newfeature-implementation.md`:
+   - Qué se implementó
+   - Qué archivos se modificaron
+   - Qué tests se crearon
+   - Estado actual (✅ Done, ⏳ In Progress, ❌ Blocked)
+3. **MUST verify** que los cambios están alineados con el documento
+
+---
+
+## CHECKLIST DE DOCUMENTACIÓN
+
+Cuando completes una tarea, verifica:
+
+- [ ] Consulté `@docs` antes de comenzar
+- [ ] Actualicé el doc relevante con cambios
+- [ ] Actualicé Memory MCP con observations
+- [ ] README.md sincronizado si aplica
+- [ ] Decisiones arquitectónicas documentadas
+- [ ] NewFeature.md tracking actualizado (si aplica)
+
+---
+
+## ANTI-PATTERNS (PROHIBIDOS)
+
+### ❌ NEVER:
+- Comenzar implementación sin consultar `@docs`
+- Modificar código sin documentar cambios
+- Dejar `@docs/newfeature-implementation.md` desactualizado
+- Ignorar Memory MCP
+- Asumir conocimiento sin verificar en docs
+
+---
+
+## BENEFITS
+
+Esta práctica permite:
+- ✅ AI tiene memoria persistente entre sesiones
+- ✅ Nuevos desarrolladores entienden proyecto rápido
+- ✅ Tracking de decisiones arquitectónicas
+- ✅ Audit trail de implementación de features
+- ✅ Knowledge no se pierde
+
+---
+
+**Documentación es CRÍTICA. Consulta, actualiza, sincroniza. SIEMPRE.**

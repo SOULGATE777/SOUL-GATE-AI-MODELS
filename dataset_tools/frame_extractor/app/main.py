@@ -53,19 +53,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Default rotation types processed by /extract-session
 #
-# Lowercase form of the Prisma ``FaceRotationType`` enum (post-redesign):
+# Prisma ``FaceRotationType`` enum values (must match S3 keys: {TYPE}.mp4).
 # 4 horizontal + 2 vertical + 1 circular = 7 videos per session.
-# Legacy types (frontal / left / right) are still accepted when passed
-# explicitly via the request body for processing older sessions.
+# Legacy lowercase names are still accepted when passed explicitly in the body.
 # ---------------------------------------------------------------------------
 DEFAULT_ROTATION_TYPES: list[str] = [
-    "horizontal_0_45",
-    "horizontal_45_90",
-    "horizontal_0_neg45",
-    "horizontal_neg45_neg90",
-    "vertical_0_45",
-    "vertical_0_neg45",
-    "circular",
+    "HORIZONTAL_0_45",
+    "HORIZONTAL_45_90",
+    "HORIZONTAL_0_NEG45",
+    "HORIZONTAL_NEG45_NEG90",
+    "VERTICAL_0_45",
+    "VERTICAL_0_NEG45",
+    "CIRCULAR",
 ]
 
 # Default frame interval (extract every Nth frame from the video)

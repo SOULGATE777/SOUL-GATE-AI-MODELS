@@ -1,0 +1,269 @@
+---
+globs:
+  - "**/app/main.py"
+  - "**/app/models/*_pipeline.py"
+  - "**/app/models/**/*_pipeline.py"
+description: "Template obligatorio para servicios ML - Enforza estructura estándar y patterns críticos"
+---
+
+# ML Service Template - Estructura Estándar
+
+## OBJETIVO
+
+Este rule enforza la estructura estándar y patterns obligatorios para todos los servicios ML en SOUL-GATE-AI-MODELS.
+
+---
+
+## ESTRUCTURA OBLIGATORIA
+
+### Todo servicio ML DEBE tener:
+
+```
+{service_name}/
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── README.md
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI entrypoint
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── *_pipeline.py    # Core ML pipeline
+│   └── utils/
+│       ├── __init__.py
+│       ├── image_processing.py
+│       └── visualization.py
+├── models/                   # ML model files
+└── results/                  # Generated outputs
+```
+
+---
+
+## MAIN.PY - PATTERNS OBLIGATORIOS
+
+### 1. Health Check Endpoint (CRÍTICO)
+
+**MUST include** un endpoint `/health` que retorne el estado del servicio:
+
+```python
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "service_name",
+        "model_loaded": pipeline is not None,
+        "device": str(pipeline.device) if pipeline else "unknown",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+```
+
+**Razón**: Esencial para Docker health checks y monitoring.
+
+### 2. Startup Event para Model Loading (CRÍTICO)
+
+**MUST use** `@app.on_event("startup")` para cargar modelos:
+
+```python
+pipeline = None
+
+@app.on_event("startup")
+async def startup_event():
+    global pipeline
+    try:
+        pipeline = AnalysisPipeline(model_path="/app/models/model.pth")
+        logger.info("✅ Pipeline initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize pipeline: {e}")
+        raise
+```
+
+**NEVER** cargues modelos a nivel de módulo (fuera de funciones).
+
+**Razón**: Permite health checks proper y lazy loading.
+
+### 3. CORS Middleware (OBLIGATORIO)
+
+**MUST include** CORS middleware para permitir requests del backend:
+
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En producción: lista específica
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### 4. File Upload Validation (CRÍTICO)
+
+**MUST validate** uploads antes de procesar:
+
+```python
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)):
+    # Validar tipo
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    # Validar tamaño
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+    # ... validation logic ...
+```
+
+---
+
+## PIPELINE.PY - PATTERNS OBLIGATORIOS
+
+### 1. Device Detection (CRÍTICO)
+
+**MUST detect** GPU/CPU dinámicamente, **NEVER hardcode**:
+
+```python
+class AnalysisPipeline:
+    def __init__(self, model_path: str):
+        # ✅ CORRECTO
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # ❌ INCORRECTO - NEVER hardcode
+        # self.device = torch.device('cuda:0')
+```
+
+### 2. Error Handling en Initialization (OBLIGATORIO)
+
+**MUST handle** errores de carga de modelos:
+
+```python
+def _load_model(self):
+    try:
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model not found at {self.model_path}")
+        
+        self.model = self._create_model()
+        checkpoint = torch.load(self.model_path, map_location=self.device)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.to(self.device)
+        self.model.eval()
+        
+        logger.info(f"✅ Model loaded from {self.model_path}")
+    except Exception as e:
+        logger.error(f"❌ Failed to load model: {e}")
+        raise
+```
+
+### 3. Async Methods (RECOMENDADO)
+
+**SHOULD use** async para métodos principales:
+
+```python
+async def analyze(self, image_path: str) -> Dict:
+    """Main analysis method"""
+    # I/O operations should be async
+    pass
+```
+
+---
+
+## CHECKLIST DE CREACIÓN DE NUEVO SERVICIO
+
+Cuando crees un nuevo servicio ML, verifica:
+
+- [ ] Estructura de directorios completa
+- [ ] `/health` endpoint implementado
+- [ ] `@app.on_event("startup")` para model loading
+- [ ] CORS middleware configurado
+- [ ] Device detection dinámico (no hardcoded)
+- [ ] File upload validation
+- [ ] Error handling en pipeline
+- [ ] `requirements.txt` con versiones pinned
+- [ ] `Dockerfile` con health check
+- [ ] `docker-compose.yml` con GPU support
+- [ ] `README.md` documentado
+
+---
+
+## ANTI-PATTERNS (PROHIBIDOS)
+
+### ❌ NEVER:
+- Hardcodear device (`cuda:0`)
+- Cargar modelos a nivel de módulo
+- Ignorar errores de carga de modelos
+- Omitir el endpoint `/health`
+- Aceptar uploads sin validación
+- Usar `print()` en lugar de `logger`
+
+---
+
+## EJEMPLOS
+
+### ✅ CORRECTO: Main.py completo
+
+```python
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import logging
+from datetime import datetime
+
+from .models.analysis_pipeline import AnalysisPipeline
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="Service Name API",
+    description="Description",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+pipeline = None
+
+@app.on_event("startup")
+async def startup_event():
+    global pipeline
+    try:
+        pipeline = AnalysisPipeline(model_path="/app/models/model.pth")
+        logger.info("✅ Pipeline initialized")
+    except Exception as e:
+        logger.error(f"❌ Initialization failed: {e}")
+        raise
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "service_name",
+        "model_loaded": pipeline is not None,
+        "device": str(pipeline.device) if pipeline else "unknown",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)):
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not initialized")
+    
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    try:
+        results = await pipeline.analyze(file)
+        return results
+    except Exception as e:
+        logger.error(f"Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+```
+
+---
+
+**Este template es la base de TODOS los servicios ML. Síguelo estrictamente.**

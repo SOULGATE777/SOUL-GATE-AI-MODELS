@@ -1,0 +1,76 @@
+---
+globs:
+  - "**/app/**/*.py"
+description: "Structured logging - Standards for consistent, debuggable logs"
+---
+
+# Logging Standards
+
+## OBJETIVO
+
+Estandariza logging para debugging eficiente y monitoring.
+
+---
+
+## SETUP (OBLIGATORIO)
+
+```python
+import logging
+
+# Setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+```
+
+---
+
+## LOG LEVELS (OBLIGATORIO)
+
+```python
+# INFO - Normal operations
+logger.info(f"Processing image {image_id}")
+logger.info(f"Model loaded successfully")
+
+# WARNING - Problemas no críticos
+logger.warning(f"Low confidence: {conf:.2f}")
+
+# ERROR - Errores que requieren atención
+logger.error(f"Processing failed: {e}", exc_info=True)
+
+# DEBUG - Detalles para debugging (desarrollo)
+logger.debug(f"Intermediate result: {result}")
+```
+
+---
+
+## WHAT TO LOG (RECOMENDADO)
+
+```python
+# 1. Request start
+logger.info(f"Received request - File: {file.filename}")
+
+# 2. Model inference time
+start = time.time()
+result = model(input)
+logger.info(f"Inference time: {time.time() - start:.2f}s")
+
+# 3. Errors
+logger.error(f"Failed: {e}", exc_info=True)
+
+# 4. Important decisions
+logger.info(f"Using device: {device}")
+```
+
+---
+
+## ANTI-PATTERNS (PROHIBIDOS)
+
+### ❌ NEVER:
+- `print()` en lugar de `logger`
+- Logging de secrets/credentials
+- Excessive logging (cada línea)
+- No logging en error cases
+
+---
+
+**Logging estructurado facilita debugging en producción.**

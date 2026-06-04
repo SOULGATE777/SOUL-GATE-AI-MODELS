@@ -1,0 +1,470 @@
+---
+globs:
+  - "**/test_*.py"
+  - "**/*_test.py"
+  - "**/tests/**/*.py"
+  - "**/requirements.txt"
+description: "Testing standards - Structure, pytest, coverage requirements"
+---
+
+# Testing Requirements & Standards
+
+## OBJETIVO
+
+Establece standards de testing obligatorios para mantener calidad y reliability del código ML.
+
+---
+
+## TESTING FRAMEWORKS (OBLIGATORIO)
+
+### MUST include pytest en requirements.txt
+
+```txt
+# requirements.txt
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+```
+
+**RAZÓN**: Pytest es el estándar de facto para Python testing.
+
+---
+
+## TEST STRUCTURE (RECOMENDADO)
+
+### Directory structure
+
+```
+{service}/
+├── app/
+│   ├── main.py
+│   ├── models/
+│   │   └── pipeline.py
+│   └── utils/
+│       └── image_processing.py
+└── tests/
+    ├── __init__.py
+    ├── test_main.py              # Tests de endpoints
+    ├── test_pipeline.py          # Tests de ML pipeline
+    └── test_image_processing.py  # Tests de utils
+```
+
+**Alternativa** (archivos co-located):
+```
+app/
+├── main.py
+├── test_main.py              # Co-located
+├── models/
+│   ├── pipeline.py
+│   └── test_pipeline.py      # Co-located
+```
+
+---
+
+## REQUIRED TESTS (OBLIGATORIO)
+
+### 1. Health Endpoint Test (CRITICAL)
+
+**MUST test** que `/health` endpoint funciona:
+
+```python
+# tests/test_main.py
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+def test_health_endpoint():
+    """Test that health endpoint returns 200"""
+    response = client.get("/health")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert "status" in data
+    assert data["status"] == "healthy"
+    assert "model_loaded" in data
+    assert "device" in data
+```
+
+### 2. Model Loading Test (CRITICAL)
+
+**MUST test** que el modelo se carga correctamente:
+
+```python
+# tests/test_pipeline.py
+import pytest
+from app.models.pipeline import Pipeline
+
+def test_pipeline_initialization():
+    """Test that pipeline initializes without errors"""
+    pipeline = Pipeline(model_path="models/test_model.pth")
+    
+    assert pipeline.model is not None
+    assert pipeline.device.type in ['cuda', 'cpu']
+
+def test_model_device():
+    """Test that model is on correct device"""
+    pipeline = Pipeline(model_path="models/test_model.pth")
+    
+    # Model should be on detected device
+    for param in pipeline.model.parameters():
+        assert param.device.type == pipeline.device.type
+```
+
+### 3. Basic Inference Test (OBLIGATORIO)
+
+**MUST test** inference básica:
+
+```python
+import pytest
+import numpy as np
+from app.models.pipeline import Pipeline
+
+@pytest.mark.asyncio
+async def test_basic_inference():
+    """Test that inference runs without errors"""
+    pipeline = Pipeline(model_path="models/test_model.pth")
+    
+    # Create dummy image
+    dummy_image = np.zeros((224, 224, 3), dtype=np.uint8)
+    
+    # Run inference
+    result = await pipeline.analyze(dummy_image)
+    
+    assert result is not None
+    assert isinstance(result, dict)
+```
+
+---
+
+## ASYNC TESTING (OBLIGATORIO PARA FASTAPI)
+
+### MUST use pytest-asyncio para tests async
+
+```python
+import pytest
+
+# Mark como async test
+@pytest.mark.asyncio
+async def test_async_endpoint():
+    """Test async endpoint"""
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.post("/analyze", files={"file": test_file})
+    
+    assert response.status_code == 200
+```
+
+---
+
+## FIXTURES (RECOMENDADO)
+
+### SHOULD use fixtures para setup común
+
+```python
+# tests/conftest.py
+import pytest
+from app.models.pipeline import Pipeline
+
+@pytest.fixture
+def pipeline():
+    """Fixture que retorna pipeline inicializada"""
+    return Pipeline(model_path="models/test_model.pth")
+
+@pytest.fixture
+def dummy_image():
+    """Fixture que retorna imagen de prueba"""
+    return np.zeros((224, 224, 3), dtype=np.uint8)
+
+# Uso en tests
+def test_with_fixtures(pipeline, dummy_image):
+    result = pipeline.process(dummy_image)
+    assert result is not None
+```
+
+---
+
+## ERROR HANDLING TESTS (RECOMENDADO)
+
+### SHOULD test error cases
+
+```python
+def test_invalid_image_format():
+    """Test that invalid images raise appropriate errors"""
+    response = client.post(
+        "/analyze",
+        files={"file": ("test.txt", b"not an image", "text/plain")}
+    )
+    
+    assert response.status_code == 400
+    assert "must be an image" in response.json()["detail"].lower()
+
+def test_pipeline_not_initialized():
+    """Test graceful handling when pipeline fails to init"""
+    # Simulación de pipeline None
+    with pytest.raises(HTTPException) as exc_info:
+        # ... test code ...
+        pass
+    
+    assert exc_info.value.status_code == 503
+```
+
+---
+
+## COVERAGE REQUIREMENTS (RECOMENDADO)
+
+### Target: 80%+ coverage para código nuevo
+
+```bash
+# Correr tests con coverage
+pytest --cov=app --cov-report=html --cov-report=term
+
+# Coverage mínimo (en pytest.ini o pyproject.toml)
+[tool:pytest]
+addopts = --cov=app --cov-fail-under=80
+```
+
+**Excepción**: No es necesario 80% coverage para:
+- Código legacy existente (gradual improvement)
+- Scripts de prueba manual
+- Código de visualización (dificil de testear)
+
+---
+
+## MOCKING (AVANZADO - OPCIONAL)
+
+### Para tests que no requieren modelo real:
+
+```python
+from unittest.mock import Mock, patch
+
+def test_analyze_with_mock():
+    """Test analyze endpoint without loading real model"""
+    with patch('app.models.pipeline.Pipeline') as MockPipeline:
+        # Setup mock
+        mock_instance = MockPipeline.return_value
+        mock_instance.analyze.return_value = {"result": "mocked"}
+        
+        # Test
+        response = client.post("/analyze", files={"file": test_file})
+        
+        assert response.status_code == 200
+        assert response.json()["result"] == "mocked"
+```
+
+---
+
+## INTEGRATION TESTS (RECOMENDADO)
+
+### SHOULD test flujo completo end-to-end
+
+```python
+@pytest.mark.integration
+def test_full_analysis_workflow():
+    """Integration test: upload image -> analyze -> get results"""
+    # 1. Upload real test image
+    with open("tests/fixtures/test_face.jpg", "rb") as f:
+        response = client.post(
+            "/analyze",
+            files={"file": ("test_face.jpg", f, "image/jpeg")},
+            data={"confidence_threshold": 0.5}
+        )
+    
+    # 2. Verify success
+    assert response.status_code == 200
+    
+    # 3. Verify response structure
+    data = response.json()
+    assert "analysis_id" in data
+    assert "results" in data
+    assert data["status"] == "success"
+    
+    # 4. Verify ML results
+    results = data["results"]
+    assert "predictions" in results
+    # ... more assertions ...
+```
+
+---
+
+## PARAMETRIZE (PERFORMANCE TESTING)
+
+### SHOULD test múltiples casos con parametrize
+
+```python
+@pytest.mark.parametrize("confidence,expected_count", [
+    (0.3, 5),
+    (0.5, 3),
+    (0.7, 1),
+])
+def test_confidence_thresholds(confidence, expected_count):
+    """Test different confidence thresholds"""
+    result = pipeline.analyze(image, confidence_threshold=confidence)
+    assert len(result["detections"]) == expected_count
+```
+
+---
+
+## RUNNING TESTS
+
+### Commands
+
+```bash
+# Correr todos los tests
+pytest
+
+# Correr tests específicos
+pytest tests/test_main.py
+pytest tests/test_main.py::test_health_endpoint
+
+# Correr con coverage
+pytest --cov=app --cov-report=html
+
+# Correr solo tests marcados
+pytest -m integration  # Solo integration tests
+pytest -m "not slow"   # Excluir tests lentos
+
+# Verbose output
+pytest -v
+
+# Stop on first failure
+pytest -x
+```
+
+---
+
+## TEST MARKERS (RECOMENDADO)
+
+### Categorizar tests con markers
+
+```python
+# pyproject.toml o pytest.ini
+[tool:pytest]
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    integration: marks tests as integration tests
+    gpu: marks tests that require GPU
+
+# Uso
+@pytest.mark.slow
+def test_large_batch():
+    pass
+
+@pytest.mark.gpu
+def test_cuda_inference():
+    if not torch.cuda.is_available():
+        pytest.skip("GPU not available")
+    pass
+```
+
+---
+
+## CI/CD INTEGRATION (FUTURO)
+
+### GitHub Actions example (para referencia futura)
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest --cov=app --cov-report=xml
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+```
+
+---
+
+## CHECKLIST PARA NUEVOS SERVICIOS
+
+Cuando crees un nuevo servicio, asegura:
+
+- [ ] `pytest` y `pytest-asyncio` en requirements.txt
+- [ ] Test de `/health` endpoint
+- [ ] Test de model loading
+- [ ] Test de inference básica
+- [ ] Tests de error handling (invalid inputs)
+- [ ] Coverage >80% para código nuevo (aspiracional)
+- [ ] Fixtures para setup común
+- [ ] Integration test end-to-end (opcional)
+
+---
+
+## ANTI-PATTERNS (PROHIBIDOS)
+
+### ❌ NEVER:
+- Omitir tests en nuevos servicios
+- Tests que requieren conexión a internet (mocking!)
+- Tests que modifican archivos de producción
+- Hardcodear paths absolutos en tests
+- Tests que dependen de orden de ejecución
+- Tests sin assertions
+- Ignorar test failures ("lo arreglaré después")
+
+---
+
+## EJEMPLOS COMPLETOS
+
+### Ejemplo: test_main.py completo
+
+```python
+from fastapi.testclient import TestClient
+import pytest
+from app.main import app
+
+client = TestClient(app)
+
+class TestHealthEndpoint:
+    def test_health_returns_200(self):
+        response = client.get("/health")
+        assert response.status_code == 200
+    
+    def test_health_response_structure(self):
+        response = client.get("/health")
+        data = response.json()
+        
+        assert "status" in data
+        assert "model_loaded" in data
+        assert "device" in data
+        assert "timestamp" in data
+
+class TestAnalyzeEndpoint:
+    def test_analyze_requires_file(self):
+        response = client.post("/analyze")
+        assert response.status_code == 422  # Unprocessable Entity
+    
+    def test_analyze_rejects_non_image(self):
+        response = client.post(
+            "/analyze",
+            files={"file": ("test.txt", b"text", "text/plain")}
+        )
+        assert response.status_code == 400
+    
+    @pytest.mark.asyncio
+    async def test_analyze_with_valid_image(self):
+        with open("tests/fixtures/test_image.jpg", "rb") as f:
+            response = client.post(
+                "/analyze",
+                files={"file": ("test.jpg", f, "image/jpeg")}
+            )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "results" in data
+```
+
+---
+
+**Testing es crítico para reliability. Implementa tests desde el inicio.**

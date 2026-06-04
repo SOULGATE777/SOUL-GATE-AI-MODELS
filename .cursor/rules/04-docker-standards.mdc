@@ -1,0 +1,159 @@
+---
+globs:
+  - "**/Dockerfile"
+  - "**/docker-compose.yml"
+description: "Docker best practices - GPU support, health checks, multi-stage builds"
+---
+
+# Docker Standards & Best Practices
+
+## OBJETIVO
+
+Enforza Docker best practices para deployment consistente con GPU support y health monitoring.
+
+---
+
+## DOCKERFILE - BASE IMAGE (OBLIGATORIO)
+
+### MUST use PyTorch official image con CUDA
+
+```dockerfile
+# ✅ CORRECTO
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+# ❌ INCORRECTO
+FROM python:3.9  # No incluye PyTorch ni CUDA
+```
+
+**Versiones recomendadas**:
+- `pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime` (actual)
+- `pytorch/pytorch:2.0.1-cuda11.8-cudnn8-runtime` (legacy)
+
+---
+
+## DOCKERFILE - ENVIRONMENT (OBLIGATORIO)
+
+```dockerfile
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONPATH=/app
+ENV CUDA_VISIBLE_DEVICES=0
+```
+
+---
+
+## DOCKERFILE - SYSTEM DEPENDENCIES (OBLIGATORIO)
+
+### MUST install OpenCV dependencies
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgtk-3-0 \
+    libgl1-mesa-glx \
+    build-essential \
+    cmake \
+    wget \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/*
+```
+
+---
+
+## DOCKERFILE - HEALTH CHECK (CRÍTICO)
+
+### MUST include health check
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8008/health || exit 1
+```
+
+---
+
+## DOCKER-COMPOSE - GPU SUPPORT (CRÍTICO)
+
+### MUST configure GPU resources
+
+```yaml
+version: '3.8'
+
+services:
+  service-name:
+    build: .
+    container_name: service-name-api
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./models:/app/models:ro     # Read-only
+      - ./results:/app/results       # Read-write
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+---
+
+## VOLUMES (OBLIGATORIO)
+
+```yaml
+volumes:
+  - ./models:/app/models:ro      # Models (read-only)
+  - ./results:/app/results        # Results (read-write)
+  - ./temp:/app/temp             # Temp files (opcional)
+```
+
+**RAZÓN**: 
+- Models read-only previene modificación accidental
+- Results persistent entre restarts
+- Temp files pueden ser volátiles
+
+---
+
+## RESTART POLICY (OBLIGATORIO)
+
+```yaml
+restart: unless-stopped
+```
+
+**Opciones**:
+- `unless-stopped` ✅ (recomendado para producción)
+- `always` (restart even if stopped manually)
+- `on-failure` (solo si crash)
+- `no` (solo para desarrollo)
+
+---
+
+## ANTI-PATTERNS (PROHIBIDOS)
+
+### ❌ NEVER:
+- Base images sin PyTorch/CUDA
+- Omitir health check
+- Hardcodear GPU en Dockerfile (usa env vars)
+- Volumes read-write para models/ (security)
+- Exponer todos los puertos (solo el necesario)
+
+---
+
+**Docker deployment debe ser reproducible y con health monitoring.**

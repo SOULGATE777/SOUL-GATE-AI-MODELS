@@ -1,0 +1,382 @@
+---
+globs:
+  - "**/app/main.py"
+  - "**/app/**/*.py"
+description: "Standards para FastAPI - Endpoints, validation, async patterns, error handling"
+---
+
+# FastAPI Patterns & Best Practices
+
+## OBJETIVO
+
+Enforza patterns consistentes y best practices para todas las APIs FastAPI en el proyecto.
+
+---
+
+## TYPE HINTS (OBLIGATORIO)
+
+### MUST use type hints en TODOS los parámetros y return types
+
+```python
+# ✅ CORRECTO
+@app.post("/analyze")
+async def analyze(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5),
+    include_visualization: bool = Form(True)
+) -> Dict[str, Any]:
+    pass
+
+# ❌ INCORRECTO - Sin type hints
+@app.post("/analyze")
+async def analyze(file, confidence_threshold=0.5):
+    pass
+```
+
+**Razón**: Type safety, auto-documentation, IDE support.
+
+---
+
+## FILE UPLOAD VALIDATION (CRÍTICO)
+
+### MUST validate size, format y content
+
+```python
+from fastapi import UploadFile, File, HTTPException
+
+# Constantes
+ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'bmp', 'tiff'}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)):
+    # 1. Validar content type
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(
+            status_code=400,
+            detail="File must be an image (JPEG, PNG, BMP, TIFF)"
+        )
+    
+    # 2. Validar extensión
+    if file.filename:
+        ext = file.filename.split('.')[-1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file extension. Allowed: {ALLOWED_EXTENSIONS}"
+            )
+    
+    # 3. Validar tamaño (si el framework lo provee)
+    # Note: UploadFile.size puede no estar disponible en todas las versiones
+    # Validar mientras se lee es más seguro
+```
+
+---
+
+## PARAMETER VALIDATION (OBLIGATORIO)
+
+### MUST validate ranges y constraints
+
+```python
+from typing import Optional
+
+@app.post("/analyze")
+async def analyze(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Form(0.5),
+    target_width: int = Form(600),
+    target_height: int = Form(600)
+):
+    # Validar confidence_threshold
+    if not 0.0 <= confidence_threshold <= 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="confidence_threshold must be between 0.0 and 1.0"
+        )
+    
+    # Validar dimensions
+    if not (100 <= target_width <= 2048):
+        raise HTTPException(
+            status_code=400,
+            detail="target_width must be between 100 and 2048"
+        )
+    
+    if not (100 <= target_height <= 2048):
+        raise HTTPException(
+            status_code=400,
+            detail="target_height must be between 100 and 2048"
+        )
+```
+
+**Alternativa con Pydantic** (recomendado para validaciones complejas):
+
+```python
+from pydantic import BaseModel, Field
+
+class AnalysisRequest(BaseModel):
+    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    target_width: int = Field(default=600, ge=100, le=2048)
+    target_height: int = Field(default=600, ge=100, le=2048)
+```
+
+---
+
+## ERROR HANDLING (CRÍTICO)
+
+### MUST use HTTPException con status codes apropiados
+
+```python
+from fastapi import HTTPException
+
+# 400 - Bad Request (client error)
+if invalid_input:
+    raise HTTPException(
+        status_code=400,
+        detail="Invalid input: specific reason"
+    )
+
+# 503 - Service Unavailable (model not loaded)
+if pipeline is None:
+    raise HTTPException(
+        status_code=503,
+        detail="Pipeline not initialized"
+    )
+
+# 500 - Internal Server Error (processing failure)
+try:
+    result = await pipeline.process(data)
+except Exception as e:
+    logger.error(f"Processing failed: {e}", exc_info=True)
+    raise HTTPException(
+        status_code=500,
+        detail=f"Processing failed: {str(e)}"
+    )
+```
+
+### Standard Error Response Format
+
+```python
+{
+    "detail": "Human-readable error message"
+}
+```
+
+FastAPI automáticamente formatea `HTTPException` a este formato.
+
+---
+
+## ASYNC/AWAIT PATTERNS (OBLIGATORIO)
+
+### MUST use async para I/O operations
+
+```python
+# ✅ CORRECTO - Async para I/O
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)):
+    # Leer archivo (I/O)
+    image_data = await file.read()
+    
+    # Procesamiento (puede ser sync dentro de async)
+    result = await pipeline.analyze(image_data)
+    
+    return result
+
+# ❌ INCORRECTO - Sync cuando debería ser async
+@app.post("/analyze")
+def analyze(file: UploadFile = File(...)):  # Falta async
+    image_data = file.read()  # Falta await
+    return result
+```
+
+**Cuándo usar async**:
+- Lectura/escritura de archivos
+- Llamadas HTTP externas
+- Database queries
+- Operaciones de I/O en general
+
+**Cuándo NO es necesario async**:
+- Procesamiento ML (inference)
+- Cálculos matemáticos
+- Operaciones CPU-bound puras
+
+---
+
+## RESPONSE STRUCTURE (RECOMENDADO)
+
+### SHOULD use estructura consistente
+
+```python
+from datetime import datetime
+import uuid
+
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)):
+    analysis_id = str(uuid.uuid4())
+    start_time = time.time()
+    
+    try:
+        results = await pipeline.analyze(file)
+        
+        return {
+            "analysis_id": analysis_id,
+            "status": "success",
+            "processing_time": time.time() - start_time,
+            "timestamp": datetime.utcnow().isoformat(),
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Analysis {analysis_id} failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+---
+
+## CORS CONFIGURATION (OBLIGATORIO)
+
+### MUST configure CORS middleware
+
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En producción: lista específica de origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+**Producción**: Reemplazar `["*"]` con lista específica:
+
+```python
+allow_origins=[
+    "http://localhost:3000",
+    "https://frontend.soulgate.com"
+]
+```
+
+---
+
+## DEPENDENCY INJECTION (RECOMENDADO)
+
+### SHOULD use FastAPI dependencies para código reusable
+
+```python
+from fastapi import Depends
+
+def get_pipeline():
+    """Dependency para obtener pipeline"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not initialized")
+    return pipeline
+
+@app.post("/analyze")
+async def analyze(
+    file: UploadFile = File(...),
+    pipeline: AnalysisPipeline = Depends(get_pipeline)
+):
+    results = await pipeline.analyze(file)
+    return results
+```
+
+---
+
+## LOGGING (OBLIGATORIO)
+
+### MUST log requests importantes
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)):
+    logger.info(f"Received analysis request - File: {file.filename}")
+    
+    try:
+        results = await pipeline.analyze(file)
+        logger.info(f"Analysis completed successfully")
+        return results
+    except Exception as e:
+        logger.error(f"Analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+---
+
+## BATCH PROCESSING (PATTERN OPCIONAL)
+
+### Si implementas batch processing:
+
+```python
+@app.post("/batch-analyze")
+async def batch_analyze(files: list[UploadFile] = File(...)):
+    # Limitar cantidad
+    MAX_BATCH_SIZE = 20
+    if len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_BATCH_SIZE} files allowed per batch"
+        )
+    
+    results = []
+    for i, file in enumerate(files):
+        try:
+            result = await pipeline.analyze(file)
+            results.append({
+                "file_index": i,
+                "filename": file.filename,
+                "success": True,
+                "result": result
+            })
+        except Exception as e:
+            logger.error(f"File {i} ({file.filename}) failed: {e}")
+            results.append({
+                "file_index": i,
+                "filename": file.filename,
+                "success": False,
+                "error": str(e)
+            })
+    
+    return {
+        "batch_id": str(uuid.uuid4()),
+        "total_files": len(files),
+        "successful": len([r for r in results if r["success"]]),
+        "failed": len([r for r in results if not r["success"]]),
+        "results": results
+    }
+```
+
+---
+
+## CHECKLIST DE ENDPOINT
+
+Cuando crees un nuevo endpoint, verifica:
+
+- [ ] Type hints en parámetros y return
+- [ ] Async/await si hay I/O
+- [ ] Validación de inputs (size, format, ranges)
+- [ ] HTTPException con status codes apropiados
+- [ ] Logging de requests y errors
+- [ ] Structured response con analysis_id y timestamp
+- [ ] Error handling con try/except
+- [ ] Documentation docstring
+
+---
+
+## ANTI-PATTERNS (PROHIBIDOS)
+
+### ❌ NEVER:
+- Omitir type hints
+- Aceptar uploads sin validación de tamaño/formato
+- Usar `raise Exception()` en lugar de `HTTPException`
+- Olvidar `async`/`await` en I/O operations
+- Hardcodear valores sin validación
+- Exponer internal paths o secrets en error messages
+- Usar `print()` en lugar de `logger`
+
+---
+
+**Estos patterns son obligatorios para mantener APIs consistentes y seguras.**
