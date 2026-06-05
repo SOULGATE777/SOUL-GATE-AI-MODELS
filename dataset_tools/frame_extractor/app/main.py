@@ -33,7 +33,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .euler import FaceEulerEstimator, compute_angle_range, dominant_axis
+from .euler import EulerResult, FaceEulerEstimator, dominant_axis
+from .naming import (
+    build_frame_key,
+    build_manifest_key,
+    build_neutral_key,
+    classify_neutral_posture,
+)
+from .profiles import get_or_create_profile_id
 from .s3_client import (
     S3ClientError,
     download_video,
@@ -161,6 +168,15 @@ class ExtractRequest(BaseModel):
         description="Session identifier used in the manifest and output keys.",
         examples=["sess01"],
     )
+    user_id: Optional[str] = Field(
+        None,
+        alias="userId",
+        description=(
+            "User identifier for profile assignment in the dataset manifest. "
+            "Node API sends snake_case ``user_id``; both forms are accepted."
+        ),
+        examples=["6ba7b810-9dad-11d1-80b4-00c04fd430c8"],
+    )
     frame_interval: Optional[int] = Field(
         None,
         alias="frameInterval",
@@ -200,6 +216,7 @@ class FrameAnnotation(BaseModel):
     quality_score: float
     face_detected: bool
     session_id: str
+    profile_id: str
     timestamp_ms: float
     s3_frame_key: str
 
@@ -210,6 +227,7 @@ class ExtractResponse(BaseModel):
     frames_extracted: int
     manifest_key: str
     session_id: str
+    profile_id: str
     rotation_type: str
     per_frame: list[FrameAnnotation]
 
@@ -270,6 +288,7 @@ async def extract(req: ExtractRequest) -> ExtractResponse:
             rotation_type=req.rotation_type,
             session_id=req.session_id,
             frame_interval=interval,
+            user_id=req.user_id,
         )
     except S3ClientError as exc:
         logger.error("S3 error: %s", exc)
@@ -318,6 +337,7 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
                 rotation_type=rtype,
                 session_id=req.session_id,
                 frame_interval=DEFAULT_FRAME_INTERVAL,
+                user_id=req.user_id,
             )
             successes.append(result)
         except (S3ClientError, Exception) as exc:
@@ -341,6 +361,7 @@ def _process_video(
     rotation_type: str,
     session_id: str,
     frame_interval: int,
+    user_id: Optional[str] = None,
 ) -> ExtractResponse:
     """
     Full pipeline: download → extract frames → annotate → upload → manifest.
@@ -362,6 +383,11 @@ def _process_video(
         RuntimeError:  When OpenCV cannot open the video.
     """
     local_path: Optional[str] = None
+    profile_id = (
+        get_or_create_profile_id(user_id, session_id, s3_bucket)
+        if user_id
+        else "00000"
+    )
     try:
         # 1. Download video
         local_path = download_video(s3_key, s3_bucket)
@@ -374,6 +400,7 @@ def _process_video(
             rotation_type=rotation_type,
             session_id=session_id,
             frame_interval=frame_interval,
+            profile_id=profile_id,
         )
 
         # 3. Build and upload manifest
@@ -383,6 +410,7 @@ def _process_video(
             session_id=session_id,
             rotation_type=rotation_type,
             source_key=s3_key,
+            profile_id=profile_id,
         )
         upload_manifest(manifest, manifest_key, s3_bucket)
 
@@ -390,6 +418,7 @@ def _process_video(
             frames_extracted=len(annotations),
             manifest_key=manifest_key,
             session_id=session_id,
+            profile_id=profile_id,
             rotation_type=rotation_type,
             per_frame=annotations,
         )
@@ -403,6 +432,25 @@ def _process_video(
                 logger.warning("Could not delete temp file %s: %s", local_path, exc)
 
 
+def _track_neutral_candidate(
+    neutral_candidates: dict[str, dict],
+    category: str,
+    jpeg_bytes: bytes,
+    neutral_key: str,
+    result: EulerResult,
+    annotation: FrameAnnotation,
+) -> None:
+    """Keep the highest-quality frame per neutral posture category."""
+    existing = neutral_candidates.get(category)
+    if existing is None or result.quality_score > existing["quality_score"]:
+        neutral_candidates[category] = {
+            "jpeg": jpeg_bytes,
+            "key": neutral_key,
+            "quality_score": result.quality_score,
+            "annotation": annotation.model_dump(),
+        }
+
+
 def _extract_and_annotate(
     local_path: str,
     s3_key: str,
@@ -410,6 +458,7 @@ def _extract_and_annotate(
     rotation_type: str,
     session_id: str,
     frame_interval: int,
+    profile_id: str,
 ) -> tuple[list[FrameAnnotation], list[dict]]:
     """
     Open the video, extract every ``frame_interval``-th frame, run Euler
@@ -439,6 +488,8 @@ def _extract_and_annotate(
 
     annotations: list[FrameAnnotation] = []
     per_frame_data: list[dict] = []
+    neutral_candidates: dict[str, dict] = {}
+    rtype_lower = rotation_type.lower()
     frame_idx = 0
     sampled_idx = 0
 
@@ -454,29 +505,26 @@ def _extract_and_annotate(
                 # Euler + quality
                 result = estimator.estimate(frame_bgr)
 
-                angle_range = compute_angle_range(
+                frame_s3_key = build_frame_key(
+                    DATASET_PREFIX,
                     rotation_type,
                     result.yaw,
                     result.pitch,
                     result.roll,
+                    profile_id,
+                    session_id=session_id,
+                    sampled_idx=sampled_idx,
                 )
-
-                frame_id = f"{session_id}_{rotation_type}_{sampled_idx:04d}"
-                frame_s3_key = (
-                    f"{DATASET_PREFIX}/{rotation_type}/{angle_range}"
-                    f"/{frame_id}.jpg"
-                )
+                frame_id = frame_s3_key.rsplit("/", 1)[-1].removesuffix(".jpg")
 
                 # Encode JPEG in-memory (vectorised numpy already inside cv2)
                 ok, jpeg_bytes = cv2.imencode(
                     ".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90]
                 )
+                jpeg_payload: Optional[bytes] = None
                 if ok:
-                    upload_frame(
-                        bytes(jpeg_bytes),
-                        frame_s3_key,
-                        s3_bucket,
-                    )
+                    jpeg_payload = bytes(jpeg_bytes)
+                    upload_frame(jpeg_payload, frame_s3_key, s3_bucket)
                 else:
                     logger.warning("JPEG encoding failed for frame %d.", frame_idx)
 
@@ -490,17 +538,66 @@ def _extract_and_annotate(
                     quality_score=result.quality_score,
                     face_detected=result.face_detected,
                     session_id=session_id,
+                    profile_id=profile_id,
                     timestamp_ms=round(timestamp_ms, 2),
                     s3_frame_key=frame_s3_key,
                 )
                 annotations.append(annotation)
                 per_frame_data.append(annotation.model_dump())
+
+                if (
+                    jpeg_payload is not None
+                    and rtype_lower.startswith("horizontal_")
+                    and result.face_detected
+                ):
+                    neutral_cat = classify_neutral_posture(result.yaw, result.pitch)
+                    if neutral_cat:
+                        neutral_key = build_neutral_key(
+                            DATASET_PREFIX, neutral_cat, profile_id, result
+                        )
+                        neutral_frame_id = neutral_key.rsplit("/", 1)[-1].removesuffix(
+                            ".jpg"
+                        )
+                        neutral_annotation = FrameAnnotation(
+                            frame_id=neutral_frame_id,
+                            source_video_key=s3_key,
+                            rotation_type=rotation_type,
+                            yaw=result.yaw,
+                            pitch=result.pitch,
+                            roll=result.roll,
+                            quality_score=result.quality_score,
+                            face_detected=result.face_detected,
+                            session_id=session_id,
+                            profile_id=profile_id,
+                            timestamp_ms=round(timestamp_ms, 2),
+                            s3_frame_key=neutral_key,
+                        )
+                        _track_neutral_candidate(
+                            neutral_candidates,
+                            neutral_cat,
+                            jpeg_payload,
+                            neutral_key,
+                            result,
+                            neutral_annotation,
+                        )
+
                 sampled_idx += 1
 
             frame_idx += 1
 
     finally:
         cap.release()
+
+    for cat, candidate in neutral_candidates.items():
+        upload_frame(candidate["jpeg"], candidate["key"], s3_bucket)
+        annotations.append(FrameAnnotation(**candidate["annotation"]))
+        per_frame_data.append(candidate["annotation"])
+        logger.info(
+            "Uploaded best neutral frame for %s → %s (quality=%.4f)",
+            cat,
+            candidate["key"],
+            candidate["quality_score"],
+        )
 
     logger.info(
         "Extracted %d frames from %s (every %d-th of %d total).",
@@ -513,21 +610,8 @@ def _extract_and_annotate(
 
 
 def _build_manifest_key(rotation_type: str, session_id: str) -> str:
-    """
-    Build the S3 key for the manifest JSON file.
-
-    Format::
-
-        face-rotation-dataset/{rotationType}/{sessionId}_manifest.json
-
-    Args:
-        rotation_type: Rotation type string.
-        session_id:    Session identifier.
-
-    Returns:
-        S3 key string.
-    """
-    return f"{DATASET_PREFIX}/{rotation_type}/{session_id}_manifest.json"
+    """Build the S3 key for the manifest JSON file."""
+    return build_manifest_key(DATASET_PREFIX, rotation_type, session_id)
 
 
 def _build_manifest(
@@ -535,6 +619,7 @@ def _build_manifest(
     session_id: str,
     rotation_type: str,
     source_key: str,
+    profile_id: str,
 ) -> dict:
     """
     Construct the manifest dictionary.
@@ -587,6 +672,7 @@ def _build_manifest(
 
     return {
         "session_id": session_id,
+        "profile_id": profile_id,
         "rotation_type": rotation_type,
         "source_video_key": source_key,
         "created_at": time.time(),

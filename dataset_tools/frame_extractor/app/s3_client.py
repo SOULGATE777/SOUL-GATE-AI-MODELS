@@ -189,6 +189,75 @@ def upload_manifest(data: dict, key: str, bucket: str | None = None) -> None:
         ) from exc
 
 
+def download_json(key: str, bucket: str | None = None) -> dict:
+    """
+    Download and parse a JSON object from S3.
+
+    Args:
+        key:    S3 object key.
+        bucket: S3 bucket; falls back to ``AWS_BUCKET_NAME``.
+
+    Returns:
+        Parsed dict, or ``{}`` when the key does not exist.
+    """
+    bucket = bucket or _default_bucket()
+
+    try:
+        client = _get_client()
+        response = client.get_object(Bucket=bucket, Key=key)
+        body = response["Body"].read()
+        return json.loads(body.decode("utf-8"))
+    except botocore.exceptions.ClientError as exc:
+        code = exc.response["Error"]["Code"]
+        if code in ("404", "NoSuchKey", "NoSuchBucket"):
+            logger.debug("JSON key missing s3://%s/%s — returning {}", bucket, key)
+            return {}
+        raise S3ClientError(
+            f"Failed to download JSON from s3://{bucket}/{key}: {code} — {exc}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise S3ClientError(
+            f"Invalid JSON at s3://{bucket}/{key}: {exc}"
+        ) from exc
+
+
+def download_json(key: str, bucket: str | None = None) -> dict:
+    """
+    Download and parse a JSON object from S3.
+
+    Args:
+        key:    S3 object key.
+        bucket: S3 bucket; falls back to ``AWS_BUCKET_NAME``.
+
+    Returns:
+        Parsed dict, or ``{}`` when the key does not exist.
+    """
+    bucket = bucket or _default_bucket()
+
+    try:
+        client = _get_client()
+        logger.debug("Downloading JSON s3://%s/%s", bucket, key)
+        response = client.get_object(Bucket=bucket, Key=key)
+        body = response["Body"].read()
+        if not body:
+            return {}
+        parsed = json.loads(body.decode("utf-8"))
+        if isinstance(parsed, dict):
+            return parsed
+        return {}
+    except botocore.exceptions.ClientError as exc:
+        code = exc.response["Error"]["Code"]
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return {}
+        raise S3ClientError(
+            f"Failed to download JSON from s3://{bucket}/{key}: {code} — {exc}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise S3ClientError(
+            f"Invalid JSON at s3://{bucket}/{key}: {exc}"
+        ) from exc
+
+
 def object_exists(key: str, bucket: str | None = None) -> bool:
     """
     Check whether an S3 object key exists without downloading it.

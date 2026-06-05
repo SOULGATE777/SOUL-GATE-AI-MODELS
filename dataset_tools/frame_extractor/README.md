@@ -39,6 +39,7 @@ Process a single video.
 | `s3Bucket`      | string  | ❌       | S3 bucket (falls back to `AWS_BUCKET_NAME`)           |
 | `rotationType`  | string  | ✅       | New: `horizontal_0_45 \| horizontal_45_90 \| horizontal_0_neg45 \| horizontal_neg45_neg90 \| vertical_0_45 \| vertical_0_neg45 \| circular`. Legacy still accepted: `frontal \| left \| right \| up \| down \| roll` |
 | `sessionId`     | string  | ✅       | Unique session identifier                             |
+| `userId`        | string  | ❌       | User ID for profile assignment (`user_id` also accepted) |
 | `frameInterval` | integer | ❌       | Extract every N-th frame (default **5**)              |
 
 **Response:**
@@ -46,22 +47,24 @@ Process a single video.
 ```json
 {
   "framesExtracted": 24,
-  "manifestKey": "face-rotation-dataset/horizontal_0_45/sess01_manifest.json",
+  "manifestKey": "face-rotation-dataset/rotacion_horizontal/sess01_horizontal_0_45_manifest.json",
   "sessionId": "sess01",
+  "profileId": "00001",
   "rotationType": "horizontal_0_45",
   "perFrame": [
     {
-      "frame_id": "sess01_horizontal_0_45_0000",
-      "source_video_key": "face-rotation-samples/user42/sess01/horizontal_0_45.mp4",
-      "rotation_type": "horizontal_0_45",
+      "frame_id": "00001_y25_p-5_r2",
+      "source_video_key": "face-rotation-samples/user42/sess01/HORIZONTAL_0_45.mp4",
+      "rotation_type": "HORIZONTAL_0_45",
       "yaw": 22.4,
       "pitch": 1.07,
       "roll": 0.34,
       "quality_score": 0.732,
       "face_detected": true,
       "session_id": "sess01",
+      "profile_id": "00001",
       "timestamp_ms": 166.67,
-      "s3_frame_key": "face-rotation-dataset/horizontal_0_45/yaw_20_25/sess01_horizontal_0_45_0000.jpg"
+      "s3_frame_key": "face-rotation-dataset/rotacion_horizontal/rh_1D/00001_y25_p-5_r2.jpg"
     }
   ]
 }
@@ -109,96 +112,109 @@ s3://{bucket}/face-rotation-samples/{userId}/{sessionId}/{rotationType}.mp4
 
 ### Output (written by this service)
 
+**New rotation types** (redesign enums) use the 4-category dataset convention:
+
 ```
-s3://{bucket}/face-rotation-dataset/{rotationType}/{angleRange}/{frameId}.jpg
-s3://{bucket}/face-rotation-dataset/{rotationType}/{sessionId}_manifest.json
+s3://{bucket}/face-rotation-dataset/{categoria}/{sub_carpeta}/{profileId}_y{yaw}_p{pitch}_r{roll}.jpg
+s3://{bucket}/face-rotation-dataset/rotacion_horizontal/{sessionId}_{rotationType}_manifest.json
+s3://{bucket}/face-rotation-dataset/profiles_manifest.json
 ```
 
-Example tree:
+**Legacy rotation types** (`frontal`, `left`, `right`, `up`, `down`, `roll`) keep
+the previous layout:
+
+```
+s3://{bucket}/face-rotation-dataset/{rotationType}/{angleRange}/{sessionId}_{rotationType}_{####}.jpg
+```
+
+Example tree (new convention):
 
 ```
 face-rotation-dataset/
-  horizontal_0_45/
-    yaw_0_5/
-      sess01_horizontal_0_45_0000.jpg
-    yaw_40_45/
-      sess01_horizontal_0_45_0012.jpg
-    sess01_manifest.json
-  vertical_0_45/
-    pitch_30_35/
-      sess01_vertical_0_45_0007.jpg
-    sess01_manifest.json
-  circular/
-    yaw_0_90/
-      sess01_circular_0000.jpg
-    yaw_-90_0/
-      sess01_circular_0005.jpg
-    sess01_manifest.json
+  rotacion_horizontal/
+    rh_1D/
+      00001_y25_p-5_r2.jpg
+    rh_2D/
+    rh_1I/
+    rh_2I/
+    sess01_horizontal_0_45_manifest.json
+  rotacion_vertical/
+    rv_1A/
+    rv_1B/
+  rotacion_circular/
+    rc_Q1/
+    rc_Q2/
+    rc_Q3/
+    rc_Q4/
+  posturas_neutrales/
+    pn_frontal/
+    pn_perfil_D/
+    pn_perfil_I/
+  profiles_manifest.json
 ```
 
 ---
 
-## Angle-Range Bucketing Scheme
+## Folder routing (new rotation types)
 
-Each extracted frame is assigned to a bucket based on the **dominant Euler
-angle** for its rotation type.  Non-circular types use **5-degree wide bins**;
-the `circular` type uses **90-degree yaw quadrants** (see below).
+| `rotationType` (case-insensitive) | Category folder        | Subfolder |
+|-----------------------------------|------------------------|-----------|
+| `horizontal_0_45`                 | `rotacion_horizontal`  | `rh_1D`   |
+| `horizontal_45_90`                | `rotacion_horizontal`  | `rh_2D`   |
+| `horizontal_0_neg45`              | `rotacion_horizontal`  | `rh_1I`   |
+| `horizontal_neg45_neg90`          | `rotacion_horizontal`  | `rh_2I`   |
+| `vertical_0_45`                   | `rotacion_vertical`    | `rv_1A`   |
+| `vertical_0_neg45`                | `rotacion_vertical`    | `rv_1B`   |
+| `circular`                        | `rotacion_circular`    | `rc_Q1`–`rc_Q4` (yaw quadrant) |
 
-| Rotation type             | Dominant axis | Bucket label format |
-|---------------------------|---------------|---------------------|
-| `horizontal_0_45`         | **yaw**       | `yaw_{lo}_{hi}`     |
-| `horizontal_45_90`        | **yaw**       | `yaw_{lo}_{hi}`     |
-| `horizontal_0_neg45`      | **yaw**       | `yaw_{lo}_{hi}`     |
-| `horizontal_neg45_neg90`  | **yaw**       | `yaw_{lo}_{hi}`     |
-| `vertical_0_45`           | **pitch**     | `pitch_{lo}_{hi}`   |
-| `vertical_0_neg45`        | **pitch**     | `pitch_{lo}_{hi}`   |
-| `circular`                | **yaw**       | `yaw_{lo}_{hi}` (90° quadrants) |
-| `frontal` *(legacy)*      | **yaw**       | `yaw_{lo}_{hi}`     |
-| `left` / `right` *(legacy)* | **yaw**     | `yaw_{lo}_{hi}`     |
-| `up` / `down` *(legacy)*  | **pitch**     | `pitch_{lo}_{hi}`   |
-| `roll` *(legacy)*         | **roll**      | `roll_{lo}_{hi}`    |
-| *(other)*                 | yaw (fallback)| `yaw_{lo}_{hi}`     |
-| no face                   | —             | `no_face`           |
+Filenames encode integer Euler degrees: `{profileId}_y{yaw}_p{pitch}_r{roll}.jpg`.
 
-For non-circular types, **`lo`** and **`hi`** are integer multiples of 5.
+### Neutral postures (horizontal videos only)
 
-Examples:
+From each horizontal video, the extractor keeps the **best-quality** frame per
+neutral category and uploads it under `posturas_neutrales/`:
 
-| Yaw (°) | Bucket label  |
-|---------|---------------|
-| −7.3    | `yaw_-10_-5`  |
-| 0.0     | `yaw_0_5`     |
-| 12.8    | `yaw_10_15`   |
-| −22.1   | `yaw_-25_-20` |
+| Subfolder     | Criteria (approx.)                          |
+|---------------|---------------------------------------------|
+| `pn_frontal`  | `\|yaw\| < 5°` and `\|pitch\| < 5°`        |
+| `pn_perfil_D` | `yaw ≥ 80°` and `\|pitch\| ≤ 15°`          |
+| `pn_perfil_I` | `yaw ≤ -80°` and `\|pitch\| ≤ 15°`         |
 
-### Circular Quadrant Splitting
+### Profile IDs
 
-The `circular` phase is a single continuous head rotation. After computing yaw
-per frame, frames are split into **four signed-yaw quadrants** (90-degree bins),
-staying consistent with the `{axis}_{lo}_{hi}` label format:
-
-| Quadrant | Yaw range        | Bucket label   |
-|----------|------------------|----------------|
-| Q1       | `0°` to `90°`    | `yaw_0_90`     |
-| Q2       | `90°` to `180°`  | `yaw_90_180`   |
-| Q3       | `-180°` to `-90°`| `yaw_-180_-90` |
-| Q4       | `-90°` to `0°`   | `yaw_-90_0`    |
-
-Frames where no face is detected fall into `no_face`. In practice MediaPipe
-loses the face near profile (±90°), so most usable circular frames land in
-`yaw_0_90` (Q1) and `yaw_-90_0` (Q4).
+When `userId` / `user_id` is provided (always on `/extract-session`), the service
+reads or updates `profiles_manifest.json` and assigns a sequential 5-digit
+`profileId` (`00001`, `00002`, …). Without a user ID, frames use `00000`.
 
 ---
 
 ## Manifest Schema
 
-`{sessionId}_manifest.json` — uploaded alongside frames:
+Per-video manifest: `rotacion_horizontal/{sessionId}_{rotationType}_manifest.json`
+(legacy types still use `{rotationType}/{sessionId}_manifest.json`).
+
+Global profile registry: `profiles_manifest.json`:
+
+```json
+{
+  "profiles": [
+    {
+      "profile_id": "00001",
+      "user_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      "sessions": ["550e8400-e29b-41d4-a716-446655440000"]
+    }
+  ]
+}
+```
+
+Per-video extraction manifest:
 
 ```json
 {
   "session_id": "sess01",
+  "profile_id": "00001",
   "rotation_type": "horizontal_0_45",
-  "source_video_key": "face-rotation-samples/user42/sess01/horizontal_0_45.mp4",
+  "source_video_key": "face-rotation-samples/user42/sess01/HORIZONTAL_0_45.mp4",
   "created_at": 1706890000.0,
   "summary": {
     "session_id": "sess01",
@@ -211,8 +227,8 @@ loses the face near profile (±90°), so most usable circular frames land in
   },
   "frames": [
     {
-      "frame_id": "sess01_horizontal_0_45_0000",
-      "source_video_key": "face-rotation-samples/user42/sess01/horizontal_0_45.mp4",
+      "frame_id": "00001_y25_p-5_r2",
+      "source_video_key": "face-rotation-samples/user42/sess01/HORIZONTAL_0_45.mp4",
       "rotation_type": "horizontal_0_45",
       "yaw": 22.4,
       "pitch": 1.07,
@@ -220,8 +236,9 @@ loses the face near profile (±90°), so most usable circular frames land in
       "quality_score": 0.732,
       "face_detected": true,
       "session_id": "sess01",
+      "profile_id": "00001",
       "timestamp_ms": 166.67,
-      "s3_frame_key": "face-rotation-dataset/horizontal_0_45/yaw_20_25/sess01_horizontal_0_45_0000.jpg"
+      "s3_frame_key": "face-rotation-dataset/rotacion_horizontal/rh_1D/00001_y25_p-5_r2.jpg"
     }
   ]
 }
