@@ -23,3 +23,11 @@ services:
       retries: 3
       start_period: 60s
     restart: unless-stopped
+    networks:
+      - default
+      - api_default
+
+networks:
+  default:
+  api_default:
+    external: true
