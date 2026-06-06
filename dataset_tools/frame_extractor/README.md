@@ -307,7 +307,20 @@ Or with Docker Compose:
 
 ```bash
 cp .env.example .env   # fill in AWS credentials
-docker-compose up --build
+# API container must exist first so network api_default is created:
+#   cd SOUL-GATE-FRONTEND-WEB/api && docker compose up -d
+docker compose up --build -d
+```
+
+**Production (EC2):** join the Soul Gate API Docker network so the API can reach
+this service by hostname (`FRAME_EXTRACTOR_URL=http://frame_extractor:8020`).
+The compose file attaches to external network `api_default`. After updating
+compose, recreate the container: `docker compose up -d --force-recreate`.
+
+Verify from the API container:
+
+```bash
+docker exec api-api-1 wget -qO- http://frame_extractor:8020/health
 ```
 
 ---
