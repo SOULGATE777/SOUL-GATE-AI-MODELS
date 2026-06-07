@@ -278,6 +278,11 @@ class FaceEulerEstimator:
         return np.array(pts, dtype=np.float32)
 
     @staticmethod
+    def _normalize_pitch(pitch_deg: float) -> float:
+        """Shift raw pitch +180 so frontal-neutral reads 0, wrapped to (-180, 180]."""
+        return ((pitch_deg + 360.0) % 360.0) - 180.0
+
+    @staticmethod
     def _solve_pose(
         image_2d: np.ndarray,
         width: int,
@@ -322,7 +327,7 @@ class FaceEulerEstimator:
         # RQDecomp3x3 returns [rx, ry, rz] in degrees (Euler XYZ convention).
         angles, _rx, _ry, _rz, _qr, _qt = cv2.RQDecomp3x3(rmat)
 
-        pitch_deg = float(angles[0])  # X rotation = pitch
+        pitch_deg = FaceEulerEstimator._normalize_pitch(float(angles[0]))  # X rotation = pitch (frontal → 0)
         yaw_deg   = float(angles[1])  # Y rotation = yaw
         roll_deg  = float(angles[2])  # Z rotation = roll
 

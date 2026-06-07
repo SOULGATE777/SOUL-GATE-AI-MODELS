@@ -75,7 +75,7 @@ DEFAULT_ROTATION_TYPES: list[str] = [
 ]
 
 # Default frame interval (extract every Nth frame from the video)
-DEFAULT_FRAME_INTERVAL: int = 5
+DEFAULT_FRAME_INTERVAL: int = 2
 
 # Dataset output prefix in S3
 DATASET_PREFIX: str = "face-rotation-dataset"
