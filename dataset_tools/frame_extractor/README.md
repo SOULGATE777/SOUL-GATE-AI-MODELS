@@ -40,7 +40,7 @@ Process a single video.
 | `rotationType`  | string  | ✅       | New: `horizontal_0_45 \| horizontal_45_90 \| horizontal_0_neg45 \| horizontal_neg45_neg90 \| vertical_0_45 \| vertical_0_neg45 \| circular`. Legacy still accepted: `frontal \| left \| right \| up \| down \| roll` |
 | `sessionId`     | string  | ✅       | Unique session identifier                             |
 | `userId`        | string  | ❌       | User ID for profile assignment (`user_id` also accepted) |
-| `frameInterval` | integer | ❌       | Extract every N-th frame (default **5**)              |
+| `frameInterval` | integer | ❌       | Extract every N-th frame (default **2**)              |
 
 **Response:**
 
@@ -168,6 +168,10 @@ face-rotation-dataset/
 | `circular`                        | `rotacion_circular`    | `rc_Q1`–`rc_Q4` (yaw quadrant) |
 
 Filenames encode integer Euler degrees: `{profileId}_y{yaw}_p{pitch}_r{roll}.jpg`.
+
+**Pitch convention:** raw solvePnP pitch is normalized with a +180° shift so frontal
+neutral reads **0** (range **(-180, 180]**). Positive pitch = looking up; negative =
+looking down. Yaw and roll are unchanged.
 
 ### Neutral postures (horizontal videos only)
 
