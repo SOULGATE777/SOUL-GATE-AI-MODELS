@@ -279,8 +279,8 @@ class FaceEulerEstimator:
 
     @staticmethod
     def _normalize_pitch(pitch_deg: float) -> float:
-        """Shift raw pitch +180 so frontal-neutral reads 0, wrapped to (-180, 180]."""
-        return ((pitch_deg + 360.0) % 360.0) - 180.0
+        """Shift raw pitch +180° so frontal-neutral reads 0, wrapped to (-180, 180]."""
+        return ((pitch_deg + 180.0) % 360.0) - 180.0
 
     @staticmethod
     def _solve_pose(
