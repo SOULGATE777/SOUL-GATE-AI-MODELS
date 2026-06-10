@@ -40,7 +40,7 @@ Process a single video.
 | `rotationType`  | string  | ✅       | New: `horizontal_0_45 \| horizontal_45_90 \| horizontal_0_neg45 \| horizontal_neg45_neg90 \| vertical_0_45 \| vertical_0_neg45 \| circular`. Legacy still accepted: `frontal \| left \| right \| up \| down \| roll` |
 | `sessionId`     | string  | ✅       | Unique session identifier                             |
 | `userId`        | string  | ❌       | User ID for profile assignment (`user_id` also accepted) |
-| `frameInterval` | integer | ❌       | Extract every N-th frame (default **2**)              |
+| `frameInterval` | integer | ❌       | Extract every N-th frame (default **1**)              |
 
 **Response:**
 
@@ -83,6 +83,7 @@ Convenience — processes all rotation types for a session.
 | `userId`        | string   | ✅       | User identifier                                 |
 | `sessionId`     | string   | ✅       | Session identifier                              |
 | `rotationTypes` | string[] | ❌       | Defaults to the 7 redesign types: `["horizontal_0_45", "horizontal_45_90", "horizontal_0_neg45", "horizontal_neg45_neg90", "vertical_0_45", "vertical_0_neg45", "circular"]` |
+| `frameInterval` | integer | ❌       | Same as `/extract` (default **1**; env `FRAME_INTERVAL`) |
 
 Constructs source keys automatically:
 
@@ -266,6 +267,7 @@ Per-video extraction manifest:
 | `AWS_ACCESS_KEY_ID`   | ✅       | —              | IAM access key               |
 | `AWS_SECRET_ACCESS_KEY` | ✅     | —              | IAM secret key               |
 | `AWS_BUCKET_NAME`     | ✅       | —              | Default S3 bucket            |
+| `FRAME_INTERVAL`      | ❌       | `1`            | Default stride for `/extract-session` |
 
 ---
 

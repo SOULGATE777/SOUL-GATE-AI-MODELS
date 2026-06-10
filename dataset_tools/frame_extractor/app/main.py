@@ -74,8 +74,11 @@ DEFAULT_ROTATION_TYPES: list[str] = [
     "CIRCULAR",
 ]
 
-# Default frame interval (extract every Nth frame from the video)
-DEFAULT_FRAME_INTERVAL: int = 2
+# Default frame interval (extract every Nth frame from the video).
+# Interval 1 captures every frame so fast sweeps still cover sub-range starts (0°/45°).
+DEFAULT_FRAME_INTERVAL: int = max(
+    1, int(os.environ.get("FRAME_INTERVAL", "1"))
+)
 
 # Dataset output prefix in S3
 DATASET_PREFIX: str = "face-rotation-dataset"
@@ -200,6 +203,12 @@ class ExtractSessionRequest(BaseModel):
             f"{DEFAULT_ROTATION_TYPES}."
         ),
     )
+    frame_interval: Optional[int] = Field(
+        None,
+        alias="frameInterval",
+        description=f"Extract every Nth frame (default {DEFAULT_FRAME_INTERVAL}).",
+        ge=1,
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -318,11 +327,13 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
         :class:`ExtractSessionResponse` with per-rotation results and errors.
     """
     rotation_types = req.rotation_types or DEFAULT_ROTATION_TYPES
+    interval = req.frame_interval or DEFAULT_FRAME_INTERVAL
     logger.info(
-        "extract-session: user_id=%s session_id=%s types=%s",
+        "extract-session: user_id=%s session_id=%s types=%s interval=%d",
         req.user_id,
         req.session_id,
         rotation_types,
+        interval,
     )
 
     successes: list[ExtractResponse] = []
@@ -336,7 +347,7 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
                 s3_bucket=None,
                 rotation_type=rtype,
                 session_id=req.session_id,
-                frame_interval=DEFAULT_FRAME_INTERVAL,
+                frame_interval=interval,
                 user_id=req.user_id,
             )
             successes.append(result)
