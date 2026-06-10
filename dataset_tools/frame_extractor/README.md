@@ -84,6 +84,7 @@ Convenience — processes all rotation types for a session.
 | `sessionId`     | string   | ✅       | Session identifier                              |
 | `rotationTypes` | string[] | ❌       | Defaults to the 7 redesign types: `["horizontal_0_45", "horizontal_45_90", "horizontal_0_neg45", "horizontal_neg45_neg90", "vertical_0_45", "vertical_0_neg45", "circular"]` |
 | `frameInterval` | integer | ❌       | Same as `/extract` (default **1**; env `FRAME_INTERVAL`) |
+| `captureSource` | string  | ❌       | `web` → filename prefix `W`; `mobile` → `M` (see dataset naming doc) |
 
 Constructs source keys automatically:
 
@@ -116,7 +117,7 @@ s3://{bucket}/face-rotation-samples/{userId}/{sessionId}/{rotationType}.mp4
 **New rotation types** (redesign enums) use the 4-category dataset convention:
 
 ```
-s3://{bucket}/face-rotation-dataset/{categoria}/{sub_carpeta}/{profileId}_y{yaw}_p{pitch}_r{roll}.jpg
+s3://{bucket}/face-rotation-dataset/{categoria}/{sub_carpeta}/{W|M}{profileId}_y{yaw}_p{pitch}_r{roll}.jpg
 s3://{bucket}/face-rotation-dataset/rotacion_horizontal/{sessionId}_{rotationType}_manifest.json
 s3://{bucket}/face-rotation-dataset/profiles_manifest.json
 ```

@@ -66,17 +66,44 @@ def is_legacy_rotation_type(rotation_type: str) -> bool:
     return rotation_type.lower() in _LEGACY_ROTATION_TYPES
 
 
+def resolve_capture_source_prefix(capture_source: Optional[str]) -> str:
+    """
+    Map capture origin to a single-letter filename prefix.
+
+    ``web`` → ``W``, ``mobile`` → ``M``. Unknown or missing → empty (legacy).
+    """
+    if not capture_source:
+        return ""
+    normalized = capture_source.strip().lower()
+    if normalized in ("web", "w"):
+        return "W"
+    if normalized in ("mobile", "m"):
+        return "M"
+    return ""
+
+
+def format_profile_filename_token(
+    profile_id: str,
+    capture_source: Optional[str] = None,
+) -> str:
+    """``{W|M}{profileId}`` when source is known, else bare ``profileId``."""
+    prefix = resolve_capture_source_prefix(capture_source)
+    return f"{prefix}{profile_id}" if prefix else profile_id
+
+
 def _format_euler_filename(
     profile_id: str,
     yaw: float,
     pitch: float,
     roll: float,
+    capture_source: Optional[str] = None,
 ) -> str:
-    """Build ``{profileId}_y{yaw}_p{pitch}_r{roll}.jpg`` with integer angles."""
+    """Build ``{W|M}{profileId}_y{yaw}_p{pitch}_r{roll}.jpg`` with integer angles."""
+    token = format_profile_filename_token(profile_id, capture_source)
     y = int(round(yaw))
     p = int(round(pitch))
     r = int(round(roll))
-    return f"{profile_id}_y{y}_p{p}_r{r}.jpg"
+    return f"{token}_y{y}_p{p}_r{r}.jpg"
 
 
 def resolve_category_subfolder(
@@ -112,6 +139,7 @@ def build_frame_key(
     *,
     session_id: str = "",
     sampled_idx: int = 0,
+    capture_source: Optional[str] = None,
 ) -> str:
     """
     Build the full S3 key for a dataset frame JPEG.
@@ -134,7 +162,9 @@ def build_frame_key(
     category, subfolder = resolve_category_subfolder(
         rotation_type, yaw, pitch, roll
     )
-    filename = _format_euler_filename(profile_id, yaw, pitch, roll)
+    filename = _format_euler_filename(
+        profile_id, yaw, pitch, roll, capture_source=capture_source
+    )
     return f"{dataset_prefix}/{category}/{subfolder}/{filename}"
 
 
@@ -168,12 +198,16 @@ def build_neutral_key(
     neutral_category: str,
     profile_id: str,
     result: EulerResult,
+    *,
+    capture_source: Optional[str] = None,
 ) -> str:
     """S3 key under ``posturas_neutrales/{neutral_category}/``."""
     yaw = result.yaw if result.yaw is not None else 0.0
     pitch = result.pitch if result.pitch is not None else 0.0
     roll = result.roll if result.roll is not None else 0.0
-    filename = _format_euler_filename(profile_id, yaw, pitch, roll)
+    filename = _format_euler_filename(
+        profile_id, yaw, pitch, roll, capture_source=capture_source
+    )
     return f"{dataset_prefix}/posturas_neutrales/{neutral_category}/{filename}"
 
 

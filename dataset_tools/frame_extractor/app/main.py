@@ -186,6 +186,15 @@ class ExtractRequest(BaseModel):
         description=f"Extract every Nth frame (default {DEFAULT_FRAME_INTERVAL}).",
         ge=1,
     )
+    capture_source: Optional[str] = Field(
+        None,
+        alias="captureSource",
+        description=(
+            "Capture client origin: ``web`` (prefix ``W``) or ``mobile`` (prefix ``M``) "
+            "in dataset frame filenames."
+        ),
+        examples=["web"],
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -208,6 +217,15 @@ class ExtractSessionRequest(BaseModel):
         alias="frameInterval",
         description=f"Extract every Nth frame (default {DEFAULT_FRAME_INTERVAL}).",
         ge=1,
+    )
+    capture_source: Optional[str] = Field(
+        None,
+        alias="captureSource",
+        description=(
+            "Capture client origin: ``web`` (prefix ``W``) or ``mobile`` (prefix ``M``) "
+            "in dataset frame filenames."
+        ),
+        examples=["mobile"],
     )
 
     model_config = {"populate_by_name": True}
@@ -298,6 +316,7 @@ async def extract(req: ExtractRequest) -> ExtractResponse:
             session_id=req.session_id,
             frame_interval=interval,
             user_id=req.user_id,
+            capture_source=req.capture_source,
         )
     except S3ClientError as exc:
         logger.error("S3 error: %s", exc)
@@ -349,6 +368,7 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
                 session_id=req.session_id,
                 frame_interval=interval,
                 user_id=req.user_id,
+                capture_source=req.capture_source,
             )
             successes.append(result)
         except (S3ClientError, Exception) as exc:
@@ -373,6 +393,7 @@ def _process_video(
     session_id: str,
     frame_interval: int,
     user_id: Optional[str] = None,
+    capture_source: Optional[str] = None,
 ) -> ExtractResponse:
     """
     Full pipeline: download → extract frames → annotate → upload → manifest.
@@ -412,6 +433,7 @@ def _process_video(
             session_id=session_id,
             frame_interval=frame_interval,
             profile_id=profile_id,
+            capture_source=capture_source,
         )
 
         # 3. Build and upload manifest
@@ -470,6 +492,7 @@ def _extract_and_annotate(
     session_id: str,
     frame_interval: int,
     profile_id: str,
+    capture_source: Optional[str] = None,
 ) -> tuple[list[FrameAnnotation], list[dict]]:
     """
     Open the video, extract every ``frame_interval``-th frame, run Euler
@@ -525,6 +548,7 @@ def _extract_and_annotate(
                     profile_id,
                     session_id=session_id,
                     sampled_idx=sampled_idx,
+                    capture_source=capture_source,
                 )
                 frame_id = frame_s3_key.rsplit("/", 1)[-1].removesuffix(".jpg")
 
@@ -564,7 +588,11 @@ def _extract_and_annotate(
                     neutral_cat = classify_neutral_posture(result.yaw, result.pitch)
                     if neutral_cat:
                         neutral_key = build_neutral_key(
-                            DATASET_PREFIX, neutral_cat, profile_id, result
+                            DATASET_PREFIX,
+                            neutral_cat,
+                            profile_id,
+                            result,
+                            capture_source=capture_source,
                         )
                         neutral_frame_id = neutral_key.rsplit("/", 1)[-1].removesuffix(
                             ".jpg"
