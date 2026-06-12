@@ -159,21 +159,39 @@ face-rotation-dataset/
 
 ## Folder routing (new rotation types)
 
-| `rotationType` (case-insensitive) | Category folder        | Subfolder |
-|-----------------------------------|------------------------|-----------|
-| `horizontal_0_45`                 | `rotacion_horizontal`  | `rh_1D`   |
-| `horizontal_45_90`                | `rotacion_horizontal`  | `rh_2D`   |
-| `horizontal_0_neg45`              | `rotacion_horizontal`  | `rh_1I`   |
-| `horizontal_neg45_neg90`          | `rotacion_horizontal`  | `rh_2I`   |
-| `vertical_0_45`                   | `rotacion_vertical`    | `rv_1A`   |
-| `vertical_0_neg45`                | `rotacion_vertical`    | `rv_1B`   |
-| `circular`                        | `rotacion_circular`    | `rc_Q1`–`rc_Q4` (yaw quadrant) |
+Subfolders are chosen from **measured Euler angles** at extraction time, not from
+the source video `rotationType` label alone. Combined capture blobs (e.g.
+`HORIZONTAL_0_45` and `HORIZONTAL_45_90` share one 0°→90° sweep) are split into
+the correct sub-range folders automatically.
+
+| Category folder       | Subfolder | Routing rule (measured angle) |
+|-----------------------|-----------|--------------------------------|
+| `rotacion_horizontal` | `rh_1D`   | yaw in `[0°, 45°)`             |
+| `rotacion_horizontal` | `rh_2D`   | yaw `≥ 45°`                    |
+| `rotacion_horizontal` | `rh_1I`   | yaw in `[-45°, 0°)`            |
+| `rotacion_horizontal` | `rh_2I`   | yaw `< -45°`                   |
+| `rotacion_vertical`   | `rv_1A`   | pitch `≥ 0°`                   |
+| `rotacion_vertical`   | `rv_1B`   | pitch `< 0°`                   |
+| `rotacion_circular`   | `rc_Q1`–`rc_Q4` | yaw quadrant (unchanged) |
+
+The `rotationType` on the source MP4 still selects the **category folder**
+(`rotacion_horizontal`, etc.) via `CATEGORY_MAP`; only the subfolder band uses
+live yaw/pitch from MediaPipe + solvePnP.
 
 Filenames encode integer Euler degrees: `{profileId}_y{yaw}_p{pitch}_r{roll}.jpg`.
 
 **Pitch convention:** raw solvePnP pitch is normalized with a +180° shift so frontal
 neutral reads **0** (range **(-180, 180]**). Positive pitch = looking up; negative =
 looking down. Yaw and roll are unchanged.
+
+### Video orientation handling
+
+Phone clips may decode sideways when OpenCV reads the MP4 without rotation
+metadata. Before frame extraction, the service samples ~15 evenly spaced frames,
+tries rotations `{0°, 90°, 180°, 270°}`, and picks the orientation with the most
+face detections (ties → no rotation). Every extracted frame is rotated to that
+upright orientation before Euler estimation, so angles and subfolder routing stay
+consistent with the table above.
 
 ### Neutral postures (horizontal videos only)
 

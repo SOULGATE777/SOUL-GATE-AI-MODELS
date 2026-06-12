@@ -383,6 +383,74 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
 
 
 # ---------------------------------------------------------------------------
+# Video orientation (phone clips may decode sideways without metadata)
+# ---------------------------------------------------------------------------
+
+_ROTATION_CANDIDATES: tuple[int, ...] = (0, 90, 180, 270)
+_ORIENTATION_SAMPLE_COUNT = 15
+
+
+def _apply_rotation(frame: np.ndarray, code: int) -> np.ndarray:
+    """Rotate a BGR frame by ``code`` degrees clockwise (0/90/180/270)."""
+    if code == 90:
+        return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    if code == 180:
+        return cv2.rotate(frame, cv2.ROTATE_180)
+    if code == 270:
+        return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return frame
+
+
+def _detect_video_rotation(path: str, estimator: FaceEulerEstimator) -> int:
+    """
+    Pick the upright orientation that yields the most face detections.
+
+    Samples up to ~15 evenly spaced frames, tries rotations
+    ``{0, 90, 180, 270}``, and returns the code with the highest count.
+    Ties prefer 0 (no rotation).
+    """
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        return 0
+
+    try:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        if total_frames <= 0:
+            return 0
+
+        sample_count = min(_ORIENTATION_SAMPLE_COUNT, total_frames)
+        if sample_count == 1:
+            indices = [0]
+        else:
+            indices = [
+                int(round(i * (total_frames - 1) / (sample_count - 1)))
+                for i in range(sample_count)
+            ]
+
+        scores = {code: 0 for code in _ROTATION_CANDIDATES}
+        for frame_idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame_bgr = cap.read()
+            if not ret:
+                continue
+            for code in _ROTATION_CANDIDATES:
+                rotated = _apply_rotation(frame_bgr, code)
+                result = estimator.estimate(rotated)
+                if result.face_detected:
+                    scores[code] += 1
+
+        best_score = max(scores.values())
+        if best_score == 0:
+            return 0
+        for code in _ROTATION_CANDIDATES:
+            if scores[code] == best_score:
+                return code
+        return 0
+    finally:
+        cap.release()
+
+
+# ---------------------------------------------------------------------------
 # Core processing logic
 # ---------------------------------------------------------------------------
 
@@ -513,12 +581,20 @@ def _extract_and_annotate(
     Raises:
         RuntimeError: When OpenCV cannot open the video.
     """
+    estimator = _get_estimator()
+    rotation_code = _detect_video_rotation(local_path, estimator)
+    if rotation_code != 0:
+        logger.info(
+            "Detected video orientation correction: rotate %d° clockwise for %s",
+            rotation_code,
+            local_path,
+        )
+
     cap = cv2.VideoCapture(local_path)
     if not cap.isOpened():
         raise RuntimeError(f"OpenCV could not open video: {local_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    estimator = _get_estimator()
 
     annotations: list[FrameAnnotation] = []
     per_frame_data: list[dict] = []
@@ -535,6 +611,8 @@ def _extract_and_annotate(
 
             if frame_idx % frame_interval == 0:
                 timestamp_ms = (frame_idx / fps) * 1000.0
+
+                frame_bgr = _apply_rotation(frame_bgr, rotation_code)
 
                 # Euler + quality
                 result = estimator.estimate(frame_bgr)

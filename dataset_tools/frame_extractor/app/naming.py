@@ -29,6 +29,9 @@ CIRCULAR_SUBFOLDER_MAP: dict[str, str] = {
     "yaw_-90_0": "rc_Q4",
 }
 
+# Sub-range split for horizontal/vertical (dataset-naming-convention.md)
+SUBRANGE_BOUNDARY_DEG = 45
+
 # Neutral posture thresholds (dataset-naming-convention.md)
 NEUTRAL_FRONTAL_YAW_MAX = 5
 NEUTRAL_FRONTAL_PITCH_MAX = 5
@@ -106,6 +109,22 @@ def _format_euler_filename(
     return f"{token}_y{y}_p{p}_r{r}.jpg"
 
 
+def _horizontal_subfolder(yaw: float) -> str:
+    """Route horizontal frames by measured yaw band (not source video label)."""
+    if yaw >= SUBRANGE_BOUNDARY_DEG:
+        return "rh_2D"
+    if yaw >= 0:
+        return "rh_1D"
+    if yaw >= -SUBRANGE_BOUNDARY_DEG:
+        return "rh_1I"
+    return "rh_2I"
+
+
+def _vertical_subfolder(pitch: float) -> str:
+    """Route vertical frames by measured pitch sign (not source video label)."""
+    return "rv_1A" if pitch >= 0 else "rv_1B"
+
+
 def resolve_category_subfolder(
     rotation_type: str,
     yaw: Optional[float],
@@ -115,6 +134,9 @@ def resolve_category_subfolder(
     """
     Map API rotation type + Euler angles to ``(category, subfolder)``.
 
+    Category comes from ``CATEGORY_MAP``. Horizontal and vertical subfolders
+    are derived from measured yaw/pitch bands so combined capture blobs (e.g.
+    ``HORIZONTAL_0_45`` spanning 0°→90°) split correctly at extraction time.
     For ``circular``, subfolder is derived from yaw quadrant via
     :func:`compute_angle_range`.
     """
@@ -122,10 +144,20 @@ def resolve_category_subfolder(
     if rtype not in CATEGORY_MAP:
         raise ValueError(f"Unknown rotation type for new layout: {rotation_type}")
 
-    category, subfolder = CATEGORY_MAP[rtype]
-    if subfolder is None:
+    category, mapped_subfolder = CATEGORY_MAP[rtype]
+    if mapped_subfolder is None:
         angle_range = compute_angle_range(rtype, yaw, pitch, roll)
         subfolder = CIRCULAR_SUBFOLDER_MAP.get(angle_range, "rc_Q1")
+    elif category == "rotacion_horizontal":
+        if yaw is None:
+            raise ValueError("yaw required for horizontal subfolder routing")
+        subfolder = _horizontal_subfolder(yaw)
+    elif category == "rotacion_vertical":
+        if pitch is None:
+            raise ValueError("pitch required for vertical subfolder routing")
+        subfolder = _vertical_subfolder(pitch)
+    else:
+        subfolder = mapped_subfolder
     return category, subfolder
 
 
