@@ -279,8 +279,19 @@ class FaceEulerEstimator:
 
     @staticmethod
     def _normalize_pitch(pitch_deg: float) -> float:
-        """Shift raw pitch +180° so frontal-neutral reads 0, wrapped to (-180, 180]."""
-        return ((pitch_deg + 180.0) % 360.0) - 180.0
+        """Map raw pitch so frontal-neutral reads 0.
+
+        solvePnP/RQDecomp3x3 can report the X-rotation as ~±180 at frontal neutral
+        due to axis ambiguity. Wrap to (-180, 180], then fold the antipodal branch
+        (|p| > 90) back toward 0 so frontal neutral reads ~0 and a genuine head tilt
+        stays within (-90, 90] with the correct sign (pitch+ = up).
+        """
+        wrapped = ((pitch_deg + 180.0) % 360.0) - 180.0
+        if wrapped > 90.0:
+            wrapped -= 180.0
+        elif wrapped < -90.0:
+            wrapped += 180.0
+        return wrapped
 
     @staticmethod
     def _solve_pose(
