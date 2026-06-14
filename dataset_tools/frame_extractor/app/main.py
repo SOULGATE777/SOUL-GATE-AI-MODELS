@@ -40,6 +40,13 @@ from .naming import (
     build_neutral_key,
     classify_neutral_posture,
 )
+from .selection import (
+    DEFAULT_DEDUP_ENABLED,
+    DEFAULT_MIN_QUALITY_SCORE,
+    DEFAULT_POSE_BIN_STEP_DEG,
+    is_better_candidate,
+    pose_bin_signature,
+)
 from .profiles import get_or_create_profile_id
 from .s3_client import (
     S3ClientError,
@@ -195,6 +202,31 @@ class ExtractRequest(BaseModel):
         ),
         examples=["web"],
     )
+    dedup: Optional[bool] = Field(
+        None,
+        description=(
+            "Enable pose-bin deduplication (keep best frame per angle bin). "
+            f"Defaults to env FRAME_DEDUP_ENABLED ({DEFAULT_DEDUP_ENABLED})."
+        ),
+    )
+    pose_bin_step: Optional[int] = Field(
+        None,
+        alias="poseBinStep",
+        description=(
+            "Angle bin width in degrees for deduplication. Defaults to env "
+            f"POSE_BIN_STEP_DEG ({DEFAULT_POSE_BIN_STEP_DEG})."
+        ),
+        ge=1,
+    )
+    min_quality_score: Optional[float] = Field(
+        None,
+        alias="minQualityScore",
+        description=(
+            "Drop frames below this composite quality score. Defaults to env "
+            f"MIN_QUALITY_SCORE ({DEFAULT_MIN_QUALITY_SCORE})."
+        ),
+        ge=0.0,
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -226,6 +258,31 @@ class ExtractSessionRequest(BaseModel):
             "in dataset frame filenames."
         ),
         examples=["mobile"],
+    )
+    dedup: Optional[bool] = Field(
+        None,
+        description=(
+            "Enable pose-bin deduplication (keep best frame per angle bin). "
+            f"Defaults to env FRAME_DEDUP_ENABLED ({DEFAULT_DEDUP_ENABLED})."
+        ),
+    )
+    pose_bin_step: Optional[int] = Field(
+        None,
+        alias="poseBinStep",
+        description=(
+            "Angle bin width in degrees for deduplication. Defaults to env "
+            f"POSE_BIN_STEP_DEG ({DEFAULT_POSE_BIN_STEP_DEG})."
+        ),
+        ge=1,
+    )
+    min_quality_score: Optional[float] = Field(
+        None,
+        alias="minQualityScore",
+        description=(
+            "Drop frames below this composite quality score. Defaults to env "
+            f"MIN_QUALITY_SCORE ({DEFAULT_MIN_QUALITY_SCORE})."
+        ),
+        ge=0.0,
     )
 
     model_config = {"populate_by_name": True}
@@ -300,12 +357,25 @@ async def extract(req: ExtractRequest) -> ExtractResponse:
         HTTPException 500: On S3 or OpenCV processing errors.
     """
     interval = req.frame_interval or DEFAULT_FRAME_INTERVAL
+    dedup_enabled = (
+        req.dedup if req.dedup is not None else DEFAULT_DEDUP_ENABLED
+    )
+    pose_bin_step = req.pose_bin_step or DEFAULT_POSE_BIN_STEP_DEG
+    min_quality_score = (
+        req.min_quality_score
+        if req.min_quality_score is not None
+        else DEFAULT_MIN_QUALITY_SCORE
+    )
     logger.info(
-        "extract: s3_key=%s rotation_type=%s session_id=%s interval=%d",
+        "extract: s3_key=%s rotation_type=%s session_id=%s interval=%d "
+        "dedup=%s bin_step=%d min_quality=%.3f",
         req.s3_key,
         req.rotation_type,
         req.session_id,
         interval,
+        dedup_enabled,
+        pose_bin_step,
+        min_quality_score,
     )
 
     try:
@@ -317,6 +387,9 @@ async def extract(req: ExtractRequest) -> ExtractResponse:
             frame_interval=interval,
             user_id=req.user_id,
             capture_source=req.capture_source,
+            dedup_enabled=dedup_enabled,
+            pose_bin_step=pose_bin_step,
+            min_quality_score=min_quality_score,
         )
     except S3ClientError as exc:
         logger.error("S3 error: %s", exc)
@@ -347,12 +420,25 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
     """
     rotation_types = req.rotation_types or DEFAULT_ROTATION_TYPES
     interval = req.frame_interval or DEFAULT_FRAME_INTERVAL
+    dedup_enabled = (
+        req.dedup if req.dedup is not None else DEFAULT_DEDUP_ENABLED
+    )
+    pose_bin_step = req.pose_bin_step or DEFAULT_POSE_BIN_STEP_DEG
+    min_quality_score = (
+        req.min_quality_score
+        if req.min_quality_score is not None
+        else DEFAULT_MIN_QUALITY_SCORE
+    )
     logger.info(
-        "extract-session: user_id=%s session_id=%s types=%s interval=%d",
+        "extract-session: user_id=%s session_id=%s types=%s interval=%d "
+        "dedup=%s bin_step=%d min_quality=%.3f",
         req.user_id,
         req.session_id,
         rotation_types,
         interval,
+        dedup_enabled,
+        pose_bin_step,
+        min_quality_score,
     )
 
     successes: list[ExtractResponse] = []
@@ -369,6 +455,9 @@ async def extract_session(req: ExtractSessionRequest) -> ExtractSessionResponse:
                 frame_interval=interval,
                 user_id=req.user_id,
                 capture_source=req.capture_source,
+                dedup_enabled=dedup_enabled,
+                pose_bin_step=pose_bin_step,
+                min_quality_score=min_quality_score,
             )
             successes.append(result)
         except (S3ClientError, Exception) as exc:
@@ -462,6 +551,9 @@ def _process_video(
     frame_interval: int,
     user_id: Optional[str] = None,
     capture_source: Optional[str] = None,
+    dedup_enabled: bool = DEFAULT_DEDUP_ENABLED,
+    pose_bin_step: int = DEFAULT_POSE_BIN_STEP_DEG,
+    min_quality_score: float = DEFAULT_MIN_QUALITY_SCORE,
 ) -> ExtractResponse:
     """
     Full pipeline: download → extract frames → annotate → upload → manifest.
@@ -493,7 +585,7 @@ def _process_video(
         local_path = download_video(s3_key, s3_bucket)
 
         # 2. Extract and annotate frames
-        annotations, per_frame_data = _extract_and_annotate(
+        annotations, per_frame_data, selection_stats = _extract_and_annotate(
             local_path=local_path,
             s3_key=s3_key,
             s3_bucket=s3_bucket,
@@ -502,6 +594,9 @@ def _process_video(
             frame_interval=frame_interval,
             profile_id=profile_id,
             capture_source=capture_source,
+            dedup_enabled=dedup_enabled,
+            pose_bin_step=pose_bin_step,
+            min_quality_score=min_quality_score,
         )
 
         # 3. Build and upload manifest
@@ -512,6 +607,7 @@ def _process_video(
             rotation_type=rotation_type,
             source_key=s3_key,
             profile_id=profile_id,
+            selection_stats=selection_stats,
         )
         upload_manifest(manifest, manifest_key, s3_bucket)
 
@@ -561,22 +657,39 @@ def _extract_and_annotate(
     frame_interval: int,
     profile_id: str,
     capture_source: Optional[str] = None,
-) -> tuple[list[FrameAnnotation], list[dict]]:
+    dedup_enabled: bool = DEFAULT_DEDUP_ENABLED,
+    pose_bin_step: int = DEFAULT_POSE_BIN_STEP_DEG,
+    min_quality_score: float = DEFAULT_MIN_QUALITY_SCORE,
+) -> tuple[list[FrameAnnotation], list[dict], dict]:
     """
     Open the video, extract every ``frame_interval``-th frame, run Euler
-    estimation, upload the JPEG, and return annotation objects.
+    estimation, and either upload every frame (legacy) or keep only the best
+    frame per pose bin (deduplication).
+
+    When ``dedup_enabled`` is True, each detected frame is grouped into a pose
+    bin (see :func:`app.selection.pose_bin_signature`); only the highest-quality
+    frame of each bin is uploaded. Frames without a detected face, or below
+    ``min_quality_score``, are dropped. This collapses temporal bursts of
+    near-identical poses (and roll jitter) into one representative image while
+    preserving angular coverage. Neutral-posture selection is unchanged and runs
+    independently.
 
     Args:
-        local_path:     Path to the downloaded video file.
-        s3_key:         Original S3 key (stored in annotation for provenance).
-        s3_bucket:      Target S3 bucket.
-        rotation_type:  Rotation type string.
-        session_id:     Session identifier.
-        frame_interval: Sampling stride.
+        local_path:        Path to the downloaded video file.
+        s3_key:            Original S3 key (stored in annotation for provenance).
+        s3_bucket:         Target S3 bucket.
+        rotation_type:     Rotation type string.
+        session_id:        Session identifier.
+        frame_interval:    Sampling stride.
+        profile_id:        Assigned profile identifier.
+        capture_source:    ``web`` / ``mobile`` origin for filename prefix.
+        dedup_enabled:     Keep only the best frame per pose bin when True.
+        pose_bin_step:     Bin width in degrees for deduplication.
+        min_quality_score: Drop frames below this composite quality score.
 
     Returns:
-        Tuple of (list of :class:`FrameAnnotation`, list of raw dicts for the
-        manifest).
+        Tuple of (kept :class:`FrameAnnotation` list, manifest dicts, selection
+        stats dict).
 
     Raises:
         RuntimeError: When OpenCV cannot open the video.
@@ -599,9 +712,14 @@ def _extract_and_annotate(
     annotations: list[FrameAnnotation] = []
     per_frame_data: list[dict] = []
     neutral_candidates: dict[str, dict] = {}
+    # Pose-bin winners: signature → best candidate (dedup mode only).
+    pose_candidates: dict[tuple, dict] = {}
     rtype_lower = rotation_type.lower()
     frame_idx = 0
     sampled_idx = 0
+    processed = 0
+    skipped_no_face = 0
+    skipped_low_quality = 0
 
     try:
         while True:
@@ -616,6 +734,7 @@ def _extract_and_annotate(
 
                 # Euler + quality
                 result = estimator.estimate(frame_bgr)
+                processed += 1
 
                 frame_s3_key = build_frame_key(
                     DATASET_PREFIX,
@@ -634,11 +753,8 @@ def _extract_and_annotate(
                 ok, jpeg_bytes = cv2.imencode(
                     ".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90]
                 )
-                jpeg_payload: Optional[bytes] = None
-                if ok:
-                    jpeg_payload = bytes(jpeg_bytes)
-                    upload_frame(jpeg_payload, frame_s3_key, s3_bucket)
-                else:
+                jpeg_payload: Optional[bytes] = bytes(jpeg_bytes) if ok else None
+                if not ok:
                     logger.warning("JPEG encoding failed for frame %d.", frame_idx)
 
                 annotation = FrameAnnotation(
@@ -655,9 +771,43 @@ def _extract_and_annotate(
                     timestamp_ms=round(timestamp_ms, 2),
                     s3_frame_key=frame_s3_key,
                 )
-                annotations.append(annotation)
-                per_frame_data.append(annotation.model_dump())
 
+                if not dedup_enabled:
+                    # Legacy behaviour: upload every frame immediately.
+                    if jpeg_payload is not None:
+                        upload_frame(jpeg_payload, frame_s3_key, s3_bucket)
+                    annotations.append(annotation)
+                    per_frame_data.append(annotation.model_dump())
+                elif jpeg_payload is None:
+                    pass  # nothing to keep when encoding failed
+                elif not result.face_detected:
+                    skipped_no_face += 1
+                elif result.quality_score < min_quality_score:
+                    skipped_low_quality += 1
+                else:
+                    # Group by pose bin; keep the highest-quality frame per bin.
+                    signature = pose_bin_signature(
+                        rotation_type,
+                        result.yaw,
+                        result.pitch,
+                        result.roll,
+                        pose_bin_step,
+                    )
+                    if signature is None:
+                        signature = ("__idx__", sampled_idx)
+                    existing = pose_candidates.get(signature)
+                    if is_better_candidate(
+                        result.quality_score,
+                        existing["quality_score"] if existing else None,
+                    ):
+                        pose_candidates[signature] = {
+                            "jpeg": jpeg_payload,
+                            "key": frame_s3_key,
+                            "quality_score": result.quality_score,
+                            "annotation": annotation.model_dump(),
+                        }
+
+                # Neutral posture selection (independent of dedup).
                 if (
                     jpeg_payload is not None
                     and rtype_lower.startswith("horizontal_")
@@ -705,6 +855,23 @@ def _extract_and_annotate(
     finally:
         cap.release()
 
+    # Upload pose-bin winners (dedup mode).
+    if dedup_enabled:
+        for candidate in pose_candidates.values():
+            upload_frame(candidate["jpeg"], candidate["key"], s3_bucket)
+            annotations.append(FrameAnnotation(**candidate["annotation"]))
+            per_frame_data.append(candidate["annotation"])
+        logger.info(
+            "Pose-bin dedup: %d processed → %d kept "
+            "(skipped %d no-face, %d low-quality) step=%d° for %s",
+            processed,
+            len(pose_candidates),
+            skipped_no_face,
+            skipped_low_quality,
+            pose_bin_step,
+            rotation_type,
+        )
+
     for cat, candidate in neutral_candidates.items():
         upload_frame(candidate["jpeg"], candidate["key"], s3_bucket)
         annotations.append(FrameAnnotation(**candidate["annotation"]))
@@ -716,14 +883,26 @@ def _extract_and_annotate(
             candidate["quality_score"],
         )
 
+    selection_stats = {
+        "dedup_enabled": dedup_enabled,
+        "pose_bin_step_deg": pose_bin_step,
+        "min_quality_score": min_quality_score,
+        "frames_processed": processed,
+        "frames_selected": len(pose_candidates) if dedup_enabled else processed,
+        "frames_skipped_no_face": skipped_no_face,
+        "frames_skipped_low_quality": skipped_low_quality,
+        "neutral_frames": len(neutral_candidates),
+    }
+
     logger.info(
-        "Extracted %d frames from %s (every %d-th of %d total).",
+        "Extracted %d frames from %s (every %d-th of %d total, dedup=%s).",
         len(annotations),
         local_path,
         frame_interval,
         frame_idx,
+        dedup_enabled,
     )
-    return annotations, per_frame_data
+    return annotations, per_frame_data, selection_stats
 
 
 def _build_manifest_key(rotation_type: str, session_id: str) -> str:
@@ -737,6 +916,7 @@ def _build_manifest(
     rotation_type: str,
     source_key: str,
     profile_id: str,
+    selection_stats: Optional[dict] = None,
 ) -> dict:
     """
     Construct the manifest dictionary.
@@ -787,22 +967,26 @@ def _build_manifest(
     angle_arr = np.array(angles, dtype=np.float64) if angles else None
     quality_arr = np.array(qualities, dtype=np.float64) if qualities else None
 
+    summary = {
+        "session_id": session_id,
+        "rotation_type": rotation_type,
+        "total_frames": len(annotations),
+        "frames_with_face": len(detected),
+        "angle_min": float(angle_arr.min()) if angle_arr is not None else None,
+        "angle_max": float(angle_arr.max()) if angle_arr is not None else None,
+        "quality_score_mean": (
+            float(quality_arr.mean()) if quality_arr is not None else None
+        ),
+    }
+    if selection_stats is not None:
+        summary["selection"] = selection_stats
+
     return {
         "session_id": session_id,
         "profile_id": profile_id,
         "rotation_type": rotation_type,
         "source_video_key": source_key,
         "created_at": time.time(),
-        "summary": {
-            "session_id": session_id,
-            "rotation_type": rotation_type,
-            "total_frames": len(annotations),
-            "frames_with_face": len(detected),
-            "angle_min": float(angle_arr.min()) if angle_arr is not None else None,
-            "angle_max": float(angle_arr.max()) if angle_arr is not None else None,
-            "quality_score_mean": (
-                float(quality_arr.mean()) if quality_arr is not None else None
-            ),
-        },
+        "summary": summary,
         "frames": annotations,
     }

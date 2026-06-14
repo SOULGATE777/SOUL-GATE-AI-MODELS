@@ -41,6 +41,9 @@ Process a single video.
 | `sessionId`     | string  | ✅       | Unique session identifier                             |
 | `userId`        | string  | ❌       | User ID for profile assignment (`user_id` also accepted) |
 | `frameInterval` | integer | ❌       | Extract every N-th frame (default **1**)              |
+| `dedup`         | boolean | ❌       | Keep only the best frame per pose bin (default env `FRAME_DEDUP_ENABLED`, **true**) |
+| `poseBinStep`   | integer | ❌       | Angle bin width in degrees for dedup (default env `POSE_BIN_STEP_DEG`, **2**) |
+| `minQualityScore` | number | ❌      | Drop frames below this quality score (default env `MIN_QUALITY_SCORE`, **0.0**) |
 
 **Response:**
 
@@ -85,6 +88,9 @@ Convenience — processes all rotation types for a session.
 | `rotationTypes` | string[] | ❌       | Defaults to the 7 redesign types: `["horizontal_0_45", "horizontal_45_90", "horizontal_0_neg45", "horizontal_neg45_neg90", "vertical_0_45", "vertical_0_neg45", "circular"]` |
 | `frameInterval` | integer | ❌       | Same as `/extract` (default **1**; env `FRAME_INTERVAL`) |
 | `captureSource` | string  | ❌       | `web` → filename prefix `W`; `mobile` → `M` (see dataset naming doc) |
+| `dedup`         | boolean | ❌       | Same as `/extract` (default env `FRAME_DEDUP_ENABLED`, **true**) |
+| `poseBinStep`   | integer | ❌       | Same as `/extract` (default env `POSE_BIN_STEP_DEG`, **2**) |
+| `minQualityScore` | number | ❌      | Same as `/extract` (default env `MIN_QUALITY_SCORE`, **0.0**) |
 
 Constructs source keys automatically:
 
@@ -247,7 +253,17 @@ Per-video extraction manifest:
     "frames_with_face": 22,
     "angle_min": 1.2,
     "angle_max": 44.8,
-    "quality_score_mean": 0.741
+    "quality_score_mean": 0.741,
+    "selection": {
+      "dedup_enabled": true,
+      "pose_bin_step_deg": 2,
+      "min_quality_score": 0.0,
+      "frames_processed": 291,
+      "frames_selected": 34,
+      "frames_skipped_no_face": 6,
+      "frames_skipped_low_quality": 0,
+      "neutral_frames": 1
+    }
   },
   "frames": [
     {
@@ -287,6 +303,21 @@ Per-video extraction manifest:
 | `AWS_SECRET_ACCESS_KEY` | ✅     | —              | IAM secret key               |
 | `AWS_BUCKET_NAME`     | ✅       | —              | Default S3 bucket            |
 | `FRAME_INTERVAL`      | ❌       | `1`            | Default stride for `/extract-session` |
+| `FRAME_DEDUP_ENABLED` | ❌       | `true`         | Keep only the best frame per pose bin (set `false` for legacy keep-all) |
+| `POSE_BIN_STEP_DEG`   | ❌       | `2`            | Pose-bin width in degrees; raise to thin the dataset further |
+| `MIN_QUALITY_SCORE`   | ❌       | `0.0`          | Drop frames below this composite quality score |
+
+### Pose-bin deduplication
+
+The extractor samples every frame (`FRAME_INTERVAL=1`) so fast sweeps never miss
+an angle, but slow movement produces bursts of near-identical poses (and roll
+jitter) that inflate the dataset with look-alikes. With `FRAME_DEDUP_ENABLED=true`
+(default), detected frames are grouped into pose bins on the meaningful axes —
+**yaw** for horizontal, **pitch** for vertical, **yaw+pitch** for circular — and
+only the highest `quality_score` frame per bin is uploaded. Frames without a face
+or below `MIN_QUALITY_SCORE` are dropped. Roll is excluded from binning (it is the
+main jitter source). Neutral-posture selection is unchanged. Set
+`FRAME_DEDUP_ENABLED=false` to restore the legacy keep-every-frame behaviour.
 
 ---
 
