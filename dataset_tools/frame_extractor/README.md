@@ -304,7 +304,7 @@ Per-video extraction manifest:
 | `AWS_BUCKET_NAME`     | ✅       | —              | Default S3 bucket            |
 | `FRAME_INTERVAL`      | ❌       | `1`            | Default stride for `/extract-session` |
 | `FRAME_DEDUP_ENABLED` | ❌       | `true`         | Keep only the best frame per pose bin (set `false` for legacy keep-all) |
-| `POSE_BIN_STEP_DEG`   | ❌       | `2`            | Pose-bin width in degrees; raise to thin the dataset further |
+| `POSE_BIN_STEP_DEG`   | ❌       | `2` (library) / `6` (compose) | Pose-bin width in degrees; raise to thin the dataset further |
 | `MIN_QUALITY_SCORE`   | ❌       | `0.0`          | Drop frames below this composite quality score |
 
 ### Pose-bin deduplication
@@ -318,6 +318,14 @@ only the highest `quality_score` frame per bin is uploaded. Frames without a fac
 or below `MIN_QUALITY_SCORE` are dropped. Roll is excluded from binning (it is the
 main jitter source). Neutral-posture selection is unchanged. Set
 `FRAME_DEDUP_ENABLED=false` to restore the legacy keep-every-frame behaviour.
+
+**Tuning `POSE_BIN_STEP_DEG`.** The bin width is the main lever for visual
+redundancy: frames closer than the step look identical, so a small step (e.g.
+`2`) keeps many near-duplicates. `docker-compose.yml` defaults to `6` for a
+visibly thinner dataset. Note that **circular** uses a 2-D (yaw+pitch) bin, so it
+keeps more frames than the 1-D rotations at the same step — raise the step to `8`
+or `10` if circular still looks too dense. Override per environment with
+`POSE_BIN_STEP_DEG=8 docker compose up -d` (no rebuild needed).
 
 ---
 
