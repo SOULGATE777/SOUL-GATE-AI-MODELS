@@ -24,9 +24,14 @@ class TestPoseBinSignature:
         sig = pose_bin_signature("vertical_0_45", yaw=80.0, pitch=21.0, roll=2.0, step=3)
         assert sig == ("pitch", 7)  # floor(21 / 3)
 
-    def test_circular_bins_on_yaw_and_pitch(self):
+    def test_circular_bins_on_yaw_only(self):
         sig = pose_bin_signature("circular", yaw=30.0, pitch=12.0, roll=5.0, step=5)
-        assert sig == ("yaw_pitch", 6, 2)
+        assert sig == ("yaw", 6)  # floor(30 / 5); pitch ignored
+
+    def test_circular_pitch_jitter_same_yaw_same_bin(self):
+        a = pose_bin_signature("circular", yaw=15.0, pitch=10.0, roll=1.0, step=2)
+        b = pose_bin_signature("circular", yaw=15.0, pitch=40.0, roll=8.0, step=2)
+        assert a == b == ("yaw", 7)
 
     def test_negative_angles_floor_correctly(self):
         # floor(-3/2) == -2, not -1 → adjacent negatives still separate cleanly
@@ -47,9 +52,12 @@ class TestPoseBinSignature:
             is None
         )
         assert (
-            pose_bin_signature("circular", yaw=1.0, pitch=None, roll=1.0, step=2)
+            pose_bin_signature("circular", yaw=None, pitch=1.0, roll=1.0, step=2)
             is None
         )
+        assert pose_bin_signature(
+            "circular", yaw=1.0, pitch=None, roll=1.0, step=2
+        ) == ("yaw", 0)
 
     def test_legacy_type_bins_on_dominant_axis(self):
         # legacy "up"/"down" are pitch-dominant; "left"/"right" yaw-dominant

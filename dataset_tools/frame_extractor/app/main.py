@@ -629,6 +629,59 @@ def _process_video(
                 logger.warning("Could not delete temp file %s: %s", local_path, exc)
 
 
+def _expected_zones_for_rotation_type(rotation_type: str) -> tuple[str, ...]:
+    """Return dataset subfolders expected for a rotation type family."""
+    rtype = rotation_type.lower()
+    if rtype.startswith("horizontal"):
+        return ("rh_1D", "rh_2D", "rh_1I", "rh_2I")
+    if rtype.startswith("vertical"):
+        return ("rv_1A", "rv_1B")
+    if rtype == "circular":
+        return ("rc_Q1", "rc_Q2", "rc_Q3", "rc_Q4")
+    return ()
+
+
+def _subfolder_from_s3_key(s3_key: str) -> Optional[str]:
+    """Extract the subfolder segment from a dataset frame S3 key."""
+    parts = s3_key.split("/")
+    if len(parts) < 2:
+        return None
+    return parts[-2]
+
+
+def _compute_coverage_by_zone(s3_keys: list[str]) -> dict[str, int]:
+    """Count kept frames per rh_/rv_/rc_ subfolder (excludes neutral postures)."""
+    coverage: dict[str, int] = {}
+    for key in s3_keys:
+        if "/posturas_neutrales/" in key:
+            continue
+        zone = _subfolder_from_s3_key(key)
+        if zone is None or not (
+            zone.startswith("rh_")
+            or zone.startswith("rv_")
+            or zone.startswith("rc_")
+        ):
+            continue
+        coverage[zone] = coverage.get(zone, 0) + 1
+    return coverage
+
+
+def _log_coverage_gaps(
+    rotation_type: str,
+    session_id: str,
+    coverage_by_zone: dict[str, int],
+) -> None:
+    """Warn when an expected angular zone has no representative frame."""
+    for zone in _expected_zones_for_rotation_type(rotation_type):
+        if coverage_by_zone.get(zone, 0) == 0:
+            logger.warning(
+                "Coverage gap: zone %s has 0 frames for rotation %s session %s",
+                zone,
+                rotation_type,
+                session_id,
+            )
+
+
 def _track_neutral_candidate(
     neutral_candidates: dict[str, dict],
     category: str,
@@ -893,6 +946,15 @@ def _extract_and_annotate(
         "frames_skipped_low_quality": skipped_low_quality,
         "neutral_frames": len(neutral_candidates),
     }
+
+    dataset_keys = [
+        a.s3_frame_key
+        for a in annotations
+        if "/posturas_neutrales/" not in a.s3_frame_key
+    ]
+    coverage_by_zone = _compute_coverage_by_zone(dataset_keys)
+    _log_coverage_gaps(rotation_type, session_id, coverage_by_zone)
+    selection_stats["coverage_by_zone"] = coverage_by_zone
 
     logger.info(
         "Extracted %d frames from %s (every %d-th of %d total, dedup=%s).",

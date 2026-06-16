@@ -16,7 +16,7 @@ Binning axes per rotation type:
 
 * ``horizontal_*`` → yaw            (left-right turn; pitch/roll are jitter)
 * ``vertical_*``   → pitch          (up-down; yaw/roll are jitter)
-* ``circular``     → (yaw, pitch)   (2-D grid; the sweep moves on both axes)
+* ``circular``     → yaw            (quadrant routing uses yaw; pitch is incidental)
 * legacy types     → dominant axis  (see :func:`app.euler.dominant_axis`)
 
 Roll is intentionally excluded from the signature: incidental head tilt is the
@@ -55,9 +55,10 @@ DEFAULT_DEDUP_ENABLED: bool = os.environ.get(
     "FRAME_DEDUP_ENABLED", "true"
 ).strip().lower() in ("1", "true", "yes", "on")
 
-# Rotation types whose sweep moves on both yaw and pitch and therefore need a
-# 2-D bin signature to preserve the trajectory.
-_TWO_AXIS_ROTATION_TYPES: frozenset[str] = frozenset({"circular"})
+# Rotation types that need a 2-D bin signature (yaw + pitch). Empty: circular
+# uses yaw-only binning via dominant_axis to avoid incidental pitch jitter
+# inflating frame counts during arc sweeps.
+_TWO_AXIS_ROTATION_TYPES: frozenset[str] = frozenset()
 
 
 def pose_bin_signature(

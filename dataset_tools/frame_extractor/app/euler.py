@@ -231,7 +231,11 @@ class FaceEulerEstimator:
         yaw, pitch, roll = self._solve_pose(image_2d, w, h)
 
         quality_score = self._composite_quality(
-            blur_score, face_size_score, detection_confidence
+            blur_score,
+            face_size_score,
+            detection_confidence,
+            yaw=yaw,
+            pitch=pitch,
         )
 
         return EulerResult(
@@ -393,22 +397,38 @@ class FaceEulerEstimator:
         blur_score: float,
         face_size_score: float,
         detection_confidence: float,
+        yaw: Optional[float] = None,
+        pitch: Optional[float] = None,
     ) -> float:
         """
         Weighted composite quality in [0, 1].
 
-        Weights:
-            40 % sharpness, 30 % face size, 30 % detection confidence.
+        Default weights: 40 % sharpness, 30 % face size, 30 % detection confidence.
+
+        At extreme head poses (|yaw| > 35° or |pitch| > 25°) the face bbox is
+        naturally smaller and detection confidence may drop. Shift weight toward
+        sharpness so profile/down frames are not systematically outcompeted.
 
         Args:
             blur_score:           Raw Laplacian variance.
             face_size_score:      Normalised face-area fraction.
             detection_confidence: MediaPipe confidence value.
+            yaw:                  Estimated yaw in degrees (optional).
+            pitch:                Estimated pitch in degrees (optional).
 
         Returns:
             Float in [0, 1].
         """
         sharpness = min(blur_score / _BLUR_NORM_CAP, 1.0)
+        is_extreme = (yaw is not None and abs(yaw) > 35.0) or (
+            pitch is not None and abs(pitch) > 25.0
+        )
+        if is_extreme:
+            return (
+                0.55 * sharpness
+                + 0.15 * face_size_score
+                + 0.30 * float(detection_confidence)
+            )
         return (
             0.4 * sharpness
             + 0.3 * face_size_score
