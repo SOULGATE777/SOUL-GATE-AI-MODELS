@@ -100,33 +100,13 @@ class ProfileImageProcessor:
     @staticmethod
     def enhance_contrast(image: np.ndarray, clip_limit: float = 2.0) -> np.ndarray:
         """
-        Enhance image contrast using CLAHE
-        
-        Args:
-            image: Input image
-            clip_limit: CLAHE clip limit
-            
-        Returns:
-            Contrast enhanced image
+        Pass-through (no CLAHE).
+
+        Illumination CLAHE is owned by profile_prod/preprocesamiento
+        (maybe_enhance_dark). Re-applying here would double-enhance
+        analysis crops that already went through preprocess.
         """
-        if len(image.shape) == 3:
-            # Convert to LAB color space
-            lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-            l_channel, a_channel, b_channel = cv2.split(lab)
-            
-            # Apply CLAHE to L channel
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-            l_channel_clahe = clahe.apply(l_channel)
-            
-            # Merge channels and convert back
-            lab_clahe = cv2.merge((l_channel_clahe, a_channel, b_channel))
-            enhanced = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2RGB)
-        else:
-            # Grayscale image
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-            enhanced = clahe.apply(image)
-        
-        return enhanced
+        return image
     
     @staticmethod
     def detect_profile_orientation(image: np.ndarray) -> str:
@@ -271,32 +251,12 @@ class ProfileImageProcessor:
     @staticmethod
     def normalize_lighting(image: np.ndarray) -> np.ndarray:
         """
-        Normalize lighting conditions in the image
-        
-        Args:
-            image: Input image
-            
-        Returns:
-            Lighting normalized image
+        Pass-through (no CLAHE).
+
+        Illumination CLAHE is owned by profile_prod/preprocesamiento
+        (maybe_enhance_dark). Do not re-apply on preprocessed crops.
         """
-        if len(image.shape) == 3:
-            # Convert to LAB color space
-            lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-            l, a, b = cv2.split(lab)
-            
-            # Apply adaptive histogram equalization to L channel
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            l = clahe.apply(l)
-            
-            # Merge channels and convert back
-            lab = cv2.merge([l, a, b])
-            normalized = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-        else:
-            # Grayscale image
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            normalized = clahe.apply(image)
-        
-        return normalized
+        return image
     
     @staticmethod
     def calculate_image_quality_score(image: np.ndarray) -> float:

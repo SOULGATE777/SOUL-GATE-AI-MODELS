@@ -154,44 +154,20 @@ def preprocess_for_analysis(image: np.ndarray, target_size: tuple = None) -> tup
         
         processed_image = cv2.resize(image, (new_width, new_height))
     
-    # Convert to grayscale
+    # Grayscale for detection internals — no CLAHE.
+    # Illumination CLAHE is owned by frontal_prod/preprocesamiento (maybe_enhance_dark).
     gray = cv2.cvtColor(processed_image, cv2.COLOR_BGR2GRAY)
     
-    # Apply histogram equalization to improve contrast
-    gray_enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-    
-    return processed_image, gray_enhanced, scale_factor
+    return processed_image, gray, scale_factor
 
 def enhance_image_for_detection(image: np.ndarray) -> np.ndarray:
     """
-    Enhance image quality for better face detection
-    
-    Args:
-        image: Input image
-        
-    Returns:
-        numpy.ndarray: Enhanced image
+    Pass-through (no CLAHE).
+
+    Illumination CLAHE is owned by frontal_prod/preprocesamiento
+    (maybe_enhance_dark). Do not re-apply on preprocessed crops.
     """
-    # Convert to LAB color space
-    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-    
-    # Split channels
-    l, a, b = cv2.split(lab)
-    
-    # Apply CLAHE to lightness channel
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-    l_enhanced = clahe.apply(l)
-    
-    # Merge channels
-    lab_enhanced = cv2.merge([l_enhanced, a, b])
-    
-    # Convert back to BGR
-    enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-    
-    # Apply slight Gaussian blur to reduce noise
-    enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
-    
-    return enhanced
+    return image
 
 def resize_image_for_model(image: np.ndarray, target_size: int = 224) -> tuple:
     """

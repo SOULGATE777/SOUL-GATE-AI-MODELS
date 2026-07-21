@@ -135,37 +135,13 @@ class ImageProcessor:
     
     def enhance_image_quality(self, image: np.ndarray) -> np.ndarray:
         """
-        Apply image enhancement for better analysis
-        
-        Args:
-            image: RGB image as numpy array
-            
-        Returns:
-            Enhanced image
+        Pass-through (no CLAHE).
+
+        Illumination CLAHE is owned by profile_prod/preprocesamiento
+        (maybe_enhance_dark). Gateway analysis crops are already enhanced there;
+        re-applying CLAHE here would double-enhance dark photos.
         """
-        try:
-            enhanced = image.copy()
-            
-            # Convert to LAB color space for better luminance control
-            lab = cv2.cvtColor(enhanced, cv2.COLOR_RGB2LAB)
-            l_channel, a_channel, b_channel = cv2.split(lab)
-            
-            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to luminance
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            l_channel = clahe.apply(l_channel)
-            
-            # Merge channels and convert back to RGB
-            enhanced_lab = cv2.merge([l_channel, a_channel, b_channel])
-            enhanced = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2RGB)
-            
-            # Slight gaussian blur to reduce noise
-            enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0.5)
-            
-            return enhanced
-            
-        except Exception as e:
-            logger.error(f"Error enhancing image: {str(e)}")
-            return image
+        return image
     
     def detect_profile_orientation(self, image: np.ndarray) -> str:
         """

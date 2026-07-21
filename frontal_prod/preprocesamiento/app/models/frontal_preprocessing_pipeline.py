@@ -8,7 +8,7 @@ import logging
 import mediapipe as mp
 from PIL import Image
 
-from ..utils.image_processing import WHITE_BG, composite_on_white
+from ..utils.image_processing import WHITE_BG, composite_on_white, maybe_enhance_dark
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +310,7 @@ class FrontalPreprocessingPipeline:
 
     def crop_head_with_padding(self, image: np.ndarray, bbox: List[float],
                               target_size: Tuple[int, int] = None,
-                              padding_factor: float = None) -> Tuple[np.ndarray, bool]:
+                              padding_factor: float = None) -> Tuple[np.ndarray, bool, bool]:
         """
         Crop cranium from image with padding and resize to target size while preserving proportions
 
@@ -321,7 +321,7 @@ class FrontalPreprocessingPipeline:
             padding_factor: Padding factor around the bounding box
 
         Returns:
-            Tuple of (cropped and resized cranium image, white_bg_applied)
+            Tuple of (cropped and resized cranium image, white_bg_applied, illumination_enhanced)
         """
         if target_size is None:
             target_size = self.default_target_size
@@ -343,8 +343,11 @@ class FrontalPreprocessingPipeline:
         x2_pad = min(w, int(x2 + pad_w))
         y2_pad = min(h, int(y2 + pad_h))
 
-        # Crop the image, then soft-composite onto white background
+        # Crop → enhance dark (before white-BG so mean-L gate is not skewed by white
+        # canvas). CLAHE ownership: preprocess only — morph must not re-apply.
+        # → white-BG → resize → letterbox
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
+        cropped, illumination_enhanced = maybe_enhance_dark(cropped)
         cropped, white_bg_applied = self.apply_white_background(cropped)
         crop_h, crop_w = cropped.shape[:2]
 
@@ -360,7 +363,7 @@ class FrontalPreprocessingPipeline:
         start_x = (target_size[0] - new_w) // 2
         final_image[start_y:start_y + new_h, start_x:start_x + new_w] = resized
 
-        return final_image, white_bg_applied
+        return final_image, white_bg_applied, illumination_enhanced
 
     def image_to_base64(self, image: np.ndarray, format: str = 'JPEG', quality: int = 95) -> str:
         """
@@ -434,7 +437,7 @@ class FrontalPreprocessingPipeline:
         processed_heads = []
         for detection in detections:
             # Crop cranium from aligned image (includes white-BG cleaning)
-            cropped_cranium, white_bg_applied = self.crop_head_with_padding(
+            cropped_cranium, white_bg_applied, illumination_enhanced = self.crop_head_with_padding(
                 working_image, detection['bbox'], target_size, padding_factor
             )
 
@@ -453,6 +456,7 @@ class FrontalPreprocessingPipeline:
                 'original_face_bbox': detection.get('original_face_bbox'),
                 'expansion_factors': detection.get('expansion_factors'),
                 'white_bg_applied': white_bg_applied,
+                'illumination_enhanced': illumination_enhanced,
             })
 
         result = {

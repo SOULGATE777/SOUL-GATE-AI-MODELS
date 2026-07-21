@@ -82,27 +82,13 @@ def resize_image_maintain_aspect(image: np.ndarray, max_size: int = 1024) -> np.
 
 def enhance_image_quality(image: np.ndarray) -> np.ndarray:
     """
-    Apply basic image enhancement for better model performance
-    
-    Args:
-        image: Input image as numpy array
-        
-    Returns:
-        Enhanced image
+    Pass-through (no CLAHE).
+
+    Illumination CLAHE is owned by frontal_prod/preprocesamiento
+    (maybe_enhance_dark). Do not re-apply here — avoids double enhance
+    when analyze receives preprocessed crops.
     """
-    # Convert to LAB color space for better enhancement
-    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    
-    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to L channel
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
-    
-    # Merge channels and convert back to RGB
-    enhanced_lab = cv2.merge([l, a, b])
-    enhanced_rgb = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2RGB)
-    
-    return enhanced_rgb
+    return image
 
 def validate_image(image: np.ndarray) -> bool:
     """

@@ -160,7 +160,7 @@ class ProfilePreprocessingPipeline:
     
     def crop_face_with_padding(self, image: np.ndarray, bbox: List[float], 
                               target_size: Tuple[int, int] = None, 
-                              padding_factor: float = None) -> Tuple[np.ndarray, bool]:
+                              padding_factor: float = None) -> Tuple[np.ndarray, bool, bool]:
         """
         Crop face from image with padding and resize to target size while preserving proportions
         
@@ -171,7 +171,7 @@ class ProfilePreprocessingPipeline:
             padding_factor: Padding factor around the bounding box
             
         Returns:
-            Tuple of (cropped and resized face image, white_bg_applied)
+            Tuple of (cropped and resized face image, white_bg_applied, illumination_enhanced)
         """
         if target_size is None:
             target_size = self.default_target_size
@@ -196,6 +196,10 @@ class ProfilePreprocessingPipeline:
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
 
+        # Conditional dark CLAHE before white-BG.
+        # CLAHE ownership: preprocess only — morph/antro must not re-apply.
+        cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
+
         # White-background clean (GrabCut) on crop; fail-open
         cropped, white_bg_applied = ImageProcessor.apply_white_background_grabcut(cropped)
         
@@ -213,7 +217,7 @@ class ProfilePreprocessingPipeline:
         start_x = (target_size[0] - new_w) // 2
         final_image[start_y:start_y + new_h, start_x:start_x + new_w] = resized
         
-        return final_image, white_bg_applied
+        return final_image, white_bg_applied, illumination_enhanced
     
     def image_to_base64(self, image: np.ndarray, format: str = 'JPEG', quality: int = 95) -> str:
         """
@@ -294,8 +298,8 @@ class ProfilePreprocessingPipeline:
         # Process each detection
         processed_faces = []
         for detection in detections:
-            # Crop face (includes GrabCut white-bg clean)
-            cropped_face, white_bg_applied = self.crop_face_with_padding(
+            # Crop face (dark enhance → GrabCut white-bg → letterbox)
+            cropped_face, white_bg_applied, illumination_enhanced = self.crop_face_with_padding(
                 working_image, detection['bbox'], target_size, padding_factor
             )
 
@@ -311,6 +315,7 @@ class ProfilePreprocessingPipeline:
                 'target_size': target_size,
                 'padding_factor': padding_factor,
                 'white_bg_applied': white_bg_applied,
+                'illumination_enhanced': illumination_enhanced,
             })
 
         result = {

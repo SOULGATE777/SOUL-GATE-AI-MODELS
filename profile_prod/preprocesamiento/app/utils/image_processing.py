@@ -9,6 +9,7 @@ import io
 logger = logging.getLogger(__name__)
 
 WHITE_BG = (255, 255, 255)
+MEAN_L_DARK_THRESHOLD = 90
 
 
 def composite_on_white(image_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -34,6 +35,18 @@ def apply_white_background_grabcut(image_rgb: np.ndarray) -> Tuple[np.ndarray, b
         (composited_image, success). On failure returns (original, False).
     """
     return ImageProcessor.apply_white_background_grabcut(image_rgb)
+
+
+def maybe_enhance_dark(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+    """Conditionally CLAHE-enhance dark images (mean LAB L < threshold).
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+
+    Returns:
+        (image, illumination_enhanced). Fail-open: returns (original, False).
+    """
+    return ImageProcessor.maybe_enhance_dark(image_rgb)
 
 
 class ImageProcessor:
@@ -122,7 +135,37 @@ class ImageProcessor:
         except Exception as e:
             logger.warning(f"GrabCut white-background failed (fail-open): {e}")
             return image_rgb, False
-    
+
+    @staticmethod
+    def maybe_enhance_dark(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """CLAHE-enhance when mean LAB L is below ``MEAN_L_DARK_THRESHOLD``.
+
+        Fail-open: returns (image_rgb, False) on any error or invalid input.
+
+        Args:
+            image_rgb: HxWx3 uint8 RGB image.
+
+        Returns:
+            (result_rgb, illumination_enhanced).
+        """
+        try:
+            if image_rgb is None or image_rgb.ndim != 3 or image_rgb.shape[2] != 3:
+                return image_rgb, False
+
+            lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
+            mean_l = float(np.mean(lab[:, :, 0]))
+            if mean_l >= MEAN_L_DARK_THRESHOLD:
+                return image_rgb, False
+
+            enhanced = ImageProcessor.enhance_image_quality(
+                image_rgb, apply_clahe=True
+            )
+            return enhanced, True
+
+        except Exception as e:
+            logger.warning(f"Dark illumination enhance failed (fail-open): {e}")
+            return image_rgb, False
+
     @staticmethod
     def validate_image(image: np.ndarray) -> bool:
         """

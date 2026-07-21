@@ -9,6 +9,30 @@ import io
 logger = logging.getLogger(__name__)
 
 WHITE_BG = (255, 255, 255)
+MEAN_L_DARK_THRESHOLD = 90
+
+
+def maybe_enhance_dark(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+    """
+    Conditionally illuminate dark RGB crops via CLAHE-based enhancement.
+
+    Gate: mean LAB L channel < MEAN_L_DARK_THRESHOLD. Fail-open on any error.
+    """
+    try:
+        if image_rgb is None or not ImageProcessor.validate_image(image_rgb):
+            return image_rgb, False
+
+        lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
+        mean_l = float(np.mean(lab[:, :, 0]))
+
+        if mean_l >= MEAN_L_DARK_THRESHOLD:
+            return image_rgb, False
+
+        enhanced = ImageProcessor.enhance_image_quality(image_rgb, apply_clahe=True)
+        return enhanced, True
+    except Exception as e:
+        logger.warning(f"maybe_enhance_dark failed (fail-open): {e}")
+        return image_rgb, False
 
 
 def composite_on_white(image_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:

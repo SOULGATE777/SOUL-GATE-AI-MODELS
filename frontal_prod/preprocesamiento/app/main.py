@@ -238,7 +238,9 @@ async def preprocess_frontal(
                     "target_size": head_data['target_size'],
                     "padding_factor": head_data['padding_factor']
                 },
-                "detection_type": head_data.get('detection_type', 'head')
+                "detection_type": head_data.get('detection_type', 'head'),
+                "white_bg_applied": head_data.get('white_bg_applied', False),
+                "illumination_enhanced": head_data.get('illumination_enhanced', False),
             })
 
         # Generate visualizations if requested
@@ -387,7 +389,7 @@ async def crop_heads_from_bboxes(
             if len(bbox) != 4:
                 continue
 
-            cropped_head, white_bg_applied = pipeline.crop_head_with_padding(
+            cropped_head, white_bg_applied, illumination_enhanced = pipeline.crop_head_with_padding(
                 image, bbox, (target_width, target_height), padding_factor
             )
 
@@ -400,6 +402,7 @@ async def crop_heads_from_bboxes(
                 "target_size": [target_width, target_height],
                 "padding_factor": padding_factor,
                 "white_bg_applied": white_bg_applied,
+                "illumination_enhanced": illumination_enhanced,
             })
 
         response = {

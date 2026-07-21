@@ -251,6 +251,8 @@ async def preprocess_profile(
                 "class_name": face_data['class_name'],
                 "original_bbox": face_data['bbox'],
                 "cropped_image_base64": face_data['cropped_image_base64'],
+                "white_bg_applied": face_data.get('white_bg_applied', False),
+                "illumination_enhanced": face_data.get('illumination_enhanced', False),
                 "crop_info": {
                     "target_size": face_data['target_size'],
                     "padding_factor": face_data['padding_factor']
@@ -407,7 +409,7 @@ async def crop_faces_from_bboxes(
             if len(bbox) != 4:
                 continue
             
-            cropped_face, white_bg_applied = pipeline.crop_face_with_padding(
+            cropped_face, white_bg_applied, illumination_enhanced = pipeline.crop_face_with_padding(
                 image, bbox, (target_width, target_height), padding_factor
             )
             
@@ -420,6 +422,7 @@ async def crop_faces_from_bboxes(
                 "target_size": [target_width, target_height],
                 "padding_factor": padding_factor,
                 "white_bg_applied": white_bg_applied,
+                "illumination_enhanced": illumination_enhanced,
             })
         
         response = {
