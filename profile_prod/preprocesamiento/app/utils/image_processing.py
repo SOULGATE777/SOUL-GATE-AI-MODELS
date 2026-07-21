@@ -8,8 +8,120 @@ import io
 
 logger = logging.getLogger(__name__)
 
+WHITE_BG = (255, 255, 255)
+
+
+def composite_on_white(image_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Soft-blend ``image_rgb`` onto a white background using ``mask``.
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+        mask: HxW (or HxWx1) float/uint8 alpha. Values in [0, 1] or [0, 255].
+
+    Returns:
+        HxWx3 uint8 RGB image composited on white.
+    """
+    return ImageProcessor.composite_on_white(image_rgb, mask)
+
+
+def apply_white_background_grabcut(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+    """Remove background via GrabCut and composite onto white.
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+
+    Returns:
+        (composited_image, success). On failure returns (original, False).
+    """
+    return ImageProcessor.apply_white_background_grabcut(image_rgb)
+
+
 class ImageProcessor:
     """Image processing utilities for profile preprocessing service"""
+
+    @staticmethod
+    def composite_on_white(image_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """Soft-blend ``image_rgb`` onto a white background using ``mask``.
+
+        Args:
+            image_rgb: HxWx3 uint8 RGB image.
+            mask: HxW (or HxWx1) float/uint8 alpha. Values in [0, 1] or [0, 255].
+
+        Returns:
+            HxWx3 uint8 RGB image composited on white.
+        """
+        alpha = mask.astype(np.float32)
+        if alpha.max() > 1.0:
+            alpha = alpha / 255.0
+        alpha = np.clip(alpha, 0.0, 1.0)
+        if alpha.ndim == 2:
+            alpha = alpha[..., np.newaxis]
+
+        image_f = image_rgb.astype(np.float32)
+        white = np.full_like(image_f, WHITE_BG, dtype=np.float32)
+        out = image_f * alpha + white * (1.0 - alpha)
+        return np.clip(out, 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def apply_white_background_grabcut(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """Apply OpenCV GrabCut and composite the foreground onto white.
+
+        Mask init: ~8% border as GC_BGD, remainder as GC_PR_FGD.
+        Fail-open: returns (image_rgb, False) on any error.
+
+        Args:
+            image_rgb: HxWx3 uint8 RGB image.
+
+        Returns:
+            (result_rgb, white_bg_applied).
+        """
+        try:
+            if image_rgb is None or image_rgb.ndim != 3 or image_rgb.shape[2] != 3:
+                return image_rgb, False
+
+            h, w = image_rgb.shape[:2]
+            if h < 16 or w < 16:
+                return image_rgb, False
+
+            image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+
+            border_y = max(1, int(round(h * 0.08)))
+            border_x = max(1, int(round(w * 0.08)))
+
+            # Border ~8%: GC_BGD / PR_BGD; inner: GC_PR_FGD
+            mask = np.full((h, w), cv2.GC_PR_BGD, dtype=np.uint8)
+            mask[:border_y, :] = cv2.GC_BGD
+            mask[-border_y:, :] = cv2.GC_BGD
+            mask[:, :border_x] = cv2.GC_BGD
+            mask[:, -border_x:] = cv2.GC_BGD
+            mask[border_y:h - border_y, border_x:w - border_x] = cv2.GC_PR_FGD
+
+            bgd_model = np.zeros((1, 65), np.float64)
+            fgd_model = np.zeros((1, 65), np.float64)
+            cv2.grabCut(
+                image_bgr,
+                mask,
+                None,
+                bgd_model,
+                fgd_model,
+                5,
+                cv2.GC_INIT_WITH_MASK,
+            )
+
+            fg = np.where(
+                (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD),
+                1.0,
+                0.0,
+            ).astype(np.float32)
+            # Soft edges
+            fg = cv2.GaussianBlur(fg, (5, 5), 0)
+
+            result = ImageProcessor.composite_on_white(image_rgb, fg)
+            return result, True
+
+        except Exception as e:
+            logger.warning(f"GrabCut white-background failed (fail-open): {e}")
+            return image_rgb, False
     
     @staticmethod
     def validate_image(image: np.ndarray) -> bool:
@@ -78,7 +190,7 @@ class ImageProcessor:
     def resize_with_aspect_ratio(image: np.ndarray, 
                                 target_size: Tuple[int, int],
                                 maintain_aspect: bool = True,
-                                fill_color: Tuple[int, int, int] = (0, 0, 0)) -> np.ndarray:
+                                fill_color: Tuple[int, int, int] = WHITE_BG) -> np.ndarray:
         """
         Resize image to target size while optionally maintaining aspect ratio
         

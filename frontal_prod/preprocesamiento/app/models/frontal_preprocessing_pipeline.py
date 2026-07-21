@@ -8,6 +8,8 @@ import logging
 import mediapipe as mp
 from PIL import Image
 
+from ..utils.image_processing import WHITE_BG, composite_on_white
+
 logger = logging.getLogger(__name__)
 
 class FrontalPreprocessingPipeline:
@@ -34,6 +36,9 @@ class FrontalPreprocessingPipeline:
         # Initialize MediaPipe Face Mesh for alignment
         self.mp_face_mesh = mp.solutions.face_mesh
 
+        # MediaPipe Selfie Segmentation for white-background cleaning
+        self.mp_selfie_segmentation = mp.solutions.selfie_segmentation
+
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
@@ -46,6 +51,7 @@ class FrontalPreprocessingPipeline:
         # Face alignment parameters
         self.alignment_threshold = 2.0  # Only align if tilt angle > 2 degrees
         self.face_mesh_detector = None  # Lazy initialization
+        self.selfie_segmenter = None  # Lazy initialization
 
         logger.info(f"Initializing FrontalPreprocessingPipeline with MediaPipe")
         self._load_model()
@@ -80,6 +86,36 @@ class FrontalPreprocessingPipeline:
                 min_detection_confidence=0.5
             )
             logger.info("MediaPipe Face Mesh initialized for alignment")
+
+    def _initialize_selfie_segmenter(self):
+        """Lazy initialization of Selfie Segmentation (reuse instance like face_mesh)."""
+        if self.selfie_segmenter is None:
+            self.selfie_segmenter = self.mp_selfie_segmentation.SelfieSegmentation(
+                model_selection=1
+            )
+            logger.info("MediaPipe Selfie Segmentation initialized for white background")
+
+    def apply_white_background(self, image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """
+        Soft-composite subject onto white via MediaPipe Selfie Segmentation.
+
+        Passes RGB directly to segmenter.process (not BGR). Fail-open on errors.
+
+        Returns:
+            Tuple of (composited_or_original_image, success)
+        """
+        try:
+            self._initialize_selfie_segmenter()
+            results = self.selfie_segmenter.process(image_rgb)
+            if results.segmentation_mask is None:
+                logger.warning("Selfie segmentation returned no mask; skipping white BG")
+                return image_rgb, False
+            composited = composite_on_white(image_rgb, results.segmentation_mask)
+            # composite_on_white returns the same object on shape-guard no-op
+            return composited, composited is not image_rgb
+        except Exception as e:
+            logger.warning(f"White background cleaning failed (fail-open): {e}")
+            return image_rgb, False
 
     def detect_eye_landmarks(self, image: np.ndarray) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
         """
@@ -186,7 +222,7 @@ class FrontalPreprocessingPipeline:
         aligned_image = cv2.warpAffine(image, rotation_matrix, (w, h),
                                        flags=cv2.INTER_LINEAR,
                                        borderMode=cv2.BORDER_CONSTANT,
-                                       borderValue=(0, 0, 0))
+                                       borderValue=WHITE_BG)
 
         metadata['was_aligned'] = True
         metadata['alignment_applied'] = True
@@ -274,7 +310,7 @@ class FrontalPreprocessingPipeline:
 
     def crop_head_with_padding(self, image: np.ndarray, bbox: List[float],
                               target_size: Tuple[int, int] = None,
-                              padding_factor: float = None) -> np.ndarray:
+                              padding_factor: float = None) -> Tuple[np.ndarray, bool]:
         """
         Crop cranium from image with padding and resize to target size while preserving proportions
 
@@ -285,7 +321,7 @@ class FrontalPreprocessingPipeline:
             padding_factor: Padding factor around the bounding box
 
         Returns:
-            Cropped and resized cranium image
+            Tuple of (cropped and resized cranium image, white_bg_applied)
         """
         if target_size is None:
             target_size = self.default_target_size
@@ -307,8 +343,9 @@ class FrontalPreprocessingPipeline:
         x2_pad = min(w, int(x2 + pad_w))
         y2_pad = min(h, int(y2 + pad_h))
 
-        # Crop the image
+        # Crop the image, then soft-composite onto white background
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
+        cropped, white_bg_applied = self.apply_white_background(cropped)
         crop_h, crop_w = cropped.shape[:2]
 
         # Scale to fit within target size while preserving aspect ratio
@@ -317,13 +354,13 @@ class FrontalPreprocessingPipeline:
         new_h = int(crop_h * scale)
         resized = cv2.resize(cropped, (new_w, new_h))
 
-        # Center in target size canvas with black background
-        final_image = np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
+        # Center in target size canvas with white background
+        final_image = np.full((target_size[1], target_size[0], 3), 255, dtype=np.uint8)
         start_y = (target_size[1] - new_h) // 2
         start_x = (target_size[0] - new_w) // 2
         final_image[start_y:start_y + new_h, start_x:start_x + new_w] = resized
 
-        return final_image
+        return final_image, white_bg_applied
 
     def image_to_base64(self, image: np.ndarray, format: str = 'JPEG', quality: int = 95) -> str:
         """
@@ -396,8 +433,8 @@ class FrontalPreprocessingPipeline:
         # Step 3: Process each detection
         processed_heads = []
         for detection in detections:
-            # Crop cranium from aligned image
-            cropped_cranium = self.crop_head_with_padding(
+            # Crop cranium from aligned image (includes white-BG cleaning)
+            cropped_cranium, white_bg_applied = self.crop_head_with_padding(
                 working_image, detection['bbox'], target_size, padding_factor
             )
 
@@ -414,7 +451,8 @@ class FrontalPreprocessingPipeline:
                 'padding_factor': padding_factor,
                 'detection_type': detection['detection_type'],
                 'original_face_bbox': detection.get('original_face_bbox'),
-                'expansion_factors': detection.get('expansion_factors')
+                'expansion_factors': detection.get('expansion_factors'),
+                'white_bg_applied': white_bg_applied,
             })
 
         result = {

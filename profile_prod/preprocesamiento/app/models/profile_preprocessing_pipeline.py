@@ -11,6 +11,7 @@ from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
 from PIL import Image
 from app.utils.rotation_utils import FaceRotationAligner
+from app.utils.image_processing import ImageProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class ProfilePreprocessingPipeline:
     
     def crop_face_with_padding(self, image: np.ndarray, bbox: List[float], 
                               target_size: Tuple[int, int] = None, 
-                              padding_factor: float = None) -> np.ndarray:
+                              padding_factor: float = None) -> Tuple[np.ndarray, bool]:
         """
         Crop face from image with padding and resize to target size while preserving proportions
         
@@ -170,7 +171,7 @@ class ProfilePreprocessingPipeline:
             padding_factor: Padding factor around the bounding box
             
         Returns:
-            Cropped and resized face image
+            Tuple of (cropped and resized face image, white_bg_applied)
         """
         if target_size is None:
             target_size = self.default_target_size
@@ -194,6 +195,10 @@ class ProfilePreprocessingPipeline:
         
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
+
+        # White-background clean (GrabCut) on crop; fail-open
+        cropped, white_bg_applied = ImageProcessor.apply_white_background_grabcut(cropped)
+        
         crop_h, crop_w = cropped.shape[:2]
         
         # Scale to fit within target size while preserving aspect ratio
@@ -202,13 +207,13 @@ class ProfilePreprocessingPipeline:
         new_h = int(crop_h * scale)
         resized = cv2.resize(cropped, (new_w, new_h))
         
-        # Center in target size canvas with black background
-        final_image = np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
+        # Center in target size canvas with white letterbox
+        final_image = np.full((target_size[1], target_size[0], 3), 255, dtype=np.uint8)
         start_y = (target_size[1] - new_h) // 2
         start_x = (target_size[0] - new_w) // 2
         final_image[start_y:start_y + new_h, start_x:start_x + new_w] = resized
         
-        return final_image
+        return final_image, white_bg_applied
     
     def image_to_base64(self, image: np.ndarray, format: str = 'JPEG', quality: int = 95) -> str:
         """
@@ -289,8 +294,8 @@ class ProfilePreprocessingPipeline:
         # Process each detection
         processed_faces = []
         for detection in detections:
-            # Crop face
-            cropped_face = self.crop_face_with_padding(
+            # Crop face (includes GrabCut white-bg clean)
+            cropped_face, white_bg_applied = self.crop_face_with_padding(
                 working_image, detection['bbox'], target_size, padding_factor
             )
 
@@ -304,7 +309,8 @@ class ProfilePreprocessingPipeline:
                 'class_name': detection['class_name'],
                 'cropped_image_base64': face_base64,
                 'target_size': target_size,
-                'padding_factor': padding_factor
+                'padding_factor': padding_factor,
+                'white_bg_applied': white_bg_applied,
             })
 
         result = {

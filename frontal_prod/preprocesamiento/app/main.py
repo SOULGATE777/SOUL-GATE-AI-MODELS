@@ -387,7 +387,7 @@ async def crop_heads_from_bboxes(
             if len(bbox) != 4:
                 continue
 
-            cropped_head = pipeline.crop_head_with_padding(
+            cropped_head, white_bg_applied = pipeline.crop_head_with_padding(
                 image, bbox, (target_width, target_height), padding_factor
             )
 
@@ -398,7 +398,8 @@ async def crop_heads_from_bboxes(
                 "bbox": bbox,
                 "cropped_image_base64": head_base64,
                 "target_size": [target_width, target_height],
-                "padding_factor": padding_factor
+                "padding_factor": padding_factor,
+                "white_bg_applied": white_bg_applied,
             })
 
         response = {

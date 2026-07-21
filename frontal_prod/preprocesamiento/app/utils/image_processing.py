@@ -8,6 +8,31 @@ import io
 
 logger = logging.getLogger(__name__)
 
+WHITE_BG = (255, 255, 255)
+
+
+def composite_on_white(image_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """
+    Soft-blend RGB image onto a white background using a float mask in [0, 1].
+
+    out = img * m + 255 * (1 - m), with mask broadcast to 3 channels.
+    Returns image unchanged if shapes are invalid.
+    """
+    if image_rgb is None or mask is None:
+        return image_rgb
+    if len(image_rgb.shape) != 3 or image_rgb.shape[2] != 3:
+        return image_rgb
+    if len(mask.shape) != 2:
+        return image_rgb
+    if mask.shape[0] != image_rgb.shape[0] or mask.shape[1] != image_rgb.shape[1]:
+        return image_rgb
+
+    m = np.clip(mask.astype(np.float32), 0.0, 1.0)[..., np.newaxis]
+    img = image_rgb.astype(np.float32)
+    out = img * m + 255.0 * (1.0 - m)
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
 class ImageProcessor:
     """Image processing utilities for frontal preprocessing service"""
 
@@ -78,7 +103,7 @@ class ImageProcessor:
     def resize_with_aspect_ratio(image: np.ndarray,
                                 target_size: Tuple[int, int],
                                 maintain_aspect: bool = True,
-                                fill_color: Tuple[int, int, int] = (0, 0, 0)) -> np.ndarray:
+                                fill_color: Tuple[int, int, int] = (255, 255, 255)) -> np.ndarray:
         """
         Resize image to target size while optionally maintaining aspect ratio
 

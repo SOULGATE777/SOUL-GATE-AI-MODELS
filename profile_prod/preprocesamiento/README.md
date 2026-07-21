@@ -233,7 +233,7 @@ GET /processing-stats
 3. **Face Detection**: Faster R-CNN inference with confidence filtering on the (optionally rotated) image
 4. **Bounding Box Processing**: Padding calculation and boundary validation
 5. **Cropping**: Intelligent cropping with aspect ratio preservation
-6. **Resizing**: Target size fitting with letterboxing on black background
+6. **Resizing**: Target size fitting with letterboxing on white background (after GrabCut white-BG clean)
 7. **Format Conversion**: Base64 encoding with configurable quality
 
 ### Input Requirements
@@ -245,7 +245,7 @@ GET /processing-stats
 ### Output Specifications
 - **Base64 Format**: RFC 4648 compliant encoding
 - **Target Sizes**: Configurable from 100x100 to 2048x2048 pixels
-- **Aspect Ratio**: Preserved with black letterboxing
+- **Aspect Ratio**: Preserved with white letterboxing
 - **Quality**: Configurable JPEG quality (1-100) or lossless PNG
 
 ## Installation and Setup

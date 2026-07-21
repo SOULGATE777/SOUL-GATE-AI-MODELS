@@ -251,7 +251,7 @@ class FaceRotationAligner:
         rotated = cv2.warpAffine(image, rotation_matrix, (new_w, new_h),
                                  flags=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_CONSTANT,
-                                 borderValue=(0, 0, 0))
+                                 borderValue=(255, 255, 255))
 
         return rotated
 

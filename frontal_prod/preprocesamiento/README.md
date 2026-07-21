@@ -230,7 +230,7 @@ GET /processing-stats
 4. **Cranium Region Extraction**: Intelligent cranium region estimation from face detections
 5. **Bounding Box Processing**: Padding calculation and boundary validation
 6. **Cropping**: Intelligent cropping with aspect ratio preservation
-7. **Resizing**: Target size fitting with letterboxing on black background
+7. **Resizing**: Target size fitting with letterboxing on white background (after subject white-BG clean)
 8. **Format Conversion**: Base64 encoding with configurable quality
 
 ### Input Requirements
@@ -242,7 +242,7 @@ GET /processing-stats
 ### Output Specifications
 - **Base64 Format**: RFC 4648 compliant encoding
 - **Target Sizes**: Configurable from 100x100 to 2048x2048 pixels
-- **Aspect Ratio**: Preserved with black letterboxing
+- **Aspect Ratio**: Preserved with white letterboxing
 - **Quality**: Configurable JPEG quality (1-100) or lossless PNG
 
 ## Installation and Setup
