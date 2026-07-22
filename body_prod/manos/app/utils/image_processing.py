@@ -2,12 +2,147 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
-from fastapi import UploadFile, HTTPException
 import logging
+from typing import Any, Tuple
 
 logger = logging.getLogger(__name__)
 
-async def validate_image(file: UploadFile) -> np.ndarray:
+WHITE_BG = (255, 255, 255)
+MEAN_L_DARK_THRESHOLD = 90
+
+
+def maybe_enhance_dark(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+    """CLAHE-enhance when mean LAB L is below ``MEAN_L_DARK_THRESHOLD``.
+
+    RGB in/out. Fail-open: returns (image_rgb, False) on any error.
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+
+    Returns:
+        (result_rgb, illumination_enhanced).
+    """
+    try:
+        if image_rgb is None or image_rgb.ndim != 3 or image_rgb.shape[2] != 3:
+            return image_rgb, False
+
+        lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
+        mean_l = float(np.mean(lab[:, :, 0]))
+        if mean_l >= MEAN_L_DARK_THRESHOLD:
+            return image_rgb, False
+
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l)
+        enhanced = cv2.cvtColor(cv2.merge([l_enhanced, a, b]), cv2.COLOR_LAB2RGB)
+        return enhanced, True
+
+    except Exception as e:
+        logger.warning(f"Dark illumination enhance failed (fail-open): {e}")
+        return image_rgb, False
+
+
+def composite_on_white(image_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Soft-blend ``image_rgb`` onto a white background using ``mask``.
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+        mask: HxW (or HxWx1) float/uint8 alpha. Values in [0, 1] or [0, 255].
+
+    Returns:
+        HxWx3 uint8 RGB image composited on white.
+    """
+    alpha = mask.astype(np.float32)
+    if alpha.max() > 1.0:
+        alpha = alpha / 255.0
+    alpha = np.clip(alpha, 0.0, 1.0)
+    if alpha.ndim == 2:
+        alpha = alpha[..., np.newaxis]
+
+    image_f = image_rgb.astype(np.float32)
+    white = np.full_like(image_f, WHITE_BG, dtype=np.float32)
+    out = image_f * alpha + white * (1.0 - alpha)
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def apply_white_background_grabcut(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+    """Apply OpenCV GrabCut and composite the foreground onto white.
+
+    Mask init: ~8% border as GC_BGD, inner as GC_PR_FGD.
+    Soft composite on white (255, 255, 255). Fail-open on any error.
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+
+    Returns:
+        (result_rgb, white_bg_applied).
+    """
+    try:
+        if image_rgb is None or image_rgb.ndim != 3 or image_rgb.shape[2] != 3:
+            return image_rgb, False
+
+        h, w = image_rgb.shape[:2]
+        if h < 16 or w < 16:
+            return image_rgb, False
+
+        image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+
+        border_y = max(1, int(round(h * 0.08)))
+        border_x = max(1, int(round(w * 0.08)))
+
+        mask = np.full((h, w), cv2.GC_PR_BGD, dtype=np.uint8)
+        mask[:border_y, :] = cv2.GC_BGD
+        mask[-border_y:, :] = cv2.GC_BGD
+        mask[:, :border_x] = cv2.GC_BGD
+        mask[:, -border_x:] = cv2.GC_BGD
+        mask[border_y:h - border_y, border_x:w - border_x] = cv2.GC_PR_FGD
+
+        bgd_model = np.zeros((1, 65), np.float64)
+        fgd_model = np.zeros((1, 65), np.float64)
+        cv2.grabCut(
+            image_bgr,
+            mask,
+            None,
+            bgd_model,
+            fgd_model,
+            5,
+            cv2.GC_INIT_WITH_MASK,
+        )
+
+        fg = np.where(
+            (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD),
+            1.0,
+            0.0,
+        ).astype(np.float32)
+        fg = cv2.GaussianBlur(fg, (5, 5), 0)
+
+        result = composite_on_white(image_rgb, fg)
+        return result, True
+
+    except Exception as e:
+        logger.warning(f"GrabCut white-background failed (fail-open): {e}")
+        return image_rgb, False
+
+
+def prepare_image_for_analysis(
+    image_rgb: np.ndarray,
+) -> Tuple[np.ndarray, bool, bool]:
+    """Enhance dark images then apply GrabCut white-background.
+
+    Order: maybe_enhance_dark → apply_white_background_grabcut.
+    Fail-open is handled inside each helper.
+
+    Args:
+        image_rgb: HxWx3 uint8 RGB image.
+
+    Returns:
+        (image, white_bg_applied, illumination_enhanced).
+    """
+    enhanced, illumination_enhanced = maybe_enhance_dark(image_rgb)
+    result, white_bg_applied = apply_white_background_grabcut(enhanced)
+    return result, white_bg_applied, illumination_enhanced
+
+async def validate_image(file: Any) -> np.ndarray:
     """
     Validate and load image from uploaded file
     
@@ -20,6 +155,8 @@ async def validate_image(file: UploadFile) -> np.ndarray:
     Raises:
         HTTPException: If image is invalid or cannot be processed
     """
+    from fastapi import HTTPException
+
     # Check file type
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")

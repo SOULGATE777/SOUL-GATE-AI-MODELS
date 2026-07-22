@@ -14,7 +14,11 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from app.models.hand_analysis_pipeline import HandAnalysisPipeline
-from app.utils.image_processing import validate_image, preprocess_image
+from app.utils.image_processing import (
+    validate_image,
+    preprocess_image,
+    prepare_image_for_analysis,
+)
 from app.utils.visualization import create_hand_analysis_visualization
 
 # Configure logging
@@ -131,6 +135,16 @@ async def analyze_hand_comprehensive(
     try:
         # Validate image
         image_array = await validate_image(file)
+
+        # White-BG + conditional dark CLAHE before analysis (fail-open inside helpers)
+        image_array, white_bg_applied, illumination_enhanced = prepare_image_for_analysis(
+            image_array
+        )
+        logger.info(
+            "Hand preprocess flags: white_bg_applied=%s illumination_enhanced=%s",
+            white_bg_applied,
+            illumination_enhanced,
+        )
         
         # Parse bounding box if provided
         bbox_coords = None
@@ -218,6 +232,16 @@ async def classify_hand_side(
     try:
         # Validate image
         image_array = await validate_image(file)
+
+        # White-BG + conditional dark CLAHE before classification (fail-open)
+        image_array, white_bg_applied, illumination_enhanced = prepare_image_for_analysis(
+            image_array
+        )
+        logger.info(
+            "Hand-side preprocess flags: white_bg_applied=%s illumination_enhanced=%s",
+            white_bg_applied,
+            illumination_enhanced,
+        )
         
         # Parse bounding box if provided
         bbox_coords = None
@@ -251,6 +275,8 @@ async def classify_hand_side(
         
         # Add analysis metadata
         results["analysis_id"] = str(uuid.uuid4())
+        results["white_bg_applied"] = white_bg_applied
+        results["illumination_enhanced"] = illumination_enhanced
         
         # Clean up temporary file
         try:
@@ -287,6 +313,16 @@ async def analyze_colorimetry(
     try:
         # Validate image
         image_array = await validate_image(file)
+
+        # White-BG + conditional dark CLAHE before analysis (fail-open inside helpers)
+        image_array, white_bg_applied, illumination_enhanced = prepare_image_for_analysis(
+            image_array
+        )
+        logger.info(
+            "Colorimetry preprocess flags: white_bg_applied=%s illumination_enhanced=%s",
+            white_bg_applied,
+            illumination_enhanced,
+        )
         
         # Parse bounding box if provided
         bbox_coords = None
@@ -375,6 +411,17 @@ async def batch_analyze(
             try:
                 # Validate image
                 image_array = await validate_image(file)
+
+                # White-BG + conditional dark CLAHE before batch analysis (fail-open)
+                image_array, white_bg_applied, illumination_enhanced = (
+                    prepare_image_for_analysis(image_array)
+                )
+                logger.info(
+                    "Batch hand preprocess[%s]: white_bg_applied=%s illumination_enhanced=%s",
+                    i,
+                    white_bg_applied,
+                    illumination_enhanced,
+                )
                 
                 # Save temporary image
                 temp_id = str(uuid.uuid4())
@@ -397,6 +444,8 @@ async def batch_analyze(
                     result["analysis_id"] = str(uuid.uuid4())
                     result["batch_index"] = i
                     result["filename"] = file.filename
+                    result["white_bg_applied"] = white_bg_applied
+                    result["illumination_enhanced"] = illumination_enhanced
                     results.append(result)
                 else:
                     results.append({
