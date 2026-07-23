@@ -114,11 +114,59 @@ class ProfilePreprocessingPipeline:
             )
             logger.info("MediaPipe Selfie Segmentation initialized for white background")
 
+    @staticmethod
+    def _refine_segmentation_mask(mask: np.ndarray,
+                                  fg_threshold: float = 0.5,
+                                  feather_px: int = 2) -> np.ndarray:
+        """Turn MediaPipe's soft probability mask into a clean alpha.
+
+        The raw selfie-segmentation mask is a low-res soft probability. Composited
+        directly it produces two artefacts on busy/reflective backgrounds:
+        translucent "ghosting" of the real background (mid-range alpha) and a
+        blocky/pixelated edge (coarse mask upscaled by the letterbox resize).
+
+        This hardens the mask to remove both while keeping edges smooth:
+        - threshold at ``fg_threshold`` → kills mid-alpha ghosting
+        - morphological close → fills small holes inside the subject
+        - keep largest connected component → drops detached background blobs
+        - thin Gaussian feather → smooth (non-blocky) edge instead of a hard step
+
+        Args:
+            mask: HxW float/uint8 probability. Values in [0, 1] or [0, 255].
+            fg_threshold: probability above which a pixel is foreground. Lower it
+                (e.g. 0.35) to keep more wispy hair; raise it to cut more background.
+            feather_px: half-width of the edge feather in pixels (0 = hard edge).
+
+        Returns:
+            HxW float32 alpha in [0, 1].
+        """
+        alpha = mask.astype(np.float32)
+        if alpha.max() > 1.0:
+            alpha = alpha / 255.0
+        alpha = np.clip(alpha, 0.0, 1.0)
+
+        binary = (alpha >= fg_threshold).astype(np.uint8)
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+        if num_labels > 1:
+            largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+            binary = (labels == largest).astype(np.uint8)
+
+        if feather_px > 0:
+            k = feather_px * 2 + 1
+            return cv2.GaussianBlur(binary.astype(np.float32), (k, k), 0)
+        return binary.astype(np.float32)
+
     def apply_white_background(self, image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
         """Soft-composite subject onto white via MediaPipe Selfie Segmentation.
 
-        Mirrors the frontal preprocess service. Passes RGB directly to
-        segmenter.process (not BGR). Fail-open on errors / missing mask.
+        Passes RGB directly to segmenter.process (not BGR). The raw soft mask is
+        refined (threshold + keep-largest-component + thin feather) before
+        compositing so busy/reflective backgrounds do not leave translucent
+        ghosting or blocky edges. Fail-open on errors / missing mask.
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
@@ -132,7 +180,8 @@ class ProfilePreprocessingPipeline:
             if results.segmentation_mask is None:
                 logger.warning("Selfie segmentation returned no mask; skipping white BG")
                 return image_rgb, False
-            composited = composite_on_white(image_rgb, results.segmentation_mask)
+            alpha = self._refine_segmentation_mask(results.segmentation_mask)
+            composited = composite_on_white(image_rgb, alpha)
             # composite_on_white returns the same object on shape-guard no-op
             return composited, composited is not image_rgb
         except Exception as e:

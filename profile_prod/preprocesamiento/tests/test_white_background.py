@@ -202,19 +202,65 @@ def test_apply_white_background_none_mask_fail_open():
 
 def test_apply_white_background_composites_on_white():
     """A hard mask makes background white and keeps subject; applied is True."""
-    mask = np.zeros((20, 20), dtype=np.float32)
-    mask[5:15, 5:15] = 1.0
+    mask = np.zeros((40, 40), dtype=np.float32)
+    mask[10:30, 10:30] = 1.0
     result = MagicMock()
     result.segmentation_mask = mask
     segmenter = MagicMock()
     segmenter.process.return_value = result
     pipeline = _make_pipeline_with_segmenter(segmenter)
 
-    image = np.full((20, 20, 3), (10, 20, 30), dtype=np.uint8)
+    image = np.full((40, 40, 3), (10, 20, 30), dtype=np.uint8)
     out, applied = pipeline.apply_white_background(image)
 
     assert applied is True
-    # Subject region preserved
-    assert np.allclose(out[5:15, 5:15], (10, 20, 30), atol=1)
+    # Subject core preserved (edge is feathered, so assert on the interior)
+    assert np.allclose(out[15:25, 15:25], (10, 20, 30), atol=1)
     # A background corner is white
     assert np.all(out[0, 0] == 255)
+
+
+# --- Mask refinement (_refine_segmentation_mask) ---
+
+
+def test_refine_mask_kills_midalpha_ghosting():
+    """Uniform mid-range probability (model uncertainty) collapses to background.
+
+    This is the fix for translucent background "ghosting": a soft 0.4 alpha over
+    the whole frame must not survive as a half-transparent blend.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.full((32, 32), 0.4, dtype=np.float32)
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask)
+
+    assert alpha.shape == (32, 32)
+    assert float(alpha.max()) == 0.0
+
+
+def test_refine_mask_keeps_largest_component():
+    """A big subject blob is kept; a small detached blob is dropped."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((60, 60), dtype=np.float32)
+    mask[10:50, 10:40] = 1.0   # large subject
+    mask[2:6, 52:56] = 1.0     # small detached background blob
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask, feather_px=0)
+
+    assert float(alpha[30, 25]) == 1.0   # subject core kept
+    assert float(alpha[4, 54]) == 0.0    # detached blob removed
+
+
+def test_refine_mask_feathers_edge_smoothly():
+    """Feather produces a smooth 0→1 ramp at the edge, not a hard blocky step."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((40, 40), dtype=np.float32)
+    mask[8:32, 8:32] = 1.0
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask, feather_px=2)
+
+    assert float(alpha[20, 20]) == 1.0                 # interior solid
+    assert 0.0 < float(alpha[20, 7]) < 1.0             # feathered edge is partial
