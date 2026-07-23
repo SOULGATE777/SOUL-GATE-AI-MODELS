@@ -81,11 +81,17 @@ class ImageProcessor:
 
         Mask init (tuned for profile heads / dark hair on busy BG):
         - Outer ~5% strip: definite GC_BGD
-        - Next ~7% ring: GC_PR_BGD (uncertain BG, hair can survive)
-        - Inner rect: GC_PR_FGD
-        - Center ellipse (~55%): definite GC_FGD seed so hair/face are not only probable
+        - Everything else: GC_PR_BGD default (so frame corners can be removed)
+        - Large centered ellipse (~40%w x 46%h): GC_PR_FGD (probable head+hair)
+        - Inner ellipse (~26%w x 32%h): definite GC_FGD seed (face/hair core)
 
-        Post: morph close (5x5) + open (3x3) + soft blur; FG-fraction quality gate fail-open.
+        The PR_FGD region is elliptical (not a full rectangle) so background
+        pulled in by the crop padding at the top/side corners stays PR_BGD and
+        can be cut. Post-GrabCut we keep only the largest connected FG component,
+        which removes detached rectangular BG blocks left near the crown.
+
+        Post: morph close (5x5) + open (3x3) + keep-largest-component + soft blur;
+        FG-fraction quality gate fail-open.
         Fail-open: returns (image_rgb, False) on any error / bad mask.
 
         Args:
@@ -106,17 +112,21 @@ class ImageProcessor:
 
             hard_y = max(1, int(round(h * 0.05)))
             hard_x = max(1, int(round(w * 0.05)))
-            soft_y = max(hard_y + 1, int(round(h * 0.12)))
-            soft_x = max(hard_x + 1, int(round(w * 0.12)))
 
-            # Outer = definite BGD; soft ring = PR_BGD; core = PR_FGD; ellipse = FGD
-            mask = np.full((h, w), cv2.GC_BGD, dtype=np.uint8)
-            mask[hard_y:h - hard_y, hard_x:w - hard_x] = cv2.GC_PR_BGD
-            mask[soft_y:h - soft_y, soft_x:w - soft_x] = cv2.GC_PR_FGD
+            # Default = probable BG everywhere; hard outer strip = definite BG.
+            mask = np.full((h, w), cv2.GC_PR_BGD, dtype=np.uint8)
+            mask[:hard_y, :] = cv2.GC_BGD
+            mask[h - hard_y:, :] = cv2.GC_BGD
+            mask[:, :hard_x] = cv2.GC_BGD
+            mask[:, w - hard_x:] = cv2.GC_BGD
 
             cy, cx = h // 2, w // 2
-            axes = (max(2, int(w * 0.28)), max(2, int(h * 0.32)))
-            cv2.ellipse(mask, (cx, cy), axes, 0, 0, 360, int(cv2.GC_FGD), -1)
+            # Large elliptical PR_FGD leaves corners as PR_BGD (removable BG).
+            pr_axes = (max(2, int(w * 0.40)), max(2, int(h * 0.46)))
+            cv2.ellipse(mask, (cx, cy), pr_axes, 0, 0, 360, int(cv2.GC_PR_FGD), -1)
+            # Inner definite FGD seed so face/hair core is not only probable.
+            fgd_axes = (max(2, int(w * 0.26)), max(2, int(h * 0.32)))
+            cv2.ellipse(mask, (cx, cy), fgd_axes, 0, 0, 360, int(cv2.GC_FGD), -1)
 
             bgd_model = np.zeros((1, 65), np.float64)
             fgd_model = np.zeros((1, 65), np.float64)
@@ -143,6 +153,17 @@ class ImageProcessor:
             fg_u8 = cv2.morphologyEx(fg_u8, cv2.MORPH_CLOSE, kernel_close, iterations=1)
             # Drop tiny floating FG islands (artifacts); 3x3 avoids eroding wispy crown hair
             fg_u8 = cv2.morphologyEx(fg_u8, cv2.MORPH_OPEN, kernel_open, iterations=1)
+
+            # Keep only the largest connected FG component. This removes detached
+            # rectangular BG blocks GrabCut leaves near the crown/side.
+            num, labels, stats, _ = cv2.connectedComponentsWithStats(
+                fg_u8, connectivity=8
+            )
+            if num > 2:
+                # label 0 = background; pick largest FG label by area
+                largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+                fg_u8 = np.where(labels == largest, 255, 0).astype(np.uint8)
+
             fg = fg_u8.astype(np.float32) / 255.0
 
             fg_frac = float(fg.mean())

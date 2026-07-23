@@ -122,3 +122,23 @@ def test_grabcut_fail_open_bad_ndim():
     result, applied = apply_white_background_grabcut(gray)
     assert applied is False
     np.testing.assert_array_equal(result, gray)
+
+
+def test_grabcut_removes_detached_fg_blob():
+    """Detached blob near a corner is dropped (keep-largest-component)."""
+    bg = (35, 35, 35)
+    fg = (170, 110, 80)
+    img = np.full((200, 160, 3), bg, dtype=np.uint8)
+    # Main head-like blob in the center
+    cv2.ellipse(img, (80, 100), (46, 74), 0, 0, 360, fg, -1)
+    # Small detached blob near top-left, separated from the main blob
+    cv2.rectangle(img, (12, 12), (34, 34), fg, -1)
+
+    result, applied = apply_white_background_grabcut(img)
+    assert applied is True
+    # Main center is preserved
+    center = result[100, 80].astype(np.float32)
+    assert float(center.mean()) < 200, f"Center washed out: {center}"
+    # Detached corner blob region should be removed → near white
+    corner = result[23, 23].astype(np.float32)
+    assert float(corner.mean()) > 210, f"Detached blob not removed: {corner}"
