@@ -7,11 +7,12 @@ import io
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import logging
+import mediapipe as mp
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
 from PIL import Image
 from app.utils.rotation_utils import FaceRotationAligner
-from app.utils.image_processing import ImageProcessor
+from app.utils.image_processing import ImageProcessor, composite_on_white
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,12 @@ class ProfilePreprocessingPipeline:
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
         self.default_padding_factor = 0.22
+
+        # MediaPipe Selfie Segmentation for white-background cleaning.
+        # Learned person/background segmentation — unlike GrabCut it separates
+        # dark hair from busy/reflective backgrounds regardless of color overlap.
+        self.mp_selfie_segmentation = mp.solutions.selfie_segmentation
+        self.selfie_segmenter = None  # Lazy initialization
 
         # Face rotation aligner (optional)
         self.rotation_aligner = None
@@ -98,7 +105,40 @@ class ProfilePreprocessingPipeline:
         except Exception as e:
             logger.error(f"Failed to load model: {str(e)}")
             raise e
-    
+
+    def _initialize_selfie_segmenter(self):
+        """Lazy initialization of Selfie Segmentation (reuse instance)."""
+        if self.selfie_segmenter is None:
+            self.selfie_segmenter = self.mp_selfie_segmentation.SelfieSegmentation(
+                model_selection=1
+            )
+            logger.info("MediaPipe Selfie Segmentation initialized for white background")
+
+    def apply_white_background(self, image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """Soft-composite subject onto white via MediaPipe Selfie Segmentation.
+
+        Mirrors the frontal preprocess service. Passes RGB directly to
+        segmenter.process (not BGR). Fail-open on errors / missing mask.
+
+        Args:
+            image_rgb: HxWx3 uint8 RGB image (a face/head crop).
+
+        Returns:
+            Tuple of (composited_or_original_image, white_bg_applied).
+        """
+        try:
+            self._initialize_selfie_segmenter()
+            results = self.selfie_segmenter.process(image_rgb)
+            if results.segmentation_mask is None:
+                logger.warning("Selfie segmentation returned no mask; skipping white BG")
+                return image_rgb, False
+            composited = composite_on_white(image_rgb, results.segmentation_mask)
+            # composite_on_white returns the same object on shape-guard no-op
+            return composited, composited is not image_rgb
+        except Exception as e:
+            logger.warning(f"White background cleaning failed (fail-open): {e}")
+            return image_rgb, False
+
     def preprocess_image(self, image: np.ndarray) -> torch.Tensor:
         """
         Preprocess image for model inference
@@ -181,7 +221,8 @@ class ProfilePreprocessingPipeline:
         h, w = image.shape[:2]
         x1, y1, x2, y2 = bbox
         
-        # Add padding around detection (extra top pad so GrabCut keeps hair crown)
+        # Add padding around detection (extra top pad frames the full hair crown
+        # so segmentation keeps it in view)
         box_w = x2 - x1
         box_h = y2 - y1
         pad_w = box_w * padding_factor
@@ -201,8 +242,8 @@ class ProfilePreprocessingPipeline:
         # CLAHE ownership: preprocess only — morph/antro must not re-apply.
         cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
 
-        # White-background clean (GrabCut) on crop; fail-open
-        cropped, white_bg_applied = ImageProcessor.apply_white_background_grabcut(cropped)
+        # White-background clean (MediaPipe selfie segmentation) on crop; fail-open
+        cropped, white_bg_applied = self.apply_white_background(cropped)
         
         crop_h, crop_w = cropped.shape[:2]
         
@@ -299,7 +340,7 @@ class ProfilePreprocessingPipeline:
         # Process each detection
         processed_faces = []
         for detection in detections:
-            # Crop face (dark enhance → GrabCut white-bg → letterbox)
+            # Crop face (dark enhance → segmentation white-bg → letterbox)
             cropped_face, white_bg_applied, illumination_enhanced = self.crop_face_with_padding(
                 working_image, detection['bbox'], target_size, padding_factor
             )

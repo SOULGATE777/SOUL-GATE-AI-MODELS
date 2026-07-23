@@ -233,7 +233,7 @@ GET /processing-stats
 3. **Face Detection**: Faster R-CNN inference with confidence filtering on the (optionally rotated) image
 4. **Bounding Box Processing**: Padding calculation and boundary validation
 5. **Cropping**: Intelligent cropping with aspect ratio preservation
-6. **Resizing**: Target size fitting with letterboxing on white background (after GrabCut white-BG clean)
+6. **Resizing**: Target size fitting with letterboxing on white background (after MediaPipe Selfie Segmentation white-BG clean)
 7. **Format Conversion**: Base64 encoding with configurable quality
 
 ### Input Requirements

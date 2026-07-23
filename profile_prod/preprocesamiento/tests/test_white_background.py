@@ -1,4 +1,12 @@
-"""Unit tests for GrabCut white-background cleaning (profile preprocess)."""
+"""Unit tests for white-background cleaning (profile preprocess).
+
+Covers the shared ``composite_on_white`` helper, the retained GrabCut utility,
+and the live MediaPipe Selfie Segmentation path on the pipeline. Pipeline tests
+lazily import ``ProfilePreprocessingPipeline`` behind ``importorskip('torch')``
+so they run in CI/Docker (where torch is installed) and skip locally.
+"""
+
+from unittest.mock import MagicMock
 
 import numpy as np
 import cv2
@@ -142,3 +150,71 @@ def test_grabcut_removes_detached_fg_blob():
     # Detached corner blob region should be removed → near white
     corner = result[23, 23].astype(np.float32)
     assert float(corner.mean()) > 210, f"Detached blob not removed: {corner}"
+
+
+# --- Live MediaPipe Selfie Segmentation path (pipeline.apply_white_background) ---
+# Guarded by importorskip('torch'): the pipeline module imports torch at module
+# scope, so these run in CI/Docker and skip in a torch-less local env.
+
+
+def _make_pipeline_with_segmenter(segmenter):
+    """Build a ProfilePreprocessingPipeline without loading the torch model."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    pipeline = object.__new__(ProfilePreprocessingPipeline)
+    pipeline.selfie_segmenter = segmenter
+    return pipeline
+
+
+def test_apply_white_background_fail_open():
+    """Segmenter raises → image unchanged and False (fail-open)."""
+    segmenter = MagicMock()
+    segmenter.process.side_effect = RuntimeError("segmenter boom")
+    pipeline = _make_pipeline_with_segmenter(segmenter)
+
+    image = np.full((16, 16, 3), 77, dtype=np.uint8)
+    original = image.copy()
+
+    out, applied = pipeline.apply_white_background(image)
+
+    assert applied is False
+    np.testing.assert_array_equal(out, original)
+    segmenter.process.assert_called_once()
+
+
+def test_apply_white_background_none_mask_fail_open():
+    """No segmentation mask → image unchanged and False (fail-open)."""
+    result = MagicMock()
+    result.segmentation_mask = None
+    segmenter = MagicMock()
+    segmenter.process.return_value = result
+    pipeline = _make_pipeline_with_segmenter(segmenter)
+
+    image = np.full((16, 16, 3), 99, dtype=np.uint8)
+    original = image.copy()
+
+    out, applied = pipeline.apply_white_background(image)
+
+    assert applied is False
+    np.testing.assert_array_equal(out, original)
+
+
+def test_apply_white_background_composites_on_white():
+    """A hard mask makes background white and keeps subject; applied is True."""
+    mask = np.zeros((20, 20), dtype=np.float32)
+    mask[5:15, 5:15] = 1.0
+    result = MagicMock()
+    result.segmentation_mask = mask
+    segmenter = MagicMock()
+    segmenter.process.return_value = result
+    pipeline = _make_pipeline_with_segmenter(segmenter)
+
+    image = np.full((20, 20, 3), (10, 20, 30), dtype=np.uint8)
+    out, applied = pipeline.apply_white_background(image)
+
+    assert applied is True
+    # Subject region preserved
+    assert np.allclose(out[5:15, 5:15], (10, 20, 30), atol=1)
+    # A background corner is white
+    assert np.all(out[0, 0] == 255)
