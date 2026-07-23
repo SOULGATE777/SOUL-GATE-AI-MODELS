@@ -87,3 +87,38 @@ def test_grabcut_fail_open_tiny_image():
     result, applied = apply_white_background_grabcut(tiny)
     assert applied is False
     np.testing.assert_array_equal(result, tiny)
+
+
+def test_grabcut_uniform_image_does_not_crash():
+    """Uniform image: seeded mask may still apply; must not crash or alter shape."""
+    img = np.full((100, 100, 3), 90, dtype=np.uint8)
+    result, applied = apply_white_background_grabcut(img)
+    assert isinstance(applied, bool)
+    assert result.shape == img.shape
+    assert result.dtype == np.uint8
+
+
+def test_grabcut_preserves_center_foreground():
+    """Tall centered FG (profile-like) keeps center pixels non-white after cut."""
+    bg = (40, 40, 40)
+    fg = (160, 100, 70)
+    img = np.full((200, 160, 3), bg, dtype=np.uint8)
+    # Tall oval covering face + hair crown area
+    cv2.ellipse(img, (80, 100), (45, 75), 0, 0, 360, fg, -1)
+
+    result, applied = apply_white_background_grabcut(img)
+    assert applied is True
+    # Center of ellipse should remain close to FG color (not washed to white)
+    center = result[100, 80].astype(np.float32)
+    assert float(center.mean()) < 200, f"Center washed out: {center}"
+    # Top of oval (crown) should still have substantial FG
+    crown = result[40, 80].astype(np.float32)
+    assert float(crown.mean()) < 220, f"Crown clipped to white: {crown}"
+
+
+def test_grabcut_fail_open_bad_ndim():
+    """Non-RGB array fail-opens."""
+    gray = np.full((40, 40), 128, dtype=np.uint8)
+    result, applied = apply_white_background_grabcut(gray)
+    assert applied is False
+    np.testing.assert_array_equal(result, gray)

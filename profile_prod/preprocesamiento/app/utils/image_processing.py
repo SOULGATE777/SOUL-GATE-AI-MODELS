@@ -79,8 +79,14 @@ class ImageProcessor:
     def apply_white_background_grabcut(image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
         """Apply OpenCV GrabCut and composite the foreground onto white.
 
-        Mask init: ~8% border as GC_BGD, remainder as GC_PR_FGD.
-        Fail-open: returns (image_rgb, False) on any error.
+        Mask init (tuned for profile heads / dark hair on busy BG):
+        - Outer ~5% strip: definite GC_BGD
+        - Next ~7% ring: GC_PR_BGD (uncertain BG, hair can survive)
+        - Inner rect: GC_PR_FGD
+        - Center ellipse (~55%): definite GC_FGD seed so hair/face are not only probable
+
+        Post: morph close (5x5) + open (3x3) + soft blur; FG-fraction quality gate fail-open.
+        Fail-open: returns (image_rgb, False) on any error / bad mask.
 
         Args:
             image_rgb: HxWx3 uint8 RGB image.
@@ -98,16 +104,19 @@ class ImageProcessor:
 
             image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-            border_y = max(1, int(round(h * 0.08)))
-            border_x = max(1, int(round(w * 0.08)))
+            hard_y = max(1, int(round(h * 0.05)))
+            hard_x = max(1, int(round(w * 0.05)))
+            soft_y = max(hard_y + 1, int(round(h * 0.12)))
+            soft_x = max(hard_x + 1, int(round(w * 0.12)))
 
-            # Border ~8%: GC_BGD / PR_BGD; inner: GC_PR_FGD
-            mask = np.full((h, w), cv2.GC_PR_BGD, dtype=np.uint8)
-            mask[:border_y, :] = cv2.GC_BGD
-            mask[-border_y:, :] = cv2.GC_BGD
-            mask[:, :border_x] = cv2.GC_BGD
-            mask[:, -border_x:] = cv2.GC_BGD
-            mask[border_y:h - border_y, border_x:w - border_x] = cv2.GC_PR_FGD
+            # Outer = definite BGD; soft ring = PR_BGD; core = PR_FGD; ellipse = FGD
+            mask = np.full((h, w), cv2.GC_BGD, dtype=np.uint8)
+            mask[hard_y:h - hard_y, hard_x:w - hard_x] = cv2.GC_PR_BGD
+            mask[soft_y:h - soft_y, soft_x:w - soft_x] = cv2.GC_PR_FGD
+
+            cy, cx = h // 2, w // 2
+            axes = (max(2, int(w * 0.28)), max(2, int(h * 0.32)))
+            cv2.ellipse(mask, (cx, cy), axes, 0, 0, 360, int(cv2.GC_FGD), -1)
 
             bgd_model = np.zeros((1, 65), np.float64)
             fgd_model = np.zeros((1, 65), np.float64)
@@ -117,7 +126,7 @@ class ImageProcessor:
                 None,
                 bgd_model,
                 fgd_model,
-                5,
+                8,
                 cv2.GC_INIT_WITH_MASK,
             )
 
@@ -126,8 +135,25 @@ class ImageProcessor:
                 1.0,
                 0.0,
             ).astype(np.float32)
-            # Soft edges
-            fg = cv2.GaussianBlur(fg, (5, 5), 0)
+
+            # Close small holes / reconnect hair strands before softening
+            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            fg_u8 = (fg * 255).astype(np.uint8)
+            fg_u8 = cv2.morphologyEx(fg_u8, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+            # Drop tiny floating FG islands (artifacts); 3x3 avoids eroding wispy crown hair
+            fg_u8 = cv2.morphologyEx(fg_u8, cv2.MORPH_OPEN, kernel_open, iterations=1)
+            fg = fg_u8.astype(np.float32) / 255.0
+
+            fg_frac = float(fg.mean())
+            # Quality gate: empty / full / near-full masks → fail-open (keep original)
+            if fg_frac < 0.12 or fg_frac > 0.92:
+                logger.warning(
+                    "GrabCut FG fraction out of range (%.3f); fail-open", fg_frac
+                )
+                return image_rgb, False
+
+            fg = cv2.GaussianBlur(fg, (7, 7), 0)
 
             result = ImageProcessor.composite_on_white(image_rgb, fg)
             return result, True

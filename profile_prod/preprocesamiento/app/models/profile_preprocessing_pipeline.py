@@ -39,7 +39,7 @@ class ProfilePreprocessingPipeline:
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
-        self.default_padding_factor = 0.15
+        self.default_padding_factor = 0.22
 
         # Face rotation aligner (optional)
         self.rotation_aligner = None
@@ -181,15 +181,16 @@ class ProfilePreprocessingPipeline:
         h, w = image.shape[:2]
         x1, y1, x2, y2 = bbox
         
-        # Add padding around detection
+        # Add padding around detection (extra top pad so GrabCut keeps hair crown)
         box_w = x2 - x1
         box_h = y2 - y1
         pad_w = box_w * padding_factor
         pad_h = box_h * padding_factor
+        pad_top = pad_h * 1.45
         
         # Calculate padded coordinates
         x1_pad = max(0, int(x1 - pad_w))
-        y1_pad = max(0, int(y1 - pad_h))
+        y1_pad = max(0, int(y1 - pad_top))
         x2_pad = min(w, int(x2 + pad_w))
         y2_pad = min(h, int(y2 + pad_h))
         
