@@ -115,9 +115,40 @@ class ProfilePreprocessingPipeline:
             logger.info("MediaPipe Selfie Segmentation initialized for white background")
 
     @staticmethod
+    def _face_protect_rect(fx1: float, fy1: float, fx2: float, fy2: float,
+                           crop_w: int, crop_h: int) -> Optional[Tuple[int, int, int, int]]:
+        """Expand a crop-local face bbox into a protection rectangle.
+
+        The face is never allowed to be clipped by the white-BG mask, so the
+        detected face bbox is expanded (extra on top for the forehead/hairline,
+        some on the sides and chin) and clamped to the crop. The white-BG
+        refinement forces this rectangle fully opaque.
+
+        Returns (px1, py1, px2, py2) or None when the bbox is degenerate.
+        """
+        fw = fx2 - fx1
+        fh = fy2 - fy1
+        if fw <= 0 or fh <= 0:
+            return None
+
+        px1 = int(round(fx1 - fw * 0.12))
+        px2 = int(round(fx2 + fw * 0.12))
+        py1 = int(round(fy1 - fh * 0.35))   # forehead / hairline
+        py2 = int(round(fy2 + fh * 0.15))   # chin / jaw
+
+        px1 = max(0, min(px1, crop_w))
+        px2 = max(0, min(px2, crop_w))
+        py1 = max(0, min(py1, crop_h))
+        py2 = max(0, min(py2, crop_h))
+        if px2 <= px1 or py2 <= py1:
+            return None
+        return px1, py1, px2, py2
+
+    @staticmethod
     def _refine_segmentation_mask(mask: np.ndarray,
                                   fg_threshold: float = 0.5,
-                                  feather_px: int = 2) -> np.ndarray:
+                                  feather_px: int = 2,
+                                  protect_rect: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
         """Turn MediaPipe's soft probability mask into a clean alpha.
 
         The raw selfie-segmentation mask is a low-res soft probability. Composited
@@ -130,12 +161,15 @@ class ProfilePreprocessingPipeline:
         - morphological close → fills small holes inside the subject
         - keep largest connected component → drops detached background blobs
         - thin Gaussian feather → smooth (non-blocky) edge instead of a hard step
+        - ``protect_rect`` → forced fully opaque so the face is NEVER clipped,
+          regardless of how uncertain the segmenter is over those pixels
 
         Args:
             mask: HxW float/uint8 probability. Values in [0, 1] or [0, 255].
             fg_threshold: probability above which a pixel is foreground. Lower it
                 (e.g. 0.35) to keep more wispy hair; raise it to cut more background.
             feather_px: half-width of the edge feather in pixels (0 = hard edge).
+            protect_rect: (x1, y1, x2, y2) region forced to alpha 1 (face guard).
 
         Returns:
             HxW float32 alpha in [0, 1].
@@ -155,21 +189,40 @@ class ProfilePreprocessingPipeline:
             largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
             binary = (labels == largest).astype(np.uint8)
 
+        k = feather_px * 2 + 1
         if feather_px > 0:
-            k = feather_px * 2 + 1
-            return cv2.GaussianBlur(binary.astype(np.float32), (k, k), 0)
-        return binary.astype(np.float32)
+            alpha_out = cv2.GaussianBlur(binary.astype(np.float32), (k, k), 0)
+        else:
+            alpha_out = binary.astype(np.float32)
 
-    def apply_white_background(self, image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
+        # Face guard: the protected rectangle must be EXACTLY opaque so the face is
+        # never clipped. A soft halo just outside the rect blends the seam into the
+        # mask; the rect interior is then hard-set to 1.0 (blur must not soften it).
+        if protect_rect is not None:
+            px1, py1, px2, py2 = protect_rect
+            if feather_px > 0:
+                halo = np.zeros_like(alpha_out, dtype=np.float32)
+                halo[py1:py2, px1:px2] = 1.0
+                halo = cv2.GaussianBlur(halo, (k, k), 0)
+                alpha_out = np.maximum(alpha_out, halo)
+            alpha_out[py1:py2, px1:px2] = 1.0
+
+        return alpha_out
+
+    def apply_white_background(self, image_rgb: np.ndarray,
+                              protect_rect: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, bool]:
         """Soft-composite subject onto white via MediaPipe Selfie Segmentation.
 
         Passes RGB directly to segmenter.process (not BGR). The raw soft mask is
         refined (threshold + keep-largest-component + thin feather) before
         compositing so busy/reflective backgrounds do not leave translucent
-        ghosting or blocky edges. Fail-open on errors / missing mask.
+        ghosting or blocky edges. When ``protect_rect`` is given, that region is
+        forced fully opaque so the face is NEVER clipped. Fail-open on errors /
+        missing mask.
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
+            protect_rect: (x1, y1, x2, y2) crop-local face region to never clip.
 
         Returns:
             Tuple of (composited_or_original_image, white_bg_applied).
@@ -180,7 +233,9 @@ class ProfilePreprocessingPipeline:
             if results.segmentation_mask is None:
                 logger.warning("Selfie segmentation returned no mask; skipping white BG")
                 return image_rgb, False
-            alpha = self._refine_segmentation_mask(results.segmentation_mask)
+            alpha = self._refine_segmentation_mask(
+                results.segmentation_mask, protect_rect=protect_rect
+            )
             composited = composite_on_white(image_rgb, alpha)
             # composite_on_white returns the same object on shape-guard no-op
             return composited, composited is not image_rgb
@@ -287,12 +342,24 @@ class ProfilePreprocessingPipeline:
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
 
+        # Detected face rectangle in crop-local coordinates. The white-BG mask must
+        # NEVER clip the face, so this rect (expanded to cover forehead/hairline and
+        # jaw) is forced fully opaque during segmentation refinement — regardless of
+        # how uncertain MediaPipe is over those pixels.
+        crop_h0, crop_w0 = cropped.shape[:2]
+        face_protect_rect = self._face_protect_rect(
+            x1 - x1_pad, y1 - y1_pad, x2 - x1_pad, y2 - y1_pad, crop_w0, crop_h0
+        )
+
         # Conditional dark CLAHE before white-BG.
         # CLAHE ownership: preprocess only — morph/antro must not re-apply.
         cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
 
-        # White-background clean (MediaPipe selfie segmentation) on crop; fail-open
-        cropped, white_bg_applied = self.apply_white_background(cropped)
+        # White-background clean (MediaPipe selfie segmentation) on crop; fail-open.
+        # face_protect_rect guarantees the face is never cut by the mask.
+        cropped, white_bg_applied = self.apply_white_background(
+            cropped, protect_rect=face_protect_rect
+        )
         
         crop_h, crop_w = cropped.shape[:2]
         

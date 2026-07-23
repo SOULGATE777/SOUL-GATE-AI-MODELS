@@ -264,3 +264,90 @@ def test_refine_mask_feathers_edge_smoothly():
 
     assert float(alpha[20, 20]) == 1.0                 # interior solid
     assert 0.0 < float(alpha[20, 7]) < 1.0             # feathered edge is partial
+
+
+# --- Face guard: the face region must NEVER be clipped ---
+
+
+def test_refine_mask_protect_rect_forces_face_opaque():
+    """Even a fully-background mask keeps the ENTIRE protected rect exactly opaque.
+
+    Guards the hard requirement: the face is never clipped, so every pixel inside
+    the protect rect (edges and corners included) must be exactly 1.0 — the feather
+    blur must not soften the rect interior.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    # Segmenter is completely wrong: says everything is background.
+    mask = np.zeros((60, 60), dtype=np.float32)
+    protect = (20, 20, 40, 40)
+
+    for feather in (0, 2, 4):
+        alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(
+            mask, feather_px=feather, protect_rect=protect
+        )
+        # EVERY pixel in the rect is fully opaque (min == 1.0), not just the center.
+        assert float(alpha[20:40, 20:40].min()) == 1.0, f"feather={feather}"
+    # Far outside stays background.
+    assert float(alpha[2, 2]) == 0.0
+
+
+def test_refine_mask_protect_rect_tiny_face_opaque():
+    """A very small protect rect is still exactly opaque (no edge dip from blur)."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((40, 40), dtype=np.float32)
+    protect = (18, 18, 22, 22)  # 4x4 face core
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(
+        mask, feather_px=2, protect_rect=protect
+    )
+    assert float(alpha[18:22, 18:22].min()) == 1.0
+
+
+def test_face_protect_rect_expands_and_clamps():
+    """Protect rect expands the face bbox (more on top) and clamps to the crop."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    # Face bbox (10,10)-(50,60) inside a 100x100 crop.
+    rect = ProfilePreprocessingPipeline._face_protect_rect(10, 10, 50, 60, 100, 100)
+    assert rect is not None
+    px1, py1, px2, py2 = rect
+    # Expanded outward on every side, and clamped within [0, crop].
+    assert px1 < 10 and px2 > 50
+    assert py1 < 10 and py2 > 60
+    assert px1 >= 0 and py1 >= 0 and px2 <= 100 and py2 <= 100
+    # Top expansion (forehead) is larger than the chin expansion.
+    assert (10 - py1) > (py2 - 60)
+
+
+def test_face_protect_rect_degenerate_returns_none():
+    """A zero/negative-area bbox yields no protection rect."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    assert ProfilePreprocessingPipeline._face_protect_rect(10, 10, 10, 10, 100, 100) is None
+    assert ProfilePreprocessingPipeline._face_protect_rect(50, 50, 10, 10, 100, 100) is None
+
+
+def test_apply_white_background_never_clips_face():
+    """End-to-end: segmenter drops the face, protect_rect restores it."""
+    pytest.importorskip("torch")
+
+    # Mask marks the face region as background (alpha 0) — worst case.
+    mask = np.ones((40, 40), dtype=np.float32)
+    mask[10:30, 10:30] = 0.0
+    result = MagicMock()
+    result.segmentation_mask = mask
+    segmenter = MagicMock()
+    segmenter.process.return_value = result
+    pipeline = _make_pipeline_with_segmenter(segmenter)
+
+    image = np.full((40, 40, 3), (12, 34, 56), dtype=np.uint8)
+    out, applied = pipeline.apply_white_background(image, protect_rect=(12, 12, 28, 28))
+
+    assert applied is True
+    # Face pixels survive (not whitened) thanks to the protection rect.
+    assert np.allclose(out[20, 20], (12, 34, 56), atol=1)
