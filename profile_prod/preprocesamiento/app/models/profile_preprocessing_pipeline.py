@@ -119,12 +119,20 @@ class ProfilePreprocessingPipeline:
     @staticmethod
     def _face_protect_rect(fx1: float, fy1: float, fx2: float, fy2: float,
                            crop_w: int, crop_h: int) -> Optional[Tuple[int, int, int, int]]:
-        """Expand a crop-local face bbox into a protection rectangle.
+        """Shrink a crop-local face bbox into a small central protection core.
 
-        The face is never allowed to be clipped by the white-BG mask, so the
-        detected face bbox is expanded (extra on top for the forehead/hairline,
-        some on the sides and chin) and clamped to the crop. The white-BG
-        refinement forces this rectangle fully opaque.
+        rembg's u2net matte is a reliable, high-confidence person alpha that keeps
+        the whole face/head on its own, so this guard is only a catastrophic-
+        failure backstop — and it MUST stay strictly INSIDE the subject.
+
+        The profile detector's bbox is ~the whole head and the crop is tight
+        around it (crop = bbox + padding), so an OUTWARD-expanded guard clamps to
+        the entire crop and forces the background fully opaque, defeating
+        background removal entirely. Instead we keep the central ~50% of the
+        detected face bbox: that core always lands on the subject (cheek / ear /
+        hair mass), so it guarantees the face core is never whitened WITHOUT
+        re-adding the surrounding background. rembg's matte protects the actual
+        face edges (forehead / nose / jaw), which it does cleanly.
 
         Returns (px1, py1, px2, py2) or None when the bbox is degenerate.
         """
@@ -133,10 +141,18 @@ class ProfilePreprocessingPipeline:
         if fw <= 0 or fh <= 0:
             return None
 
-        px1 = int(round(fx1 - fw * 0.12))
-        px2 = int(round(fx2 + fw * 0.12))
-        py1 = int(round(fy1 - fh * 0.35))   # forehead / hairline
-        py2 = int(round(fy2 + fh * 0.15))   # chin / jaw
+        # Central core (~50% of the bbox), centered on the face bbox. Shrinking
+        # inward keeps the guard on-subject so it can never force background
+        # opaque, unlike the previous outward expansion.
+        cx = (fx1 + fx2) / 2.0
+        cy = (fy1 + fy2) / 2.0
+        half_w = fw * 0.25
+        half_h = fh * 0.25
+
+        px1 = int(round(cx - half_w))
+        px2 = int(round(cx + half_w))
+        py1 = int(round(cy - half_h))
+        py2 = int(round(cy + half_h))
 
         px1 = max(0, min(px1, crop_w))
         px2 = max(0, min(px2, crop_w))
@@ -159,8 +175,8 @@ class ProfilePreprocessingPipeline:
         - keep the largest connected component to drop rare detached specks, then
           multiply the ORIGINAL soft alpha by that component so the subject's soft
           edge survives (only stray blobs are zeroed)
-        - ``protect_rect`` → forced fully opaque so the face is NEVER clipped,
-          regardless of the matte's confidence over those pixels
+        - ``protect_rect`` (a small on-subject core) → forced fully opaque as a
+          catastrophic-failure backstop; rembg's matte owns the actual face edges
 
         No threshold / open / feather is applied: those were needed to salvage
         MediaPipe's coarse probability mask; the matte does not need them and they
@@ -189,8 +205,8 @@ class ProfilePreprocessingPipeline:
             largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
             alpha[(labels > 0) & (labels != largest)] = 0.0
 
-        # Face guard: the protected rectangle must be EXACTLY opaque so the face is
-        # never clipped, regardless of matte confidence over those pixels.
+        # Face-core backstop: force the protected rectangle EXACTLY opaque so a
+        # matte failure can't whiten the face core. rembg owns the face edges.
         if protect_rect is not None:
             px1, py1, px2, py2 = protect_rect
             alpha[py1:py2, px1:px2] = 1.0
@@ -205,9 +221,9 @@ class ProfilePreprocessingPipeline:
         MediaPipe confidently mis-classified reflective glass / walls / fences
         adjacent to the head as foreground, leaving large background regions on
         real-world profile photos. rembg's ``only_mask`` output is a clean soft
-        matte; it is lightly refined (keep-largest to drop specks) and the face
-        region is forced fully opaque so the face is NEVER clipped. Fail-open on
-        errors / missing mask (returns the original crop untouched).
+        matte; it is lightly refined (keep-largest to drop specks) and a small
+        on-subject face core is forced opaque as a backstop (rembg owns the face
+        edges). Fail-open on errors / missing mask (returns the original crop untouched).
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
@@ -329,10 +345,10 @@ class ProfilePreprocessingPipeline:
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
 
-        # Detected face rectangle in crop-local coordinates. The white-BG mask must
-        # NEVER clip the face, so this rect (expanded to cover forehead/hairline and
-        # jaw) is forced fully opaque during matte refinement — regardless of how
-        # confident the matting model is over those pixels.
+        # Detected face rectangle in crop-local coordinates. A small central core
+        # of this bbox (kept strictly on-subject) is forced fully opaque during
+        # matte refinement as a face-clip backstop; rembg's matte handles the
+        # actual face edges and the surrounding background is removed normally.
         crop_h0, crop_w0 = cropped.shape[:2]
         face_protect_rect = self._face_protect_rect(
             x1 - x1_pad, y1 - y1_pad, x2 - x1_pad, y2 - y1_pad, crop_w0, crop_h0

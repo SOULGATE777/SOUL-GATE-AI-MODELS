@@ -356,21 +356,47 @@ def test_refine_matte_protect_rect_tiny_face_opaque():
     assert float(alpha[18:22, 18:22].min()) == 1.0
 
 
-def test_face_protect_rect_expands_and_clamps():
-    """Protect rect expands the face bbox (more on top) and clamps to the crop."""
+def test_face_protect_rect_is_central_core_inside_bbox():
+    """Protect rect is a small central core strictly INSIDE the face bbox.
+
+    Regression for the bug where an outward-expanded guard clamped to the whole
+    crop and forced the background opaque (killing background removal). The guard
+    must stay on-subject: centered on, and contained within, the detected bbox.
+    """
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
-    # Face bbox (10,10)-(50,60) inside a 100x100 crop.
+    # Face bbox (10,10)-(50,60), fw=40 fh=50, center (30,35), half=(10,12.5).
     rect = ProfilePreprocessingPipeline._face_protect_rect(10, 10, 50, 60, 100, 100)
+    # Exact central core (Python round: 22.5→22, 47.5→48).
+    assert rect == (20, 22, 40, 48)
+    px1, py1, px2, py2 = rect
+    # ≈50% of each bbox side (core is clearly smaller than the bbox).
+    assert (px2 - px1) == 20 and (py2 - py1) == 26
+
+
+def test_face_protect_rect_bbox_fills_crop_leaves_corners_free():
+    """The production failure shape: bbox ≈ fills the crop → guard must NOT cover
+    the crop corners (else the whole frame is forced opaque and no bg is removed).
+
+    Direct regression for the shipped bug where the outward-expanded guard clamped
+    to the entire crop. The central core must leave a wide unprotected margin.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    # Detected head bbox nearly fills a 200x200 crop (crop = bbox + tiny padding).
+    cw, ch = 200, 200
+    rect = ProfilePreprocessingPipeline._face_protect_rect(4, 4, 196, 196, cw, ch)
     assert rect is not None
     px1, py1, px2, py2 = rect
-    # Expanded outward on every side, and clamped within [0, crop].
-    assert px1 < 10 and px2 > 50
-    assert py1 < 10 and py2 > 60
-    assert px1 >= 0 and py1 >= 0 and px2 <= 100 and py2 <= 100
-    # Top expansion (forehead) is larger than the chin expansion.
-    assert (10 - py1) > (py2 - 60)
+    # Corners are OUTSIDE the guard on every side (background removable there).
+    assert px1 > 0 and py1 > 0 and px2 < cw and py2 < ch
+    margin_frac = px1 / cw
+    assert margin_frac > 0.2, f"guard margin too thin: {margin_frac:.2f}"
+    # Guard covers well under half the crop area (rembg removes the rest).
+    guard_area = (px2 - px1) * (py2 - py1)
+    assert guard_area < 0.30 * (cw * ch), f"guard covers too much: {guard_area}"
 
 
 def test_face_protect_rect_degenerate_returns_none():
