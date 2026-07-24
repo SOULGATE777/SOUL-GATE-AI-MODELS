@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import cv2
@@ -7,7 +8,7 @@ import io
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import logging
-import mediapipe as mp
+from rembg import remove as rembg_remove, new_session as rembg_new_session
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
 from PIL import Image
@@ -42,11 +43,13 @@ class ProfilePreprocessingPipeline:
         self.default_target_size = (600, 600)
         self.default_padding_factor = 0.22
 
-        # MediaPipe Selfie Segmentation for white-background cleaning.
-        # Learned person/background segmentation — unlike GrabCut it separates
-        # dark hair from busy/reflective backgrounds regardless of color overlap.
-        self.mp_selfie_segmentation = mp.solutions.selfie_segmentation
-        self.selfie_segmenter = None  # Lazy initialization
+        # rembg (u2net) person matting for white-background cleaning. A dedicated
+        # matting model: unlike MediaPipe selfie segmentation it does not
+        # confidently mis-classify reflective glass / walls / fences adjacent to
+        # the head as foreground, so busy real-world profile backgrounds are
+        # removed cleanly. Model overridable via REMBG_MODEL.
+        self.rembg_model_name = os.getenv("REMBG_MODEL", "u2net")
+        self.rembg_session = None  # Lazy initialization
 
         # Face rotation aligner (optional)
         self.rotation_aligner = None
@@ -106,13 +109,12 @@ class ProfilePreprocessingPipeline:
             logger.error(f"Failed to load model: {str(e)}")
             raise e
 
-    def _initialize_selfie_segmenter(self):
-        """Lazy initialization of Selfie Segmentation (reuse instance)."""
-        if self.selfie_segmenter is None:
-            self.selfie_segmenter = self.mp_selfie_segmentation.SelfieSegmentation(
-                model_selection=1
-            )
-            logger.info("MediaPipe Selfie Segmentation initialized for white background")
+    def _get_rembg_session(self):
+        """Lazy initialization of the rembg matting session (reuse instance)."""
+        if self.rembg_session is None:
+            self.rembg_session = rembg_new_session(self.rembg_model_name)
+            logger.info(f"rembg session initialized (model={self.rembg_model_name}) for white background")
+        return self.rembg_session
 
     @staticmethod
     def _face_protect_rect(fx1: float, fy1: float, fx2: float, fy2: float,
@@ -145,42 +147,27 @@ class ProfilePreprocessingPipeline:
         return px1, py1, px2, py2
 
     @staticmethod
-    def _refine_segmentation_mask(mask: np.ndarray,
-                                  fg_threshold: float = 0.6,
-                                  feather_px: int = 2,
-                                  open_frac: float = 0.015,
-                                  protect_rect: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
-        """Turn MediaPipe's soft probability mask into a clean alpha.
+    def _refine_matte(mask: np.ndarray,
+                      protect_rect: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
+        """Clean a rembg person matte and enforce the face guard.
 
-        The raw selfie-segmentation mask is a low-res soft probability. Composited
-        directly it produces two artefacts on busy/reflective backgrounds:
-        translucent "ghosting" of the real background (mid-range alpha) and a
-        blocky/pixelated edge (coarse mask upscaled by the letterbox resize).
-
-        This hardens the mask to remove both while keeping edges smooth:
-        - threshold at ``fg_threshold`` → kills mid-alpha ghosting and trims the
-          uncertain halo where the segmenter bleeds onto the background
-        - morphological close → fills small holes inside the subject
-        - morphological open (``open_frac``) → severs the thin mask "bridges" that
-          connect reflective/attached background (glass, fences, banners) to the
-          subject, so keep-largest-component can then drop those blobs
-        - keep largest connected component → drops detached background blobs
-        - thin Gaussian feather → smooth (non-blocky) edge instead of a hard step
+        rembg's u2net matte is already a semantically correct, soft-edged person
+        alpha (it does not confuse adjacent glass/walls/fences for the subject),
+        so this does the minimum and — critically — preserves rembg's anti-aliased
+        edge instead of re-hardening it:
+        - normalise to [0, 1]
+        - keep the largest connected component to drop rare detached specks, then
+          multiply the ORIGINAL soft alpha by that component so the subject's soft
+          edge survives (only stray blobs are zeroed)
         - ``protect_rect`` → forced fully opaque so the face is NEVER clipped,
-          regardless of how uncertain the segmenter is over those pixels
+          regardless of the matte's confidence over those pixels
 
-        The open runs AFTER close (which can bridge subject↔background) and BEFORE
-        keep-largest, and is the primary lever against "too much background left on
-        profiles". Its kernel scales with the crop resolution so behaviour is
-        scale-invariant across phone/desktop inputs.
+        No threshold / open / feather is applied: those were needed to salvage
+        MediaPipe's coarse probability mask; the matte does not need them and they
+        would only degrade the edge.
 
         Args:
-            mask: HxW float/uint8 probability. Values in [0, 1] or [0, 255].
-            fg_threshold: probability above which a pixel is foreground. Lower it
-                (e.g. 0.4) to keep more wispy hair; raise it to cut more background.
-            feather_px: half-width of the edge feather in pixels (0 = hard edge).
-            open_frac: bridge-break open kernel as a fraction of min(H, W); 0
-                disables it. ~0.015 ≈ 7px on a 500px crop.
+            mask: HxW matte. Values in [0, 1] or [0, 255].
             protect_rect: (x1, y1, x2, y2) region forced to alpha 1 (face guard).
 
         Returns:
@@ -191,55 +178,36 @@ class ProfilePreprocessingPipeline:
             alpha = alpha / 255.0
         alpha = np.clip(alpha, 0.0, 1.0)
 
-        binary = (alpha >= fg_threshold).astype(np.uint8)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-        # Sever thin background bridges before keep-largest so attached
-        # reflective/wall/fence regions get dropped instead of surviving as part
-        # of the largest blob. Kernel scales with resolution (min 3px).
-        if open_frac > 0:
-            h, w = binary.shape[:2]
-            open_px = max(3, int(round(min(h, w) * open_frac)))
-            open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_px, open_px))
-            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, open_kernel)
-
+        # Drop detached specks without hardening the subject edge: find the
+        # largest connected component of the binarised matte and zero ONLY the
+        # OTHER foreground blobs. Background-labelled pixels (label 0) — which
+        # include the subject's anti-aliased fringe where 0 < alpha < 0.5 — are
+        # left untouched, so rembg's soft edge survives even when a speck fires.
+        binary = (alpha >= 0.5).astype(np.uint8)
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-        if num_labels > 1:
+        if num_labels > 2:  # background + more than one foreground blob
             largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-            binary = (labels == largest).astype(np.uint8)
-
-        k = feather_px * 2 + 1
-        if feather_px > 0:
-            alpha_out = cv2.GaussianBlur(binary.astype(np.float32), (k, k), 0)
-        else:
-            alpha_out = binary.astype(np.float32)
+            alpha[(labels > 0) & (labels != largest)] = 0.0
 
         # Face guard: the protected rectangle must be EXACTLY opaque so the face is
-        # never clipped. A soft halo just outside the rect blends the seam into the
-        # mask; the rect interior is then hard-set to 1.0 (blur must not soften it).
+        # never clipped, regardless of matte confidence over those pixels.
         if protect_rect is not None:
             px1, py1, px2, py2 = protect_rect
-            if feather_px > 0:
-                halo = np.zeros_like(alpha_out, dtype=np.float32)
-                halo[py1:py2, px1:px2] = 1.0
-                halo = cv2.GaussianBlur(halo, (k, k), 0)
-                alpha_out = np.maximum(alpha_out, halo)
-            alpha_out[py1:py2, px1:px2] = 1.0
+            alpha[py1:py2, px1:px2] = 1.0
 
-        return alpha_out
+        return alpha
 
     def apply_white_background(self, image_rgb: np.ndarray,
                               protect_rect: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, bool]:
-        """Soft-composite subject onto white via MediaPipe Selfie Segmentation.
+        """Soft-composite subject onto white via rembg (u2net) person matting.
 
-        Passes RGB directly to segmenter.process (not BGR). The raw soft mask is
-        refined (threshold + close + bridge-break open + keep-largest-component +
-        thin feather) before compositing so busy/reflective backgrounds do not
-        leave translucent ghosting, blocky edges, or attached background blobs.
-        When ``protect_rect`` is given, that region is forced fully opaque so the
-        face is NEVER clipped. Fail-open on errors / missing mask.
+        A dedicated matting model replaces MediaPipe selfie segmentation because
+        MediaPipe confidently mis-classified reflective glass / walls / fences
+        adjacent to the head as foreground, leaving large background regions on
+        real-world profile photos. rembg's ``only_mask`` output is a clean soft
+        matte; it is lightly refined (keep-largest to drop specks) and the face
+        region is forced fully opaque so the face is NEVER clipped. Fail-open on
+        errors / missing mask (returns the original crop untouched).
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
@@ -249,14 +217,12 @@ class ProfilePreprocessingPipeline:
             Tuple of (composited_or_original_image, white_bg_applied).
         """
         try:
-            self._initialize_selfie_segmenter()
-            results = self.selfie_segmenter.process(image_rgb)
-            if results.segmentation_mask is None:
-                logger.warning("Selfie segmentation returned no mask; skipping white BG")
+            session = self._get_rembg_session()
+            mask = rembg_remove(image_rgb, session=session, only_mask=True)
+            if mask is None or getattr(mask, "size", 0) == 0:
+                logger.warning("rembg returned no mask; skipping white BG")
                 return image_rgb, False
-            alpha = self._refine_segmentation_mask(
-                results.segmentation_mask, protect_rect=protect_rect
-            )
+            alpha = self._refine_matte(mask, protect_rect=protect_rect)
             composited = composite_on_white(image_rgb, alpha)
             # composite_on_white returns the same object on shape-guard no-op
             return composited, composited is not image_rgb
@@ -347,7 +313,7 @@ class ProfilePreprocessingPipeline:
         x1, y1, x2, y2 = bbox
         
         # Add padding around detection (extra top pad frames the full hair crown
-        # so segmentation keeps it in view)
+        # so the matte keeps it in view)
         box_w = x2 - x1
         box_h = y2 - y1
         pad_w = box_w * padding_factor
@@ -365,8 +331,8 @@ class ProfilePreprocessingPipeline:
 
         # Detected face rectangle in crop-local coordinates. The white-BG mask must
         # NEVER clip the face, so this rect (expanded to cover forehead/hairline and
-        # jaw) is forced fully opaque during segmentation refinement — regardless of
-        # how uncertain MediaPipe is over those pixels.
+        # jaw) is forced fully opaque during matte refinement — regardless of how
+        # confident the matting model is over those pixels.
         crop_h0, crop_w0 = cropped.shape[:2]
         face_protect_rect = self._face_protect_rect(
             x1 - x1_pad, y1 - y1_pad, x2 - x1_pad, y2 - y1_pad, crop_w0, crop_h0
@@ -376,7 +342,7 @@ class ProfilePreprocessingPipeline:
         # CLAHE ownership: preprocess only — morph/antro must not re-apply.
         cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
 
-        # White-background clean (MediaPipe selfie segmentation) on crop; fail-open.
+        # White-background clean (rembg u2net matting) on crop; fail-open.
         # face_protect_rect guarantees the face is never cut by the mask.
         cropped, white_bg_applied = self.apply_white_background(
             cropped, protect_rect=face_protect_rect

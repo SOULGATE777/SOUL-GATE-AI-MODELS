@@ -1,12 +1,11 @@
 """Unit tests for white-background cleaning (profile preprocess).
 
 Covers the shared ``composite_on_white`` helper, the retained GrabCut utility,
-and the live MediaPipe Selfie Segmentation path on the pipeline. Pipeline tests
-lazily import ``ProfilePreprocessingPipeline`` behind ``importorskip('torch')``
-so they run in CI/Docker (where torch is installed) and skip locally.
+and the rembg (u2net) matting path on the pipeline. Pipeline tests lazily import
+``ProfilePreprocessingPipeline`` behind ``importorskip('torch')`` so they run in
+CI/Docker (where torch is installed) and skip locally, and they monkeypatch the
+module-level ``rembg_remove`` so no ONNX model is needed to test the wiring.
 """
-
-from unittest.mock import MagicMock
 
 import numpy as np
 import cv2
@@ -152,26 +151,39 @@ def test_grabcut_removes_detached_fg_blob():
     assert float(corner.mean()) > 210, f"Detached blob not removed: {corner}"
 
 
-# --- Live MediaPipe Selfie Segmentation path (pipeline.apply_white_background) ---
+# --- rembg (u2net) matting path (pipeline.apply_white_background) ---
 # Guarded by importorskip('torch'): the pipeline module imports torch at module
-# scope, so these run in CI/Docker and skip in a torch-less local env.
+# scope, so these run in CI/Docker and skip in a torch-less local env. The
+# module-level ``rembg_remove`` is monkeypatched so no ONNX model is needed.
 
 
-def _make_pipeline_with_segmenter(segmenter):
+def _make_pipeline():
     """Build a ProfilePreprocessingPipeline without loading the torch model."""
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
     pipeline = object.__new__(ProfilePreprocessingPipeline)
-    pipeline.selfie_segmenter = segmenter
+    # Sentinel session so _get_rembg_session() short-circuits (no real ONNX init).
+    pipeline.rembg_session = object()
     return pipeline
 
 
-def test_apply_white_background_fail_open():
-    """Segmenter raises → image unchanged and False (fail-open)."""
-    segmenter = MagicMock()
-    segmenter.process.side_effect = RuntimeError("segmenter boom")
-    pipeline = _make_pipeline_with_segmenter(segmenter)
+def _patch_rembg(monkeypatch, mask_or_exc):
+    """Patch module-level rembg_remove to return a mask (or raise)."""
+    import app.models.profile_preprocessing_pipeline as mod
+
+    def fake_remove(image, session=None, only_mask=False):
+        if isinstance(mask_or_exc, Exception):
+            raise mask_or_exc
+        return mask_or_exc
+
+    monkeypatch.setattr(mod, "rembg_remove", fake_remove)
+
+
+def test_apply_white_background_fail_open(monkeypatch):
+    """rembg raises → image unchanged and False (fail-open)."""
+    pipeline = _make_pipeline()
+    _patch_rembg(monkeypatch, RuntimeError("rembg boom"))
 
     image = np.full((16, 16, 3), 77, dtype=np.uint8)
     original = image.copy()
@@ -180,16 +192,12 @@ def test_apply_white_background_fail_open():
 
     assert applied is False
     np.testing.assert_array_equal(out, original)
-    segmenter.process.assert_called_once()
 
 
-def test_apply_white_background_none_mask_fail_open():
-    """No segmentation mask → image unchanged and False (fail-open)."""
-    result = MagicMock()
-    result.segmentation_mask = None
-    segmenter = MagicMock()
-    segmenter.process.return_value = result
-    pipeline = _make_pipeline_with_segmenter(segmenter)
+def test_apply_white_background_none_mask_fail_open(monkeypatch):
+    """No matte returned → image unchanged and False (fail-open)."""
+    pipeline = _make_pipeline()
+    _patch_rembg(monkeypatch, None)
 
     image = np.full((16, 16, 3), 99, dtype=np.uint8)
     original = image.copy()
@@ -200,187 +208,151 @@ def test_apply_white_background_none_mask_fail_open():
     np.testing.assert_array_equal(out, original)
 
 
-def test_apply_white_background_composites_on_white():
-    """A hard mask makes background white and keeps subject; applied is True."""
-    mask = np.zeros((40, 40), dtype=np.float32)
-    mask[10:30, 10:30] = 1.0
-    result = MagicMock()
-    result.segmentation_mask = mask
-    segmenter = MagicMock()
-    segmenter.process.return_value = result
-    pipeline = _make_pipeline_with_segmenter(segmenter)
+def test_apply_white_background_empty_mask_fail_open(monkeypatch):
+    """Empty (size 0) matte → image unchanged and False (fail-open)."""
+    pipeline = _make_pipeline()
+    _patch_rembg(monkeypatch, np.empty((0, 0), dtype=np.uint8))
+
+    image = np.full((16, 16, 3), 55, dtype=np.uint8)
+    original = image.copy()
+
+    out, applied = pipeline.apply_white_background(image)
+
+    assert applied is False
+    np.testing.assert_array_equal(out, original)
+
+
+def test_apply_white_background_composites_on_white(monkeypatch):
+    """A hard matte makes background white and keeps subject; applied is True."""
+    mask = np.zeros((40, 40), dtype=np.uint8)
+    mask[10:30, 10:30] = 255
+    pipeline = _make_pipeline()
+    _patch_rembg(monkeypatch, mask)
 
     image = np.full((40, 40, 3), (10, 20, 30), dtype=np.uint8)
     out, applied = pipeline.apply_white_background(image)
 
     assert applied is True
-    # Subject core preserved (edge is feathered, so assert on the interior)
+    # Subject core preserved
     assert np.allclose(out[15:25, 15:25], (10, 20, 30), atol=1)
     # A background corner is white
     assert np.all(out[0, 0] == 255)
 
 
-# --- Mask refinement (_refine_segmentation_mask) ---
+# --- Matte refinement (_refine_matte) ---
 
 
-def test_refine_mask_kills_midalpha_ghosting():
-    """Uniform mid-range probability (model uncertainty) collapses to background.
+def test_refine_matte_preserves_soft_edge():
+    """The matte's soft (anti-aliased) alpha passes through UNCHANGED.
 
-    This is the fix for translucent background "ghosting": a soft 0.4 alpha over
-    the whole frame must not survive as a half-transparent blend.
+    Locks the key behaviour change vs the old MediaPipe path: no threshold /
+    feather re-hardening. A single-blob matte with a mid-alpha edge keeps that
+    intermediate value so rembg's clean edge is preserved for compositing.
     """
-    pytest.importorskip("torch")
-    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
-
-    mask = np.full((32, 32), 0.4, dtype=np.float32)
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask)
-
-    assert alpha.shape == (32, 32)
-    assert float(alpha.max()) == 0.0
-
-
-def test_refine_mask_default_threshold_trims_soft_halo():
-    """A uniform 0.55 probability is below the 0.6 default → dropped as background.
-
-    Locks the 0.5→0.6 default: the uncertain halo the segmenter bleeds onto the
-    background (the "too much background left" symptom) must not survive.
-    """
-    pytest.importorskip("torch")
-    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
-
-    mask = np.full((32, 32), 0.55, dtype=np.float32)
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask)
-    assert float(alpha.max()) == 0.0
-
-
-def test_refine_mask_keeps_largest_component():
-    """A big subject blob is kept; a small detached blob is dropped."""
-    pytest.importorskip("torch")
-    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
-
-    mask = np.zeros((60, 60), dtype=np.float32)
-    mask[10:50, 10:40] = 1.0   # large subject
-    mask[2:6, 52:56] = 1.0     # small detached background blob
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask, feather_px=0)
-
-    assert float(alpha[30, 25]) == 1.0   # subject core kept
-    assert float(alpha[4, 54]) == 0.0    # detached blob removed
-
-
-def test_refine_mask_feathers_edge_smoothly():
-    """Feather produces a smooth 0→1 ramp at the edge, not a hard blocky step."""
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
     mask = np.zeros((40, 40), dtype=np.float32)
     mask[8:32, 8:32] = 1.0
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask, feather_px=2)
+    mask[8:32, 7] = 0.5   # one soft edge column
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask)
 
-    assert float(alpha[20, 20]) == 1.0                 # interior solid
-    assert 0.0 < float(alpha[20, 7]) < 1.0             # feathered edge is partial
+    assert float(alpha[20, 20]) == 1.0            # interior solid, untouched
+    assert abs(float(alpha[20, 7]) - 0.5) < 1e-6  # soft edge preserved, not hardened
 
 
-def test_refine_mask_open_severs_background_bridge():
-    """Attached background (thin mask bridge) is dropped; without open it survives.
-
-    This is the fix for "profiles leave too much background": reflective glass /
-    fences / banners stay above threshold and touch the subject through a thin
-    mask bridge, so keep-largest-component keeps them. The morphological open
-    severs that bridge so the blob is dropped.
-    """
+def test_refine_matte_accepts_uint8_and_normalises():
+    """A 0–255 uint8 matte is normalised to [0, 1]."""
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
-    mask = np.zeros((80, 80), dtype=np.float32)
-    mask[8:72, 8:40] = 1.0        # subject (largest component)
-    mask[33:47, 58:74] = 1.0      # attached background blob
-    mask[38:41, 40:58] = 1.0      # thin bridge linking blob → subject
-
-    # Open disabled: the bridge keeps them one component → background survives.
-    bridged = ProfilePreprocessingPipeline._refine_segmentation_mask(
-        mask, feather_px=0, open_frac=0.0
-    )
-    assert float(bridged[40, 65]) == 1.0   # background blob still present
-
-    # Open enabled: bridge severed → blob dropped by keep-largest, subject kept.
-    cleaned = ProfilePreprocessingPipeline._refine_segmentation_mask(
-        mask, feather_px=0, open_frac=0.05
-    )
-    assert float(cleaned[40, 20]) == 1.0   # subject preserved
-    assert float(cleaned[40, 65]) == 0.0   # attached background removed
+    mask = np.zeros((30, 30), dtype=np.uint8)
+    mask[5:25, 5:25] = 255
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask)
+    assert float(alpha.max()) == 1.0
+    assert float(alpha[15, 15]) == 1.0
+    assert float(alpha[0, 0]) == 0.0
 
 
-def test_refine_mask_default_open_severs_bridge_at_scale():
-    """The DEFAULT open_frac (0.015) severs a resolution-scaled bridge.
-
-    Proves production defaults (not just a strong open) drop attached background:
-    on a realistic ~400px crop the default kernel (~6px) breaks a thin bridge and
-    keep-largest drops the blob, while the subject is preserved.
-    """
+def test_refine_matte_drops_detached_speck():
+    """A big subject blob is kept; a small detached speck is dropped."""
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
-    mask = np.zeros((400, 400), dtype=np.float32)
-    mask[40:360, 40:200] = 1.0     # subject (largest)
-    mask[180:260, 300:370] = 1.0   # attached background blob
-    mask[216:220, 200:300] = 1.0   # thin 4px bridge
-
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask, feather_px=0)
-    assert float(alpha[200, 120]) == 1.0   # subject preserved
-    assert float(alpha[220, 335]) == 0.0   # attached background removed at default
-
-
-def test_refine_mask_open_never_clips_protected_face():
-    """The bridge-break open must not defeat the face guard: rect stays opaque."""
-    pytest.importorskip("torch")
-    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
-
-    # Segmenter says almost everything is background; only a thin sliver is FG.
     mask = np.zeros((60, 60), dtype=np.float32)
-    mask[0:60, 0:2] = 1.0
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(
-        mask, feather_px=2, open_frac=0.05, protect_rect=(20, 20, 40, 40)
-    )
-    assert float(alpha[20:40, 20:40].min()) == 1.0
+    mask[10:50, 10:40] = 1.0   # large subject
+    mask[2:6, 52:56] = 1.0     # small detached speck
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask)
+
+    assert float(alpha[30, 25]) == 1.0   # subject core kept
+    assert float(alpha[4, 54]) == 0.0    # detached speck removed
+
+
+def test_refine_matte_preserves_soft_edge_when_keeplargest_fires():
+    """Soft subject fringe survives even when keep-largest drops a speck.
+
+    Regression for the bug where multiplying the soft alpha by the largest
+    component zeroed the subject's anti-aliased fringe (labelled background)
+    whenever a detached speck triggered keep-largest. The speck must be dropped
+    AND the soft edge column must keep its 0.5 value.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((60, 60), dtype=np.float32)
+    mask[10:50, 10:40] = 1.0   # large subject
+    mask[10:50, 9] = 0.5       # soft (anti-aliased) fringe column, alpha < 0.5
+    mask[2:6, 52:56] = 1.0     # detached speck (forces keep-largest)
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask)
+
+    assert float(alpha[30, 25]) == 1.0            # subject core kept
+    assert abs(float(alpha[30, 9]) - 0.5) < 1e-6  # soft fringe preserved, not hardened
+    assert float(alpha[4, 54]) == 0.0             # detached speck dropped
+
+
+def test_refine_matte_single_component_untouched():
+    """A single clean component is returned intact (keep-largest is a no-op)."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((50, 50), dtype=np.float32)
+    mask[10:40, 10:40] = 1.0
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask)
+    assert float(alpha[25, 25]) == 1.0
+    assert float(alpha.sum()) == float(mask.sum())  # nothing zeroed
 
 
 # --- Face guard: the face region must NEVER be clipped ---
 
 
-def test_refine_mask_protect_rect_forces_face_opaque():
-    """Even a fully-background mask keeps the ENTIRE protected rect exactly opaque.
+def test_refine_matte_protect_rect_forces_face_opaque():
+    """Even a fully-background matte keeps the ENTIRE protected rect exactly opaque.
 
     Guards the hard requirement: the face is never clipped, so every pixel inside
-    the protect rect (edges and corners included) must be exactly 1.0 — the feather
-    blur must not soften the rect interior.
+    the protect rect (edges and corners included) must be exactly 1.0.
     """
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
-    # Segmenter is completely wrong: says everything is background.
+    # Matte is completely wrong: says everything is background.
     mask = np.zeros((60, 60), dtype=np.float32)
     protect = (20, 20, 40, 40)
 
-    for feather in (0, 2, 4):
-        alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(
-            mask, feather_px=feather, protect_rect=protect
-        )
-        # EVERY pixel in the rect is fully opaque (min == 1.0), not just the center.
-        assert float(alpha[20:40, 20:40].min()) == 1.0, f"feather={feather}"
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask, protect_rect=protect)
+    # EVERY pixel in the rect is fully opaque (min == 1.0), not just the center.
+    assert float(alpha[20:40, 20:40].min()) == 1.0
     # Far outside stays background.
     assert float(alpha[2, 2]) == 0.0
 
 
-def test_refine_mask_protect_rect_tiny_face_opaque():
-    """A very small protect rect is still exactly opaque (no edge dip from blur)."""
+def test_refine_matte_protect_rect_tiny_face_opaque():
+    """A very small protect rect is still exactly opaque."""
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
     mask = np.zeros((40, 40), dtype=np.float32)
     protect = (18, 18, 22, 22)  # 4x4 face core
-    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(
-        mask, feather_px=2, protect_rect=protect
-    )
+    alpha = ProfilePreprocessingPipeline._refine_matte(mask, protect_rect=protect)
     assert float(alpha[18:22, 18:22].min()) == 1.0
 
 
@@ -410,18 +382,14 @@ def test_face_protect_rect_degenerate_returns_none():
     assert ProfilePreprocessingPipeline._face_protect_rect(50, 50, 10, 10, 100, 100) is None
 
 
-def test_apply_white_background_never_clips_face():
-    """End-to-end: segmenter drops the face, protect_rect restores it."""
-    pytest.importorskip("torch")
+def test_apply_white_background_never_clips_face(monkeypatch):
+    """End-to-end: the matte drops the face, protect_rect restores it."""
+    pipeline = _make_pipeline()
 
-    # Mask marks the face region as background (alpha 0) — worst case.
-    mask = np.ones((40, 40), dtype=np.float32)
-    mask[10:30, 10:30] = 0.0
-    result = MagicMock()
-    result.segmentation_mask = mask
-    segmenter = MagicMock()
-    segmenter.process.return_value = result
-    pipeline = _make_pipeline_with_segmenter(segmenter)
+    # Matte marks the face region as background (alpha 0) — worst case.
+    mask = np.full((40, 40), 255, dtype=np.uint8)
+    mask[10:30, 10:30] = 0
+    _patch_rembg(monkeypatch, mask)
 
     image = np.full((40, 40, 3), (12, 34, 56), dtype=np.uint8)
     out, applied = pipeline.apply_white_background(image, protect_rect=(12, 12, 28, 28))

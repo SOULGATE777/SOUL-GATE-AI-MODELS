@@ -33,6 +33,14 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-bake the rembg u2net matting model into the image so the first request
+# does not trigger a ~176MB runtime download (and works with no outbound net).
+# REMBG_MODEL is pinned to the baked model so runtime never fetches a different
+# one; override it only if you also bake that model.
+ENV U2NET_HOME=/app/.u2net
+ENV REMBG_MODEL=u2net
+RUN python -c "from rembg import new_session; new_session('u2net')"
+
 # Copy application code
 COPY app/ ./app/
 COPY models/ ./models/

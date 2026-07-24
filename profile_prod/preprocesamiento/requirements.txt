@@ -8,12 +8,16 @@ torch==2.1.0
 torchvision==0.16.0
 torchaudio==2.1.0
 
-# Computer Vision
-opencv-python==4.8.1.78
+# Computer Vision (headless: server has no GUI; also avoids a duplicate cv2
+# wheel, since rembg depends on opencv-python-headless)
+opencv-python-headless==4.8.1.78
 Pillow==10.0.1
 
-# Learned person segmentation for white-background cleaning (same as frontal service)
-mediapipe==0.10.7
+# Person matting for white-background cleaning. Replaces MediaPipe selfie
+# segmentation, which confidently mis-classified reflective glass / walls /
+# fences adjacent to the head as foreground on real-world profile photos.
+# The [cpu] extra pulls onnxruntime; the u2net model is baked in the Dockerfile.
+rembg[cpu]==2.0.61
 
 # Scientific Computing
 numpy==1.24.3
