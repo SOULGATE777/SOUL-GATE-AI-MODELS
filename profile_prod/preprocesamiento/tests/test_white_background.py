@@ -239,6 +239,20 @@ def test_refine_mask_kills_midalpha_ghosting():
     assert float(alpha.max()) == 0.0
 
 
+def test_refine_mask_default_threshold_trims_soft_halo():
+    """A uniform 0.55 probability is below the 0.6 default → dropped as background.
+
+    Locks the 0.5→0.6 default: the uncertain halo the segmenter bleeds onto the
+    background (the "too much background left" symptom) must not survive.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.full((32, 32), 0.55, dtype=np.float32)
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask)
+    assert float(alpha.max()) == 0.0
+
+
 def test_refine_mask_keeps_largest_component():
     """A big subject blob is kept; a small detached blob is dropped."""
     pytest.importorskip("torch")
@@ -264,6 +278,70 @@ def test_refine_mask_feathers_edge_smoothly():
 
     assert float(alpha[20, 20]) == 1.0                 # interior solid
     assert 0.0 < float(alpha[20, 7]) < 1.0             # feathered edge is partial
+
+
+def test_refine_mask_open_severs_background_bridge():
+    """Attached background (thin mask bridge) is dropped; without open it survives.
+
+    This is the fix for "profiles leave too much background": reflective glass /
+    fences / banners stay above threshold and touch the subject through a thin
+    mask bridge, so keep-largest-component keeps them. The morphological open
+    severs that bridge so the blob is dropped.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((80, 80), dtype=np.float32)
+    mask[8:72, 8:40] = 1.0        # subject (largest component)
+    mask[33:47, 58:74] = 1.0      # attached background blob
+    mask[38:41, 40:58] = 1.0      # thin bridge linking blob → subject
+
+    # Open disabled: the bridge keeps them one component → background survives.
+    bridged = ProfilePreprocessingPipeline._refine_segmentation_mask(
+        mask, feather_px=0, open_frac=0.0
+    )
+    assert float(bridged[40, 65]) == 1.0   # background blob still present
+
+    # Open enabled: bridge severed → blob dropped by keep-largest, subject kept.
+    cleaned = ProfilePreprocessingPipeline._refine_segmentation_mask(
+        mask, feather_px=0, open_frac=0.05
+    )
+    assert float(cleaned[40, 20]) == 1.0   # subject preserved
+    assert float(cleaned[40, 65]) == 0.0   # attached background removed
+
+
+def test_refine_mask_default_open_severs_bridge_at_scale():
+    """The DEFAULT open_frac (0.015) severs a resolution-scaled bridge.
+
+    Proves production defaults (not just a strong open) drop attached background:
+    on a realistic ~400px crop the default kernel (~6px) breaks a thin bridge and
+    keep-largest drops the blob, while the subject is preserved.
+    """
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    mask = np.zeros((400, 400), dtype=np.float32)
+    mask[40:360, 40:200] = 1.0     # subject (largest)
+    mask[180:260, 300:370] = 1.0   # attached background blob
+    mask[216:220, 200:300] = 1.0   # thin 4px bridge
+
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(mask, feather_px=0)
+    assert float(alpha[200, 120]) == 1.0   # subject preserved
+    assert float(alpha[220, 335]) == 0.0   # attached background removed at default
+
+
+def test_refine_mask_open_never_clips_protected_face():
+    """The bridge-break open must not defeat the face guard: rect stays opaque."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    # Segmenter says almost everything is background; only a thin sliver is FG.
+    mask = np.zeros((60, 60), dtype=np.float32)
+    mask[0:60, 0:2] = 1.0
+    alpha = ProfilePreprocessingPipeline._refine_segmentation_mask(
+        mask, feather_px=2, open_frac=0.05, protect_rect=(20, 20, 40, 40)
+    )
+    assert float(alpha[20:40, 20:40].min()) == 1.0
 
 
 # --- Face guard: the face region must NEVER be clipped ---

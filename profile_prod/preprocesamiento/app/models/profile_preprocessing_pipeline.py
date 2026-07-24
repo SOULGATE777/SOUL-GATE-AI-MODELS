@@ -146,8 +146,9 @@ class ProfilePreprocessingPipeline:
 
     @staticmethod
     def _refine_segmentation_mask(mask: np.ndarray,
-                                  fg_threshold: float = 0.5,
+                                  fg_threshold: float = 0.6,
                                   feather_px: int = 2,
+                                  open_frac: float = 0.015,
                                   protect_rect: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
         """Turn MediaPipe's soft probability mask into a clean alpha.
 
@@ -157,18 +158,29 @@ class ProfilePreprocessingPipeline:
         blocky/pixelated edge (coarse mask upscaled by the letterbox resize).
 
         This hardens the mask to remove both while keeping edges smooth:
-        - threshold at ``fg_threshold`` → kills mid-alpha ghosting
+        - threshold at ``fg_threshold`` → kills mid-alpha ghosting and trims the
+          uncertain halo where the segmenter bleeds onto the background
         - morphological close → fills small holes inside the subject
+        - morphological open (``open_frac``) → severs the thin mask "bridges" that
+          connect reflective/attached background (glass, fences, banners) to the
+          subject, so keep-largest-component can then drop those blobs
         - keep largest connected component → drops detached background blobs
         - thin Gaussian feather → smooth (non-blocky) edge instead of a hard step
         - ``protect_rect`` → forced fully opaque so the face is NEVER clipped,
           regardless of how uncertain the segmenter is over those pixels
 
+        The open runs AFTER close (which can bridge subject↔background) and BEFORE
+        keep-largest, and is the primary lever against "too much background left on
+        profiles". Its kernel scales with the crop resolution so behaviour is
+        scale-invariant across phone/desktop inputs.
+
         Args:
             mask: HxW float/uint8 probability. Values in [0, 1] or [0, 255].
             fg_threshold: probability above which a pixel is foreground. Lower it
-                (e.g. 0.35) to keep more wispy hair; raise it to cut more background.
+                (e.g. 0.4) to keep more wispy hair; raise it to cut more background.
             feather_px: half-width of the edge feather in pixels (0 = hard edge).
+            open_frac: bridge-break open kernel as a fraction of min(H, W); 0
+                disables it. ~0.015 ≈ 7px on a 500px crop.
             protect_rect: (x1, y1, x2, y2) region forced to alpha 1 (face guard).
 
         Returns:
@@ -183,6 +195,15 @@ class ProfilePreprocessingPipeline:
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+        # Sever thin background bridges before keep-largest so attached
+        # reflective/wall/fence regions get dropped instead of surviving as part
+        # of the largest blob. Kernel scales with resolution (min 3px).
+        if open_frac > 0:
+            h, w = binary.shape[:2]
+            open_px = max(3, int(round(min(h, w) * open_frac)))
+            open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_px, open_px))
+            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, open_kernel)
 
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
         if num_labels > 1:
@@ -214,11 +235,11 @@ class ProfilePreprocessingPipeline:
         """Soft-composite subject onto white via MediaPipe Selfie Segmentation.
 
         Passes RGB directly to segmenter.process (not BGR). The raw soft mask is
-        refined (threshold + keep-largest-component + thin feather) before
-        compositing so busy/reflective backgrounds do not leave translucent
-        ghosting or blocky edges. When ``protect_rect`` is given, that region is
-        forced fully opaque so the face is NEVER clipped. Fail-open on errors /
-        missing mask.
+        refined (threshold + close + bridge-break open + keep-largest-component +
+        thin feather) before compositing so busy/reflective backgrounds do not
+        leave translucent ghosting, blocky edges, or attached background blobs.
+        When ``protect_rect`` is given, that region is forced fully opaque so the
+        face is NEVER clipped. Fail-open on errors / missing mask.
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
