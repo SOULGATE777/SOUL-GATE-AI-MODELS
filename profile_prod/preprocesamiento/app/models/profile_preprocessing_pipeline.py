@@ -41,7 +41,13 @@ class ProfilePreprocessingPipeline:
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
-        self.default_padding_factor = 0.22
+        # Generous pad so nose/crown/back-of-head stay inside the crop frame
+        # (gateway previously forced 0.15 and clipped anatomy).
+        self.default_padding_factor = 0.40
+        # White border around crop before rembg so the subject is never at the
+        # tensor edge (rembg softens edge pixels → “cut” hair / soft neck).
+        self.rembg_edge_margin_frac = 0.08
+        self.rembg_edge_margin_min_px = 12
 
         # rembg (u2net) person matting for white-background cleaning. A dedicated
         # matting model: unlike MediaPipe selfie segmentation it does not
@@ -328,19 +334,20 @@ class ProfilePreprocessingPipeline:
         h, w = image.shape[:2]
         x1, y1, x2, y2 = bbox
         
-        # Add padding around detection (extra top pad frames the full hair crown
-        # so the matte keeps it in view)
+        # Asymmetric pad: extra horizontal for nose + hair silhouette; extra top
+        # for crown; slightly more bottom for neck. Locked coeffs (critic).
         box_w = x2 - x1
         box_h = y2 - y1
-        pad_w = box_w * padding_factor
+        pad_side = box_w * padding_factor * 1.35
         pad_h = box_h * padding_factor
-        pad_top = pad_h * 1.45
+        pad_top = pad_h * 1.65
+        pad_bottom = pad_h * 1.20
         
         # Calculate padded coordinates
-        x1_pad = max(0, int(x1 - pad_w))
+        x1_pad = max(0, int(x1 - pad_side))
         y1_pad = max(0, int(y1 - pad_top))
-        x2_pad = min(w, int(x2 + pad_w))
-        y2_pad = min(h, int(y2 + pad_h))
+        x2_pad = min(w, int(x2 + pad_side))
+        y2_pad = min(h, int(y2 + pad_bottom))
         
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
@@ -358,19 +365,38 @@ class ProfilePreprocessingPipeline:
         # CLAHE ownership: preprocess only — morph/antro must not re-apply.
         cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
 
-        # White-background clean (rembg u2net matting) on crop; fail-open.
-        # face_protect_rect guarantees the face is never cut by the mask.
-        cropped, white_bg_applied = self.apply_white_background(
-            cropped, protect_rect=face_protect_rect
+        # White margin ring before rembg so the subject is never at the tensor
+        # edge (otherwise rembg soft-fades hair/neck into white). Offset the
+        # face-protect rect by the same margin.
+        margin = max(
+            self.rembg_edge_margin_min_px,
+            int(min(cropped.shape[0], cropped.shape[1]) * self.rembg_edge_margin_frac),
         )
+        cropped_for_matte = cv2.copyMakeBorder(
+            cropped, margin, margin, margin, margin,
+            cv2.BORDER_CONSTANT, value=(255, 255, 255),
+        )
+        protect_for_matte = None
+        if face_protect_rect is not None:
+            px1, py1, px2, py2 = face_protect_rect
+            protect_for_matte = (
+                px1 + margin, py1 + margin, px2 + margin, py2 + margin
+            )
+
+        # White-background clean (rembg u2net matting); fail-open.
+        matted, white_bg_applied = self.apply_white_background(
+            cropped_for_matte, protect_rect=protect_for_matte
+        )
+        # Keep the margin (becomes letterbox whitespace) — do not trim back to
+        # the pre-ring crop, or edge pixels would again sit on the frame.
         
-        crop_h, crop_w = cropped.shape[:2]
+        crop_h, crop_w = matted.shape[:2]
         
         # Scale to fit within target size while preserving aspect ratio
         scale = min(target_size[0] / crop_w, target_size[1] / crop_h)
         new_w = int(crop_w * scale)
         new_h = int(crop_h * scale)
-        resized = cv2.resize(cropped, (new_w, new_h))
+        resized = cv2.resize(matted, (new_w, new_h))
         
         # Center in target size canvas with white letterbox
         final_image = np.full((target_size[1], target_size[0], 3), 255, dtype=np.uint8)

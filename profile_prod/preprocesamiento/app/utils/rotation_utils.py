@@ -7,6 +7,8 @@ import torchvision
 from typing import Tuple, Optional, Dict
 import logging
 
+from .rotation_policy import MAX_ABS_ROTATION_DEG, should_skip_rotation
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,6 +69,8 @@ class FaceRotationAligner:
     Face alignment using point detection to create vertical alignment
     based on specific anthropometric points (34 and 10).
     """
+
+    MAX_ABS_ROTATION_DEG = MAX_ABS_ROTATION_DEG
 
     def __init__(self, point_model_path: str, device: str = 'cuda'):
         """
@@ -302,6 +306,18 @@ class FaceRotationAligner:
 
             # Calculate rotation angle
             rotation_angle = self.calculate_rotation_angle(point_34, point_10)
+            metadata['rotation_angle'] = float(rotation_angle)
+
+            # Fail-open: skip extreme angles from bad keypoints (keeps original).
+            if should_skip_rotation(rotation_angle, self.MAX_ABS_ROTATION_DEG):
+                error_msg = (
+                    f"Rotation angle {rotation_angle:.2f}° exceeds "
+                    f"±{self.MAX_ABS_ROTATION_DEG}°; skipping alignment"
+                )
+                logger.warning(error_msg)
+                metadata['error'] = error_msg
+                metadata['rotation_applied'] = False
+                return None, metadata
 
             # Calculate center of rotation (midpoint between the two points)
             center = (
@@ -313,7 +329,6 @@ class FaceRotationAligner:
             rotated_image = self.rotate_image(image, rotation_angle, center)
 
             metadata['rotation_applied'] = True
-            metadata['rotation_angle'] = float(rotation_angle)  # Ensure it's JSON serializable
             metadata['rotation_center'] = list(center)  # Convert tuple to list
 
             logger.info(f"Successfully aligned face with rotation angle: {rotation_angle:.2f}°")

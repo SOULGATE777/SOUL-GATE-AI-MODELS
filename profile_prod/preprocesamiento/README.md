@@ -52,7 +52,7 @@ POST /preprocess-profile
 - `confidence_threshold` (optional): Float 0.1-0.9 (default: 0.5)
 - `target_width` (optional): Integer 100-2048 (default: 600)
 - `target_height` (optional): Integer 100-2048 (default: 600)
-- `padding_factor` (optional): Float 0.0-0.5 (default: 0.15)
+- `padding_factor` (optional): Float 0.0-0.75 (default: 0.40)
 - `output_format` (optional): String 'JPEG'|'PNG' (default: 'JPEG')
 - `quality` (optional): Integer 1-100 (default: 95, JPEG only)
 - `include_visualization` (optional): Boolean (default: false)
@@ -69,7 +69,7 @@ POST /preprocess-profile
   "processing_parameters": {
     "confidence_threshold": 0.5,
     "target_size": [600, 600],
-    "padding_factor": 0.15,
+    "padding_factor": 0.40,
     "output_format": "JPEG",
     "quality": 95,
     "rotation_applied": true
@@ -92,7 +92,7 @@ POST /preprocess-profile
       "cropped_image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
       "crop_info": {
         "target_size": [600, 600],
-        "padding_factor": 0.15
+        "padding_factor": 0.40
       }
     }
   ],
@@ -139,7 +139,7 @@ POST /crop-faces
 - `bboxes` (required): JSON string of bounding boxes `[[x1,y1,x2,y2], ...]`
 - `target_width` (optional): Target width (default: 600)
 - `target_height` (optional): Target height (default: 600)
-- `padding_factor` (optional): Padding factor (default: 0.15)
+- `padding_factor` (optional): Padding factor (default: 0.40)
 - `output_format` (optional): Output format (default: 'JPEG')
 - `quality` (optional): JPEG quality (default: 95)
 
@@ -155,12 +155,12 @@ POST /crop-faces
       "bbox": [120, 150, 420, 450],
       "cropped_image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
       "target_size": [600, 600],
-      "padding_factor": 0.15
+      "padding_factor": 0.40
     }
   ],
   "processing_parameters": {
     "target_size": [600, 600],
-    "padding_factor": 0.15,
+    "padding_factor": 0.40,
     "output_format": "JPEG",
     "quality": 95
   }
@@ -181,7 +181,7 @@ GET /model-info
   "all_classes": ["profile_face"],
   "default_confidence_threshold": 0.5,
   "default_target_size": [600, 600],
-  "default_padding_factor": 0.15
+  "default_padding_factor": 0.40
 }
 ```
 
@@ -211,7 +211,7 @@ GET /processing-stats
   "parameter_ranges": {
     "confidence_threshold": {"min": 0.1, "max": 0.9, "default": 0.5},
     "target_size": {"min": 100, "max": 2048, "default": 600},
-    "padding_factor": {"min": 0.0, "max": 0.5, "default": 0.15},
+    "padding_factor": {"min": 0.0, "max": 0.75, "default": 0.40},
     "quality": {"min": 1, "max": 100, "default": 95}
   }
 }

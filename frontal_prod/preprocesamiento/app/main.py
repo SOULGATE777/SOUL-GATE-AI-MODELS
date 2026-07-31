@@ -142,7 +142,7 @@ async def preprocess_frontal(
     confidence_threshold: float = Form(0.5),
     target_width: int = Form(600),
     target_height: int = Form(600),
-    padding_factor: float = Form(0.15),
+    padding_factor: float = Form(0.28),
     output_format: str = Form("JPEG"),
     quality: int = Form(95),
     include_visualization: bool = Form(False),
@@ -155,7 +155,7 @@ async def preprocess_frontal(
     - **confidence_threshold**: Minimum confidence for head detection (0.1-0.9, default: 0.5)
     - **target_width**: Target width for cropped heads (default: 600)
     - **target_height**: Target height for cropped heads (default: 600)
-    - **padding_factor**: Padding around detected heads (0.0-0.5, default: 0.15)
+    - **padding_factor**: Padding around detected heads (0.0-0.75, default: 0.28)
     - **output_format**: Output format for base64 images ('JPEG', 'PNG', default: 'JPEG')
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
@@ -177,8 +177,8 @@ async def preprocess_frontal(
     if not 100 <= target_width <= 2048 or not 100 <= target_height <= 2048:
         raise HTTPException(status_code=400, detail="Target dimensions must be between 100 and 2048 pixels")
 
-    if not 0.0 <= padding_factor <= 0.5:
-        raise HTTPException(status_code=400, detail="Padding factor must be between 0.0 and 0.5")
+    if not 0.0 <= padding_factor <= 0.75:
+        raise HTTPException(status_code=400, detail="Padding factor must be between 0.0 and 0.75")
 
     if output_format.upper() not in ['JPEG', 'PNG']:
         raise HTTPException(status_code=400, detail="Output format must be 'JPEG' or 'PNG'")
@@ -336,7 +336,7 @@ async def crop_heads_from_bboxes(
     bboxes: str = Form(...),  # JSON string of bounding boxes
     target_width: int = Form(600),
     target_height: int = Form(600),
-    padding_factor: float = Form(0.15),
+    padding_factor: float = Form(0.28),
     output_format: str = Form("JPEG"),
     quality: int = Form(95)
 ):
@@ -347,7 +347,7 @@ async def crop_heads_from_bboxes(
     - **bboxes**: JSON string of bounding boxes [[x1,y1,x2,y2], ...]
     - **target_width**: Target width for cropped heads
     - **target_height**: Target height for cropped heads
-    - **padding_factor**: Padding around bounding boxes (0.0-0.5)
+    - **padding_factor**: Padding around bounding boxes (0.0-0.75, default: 0.28)
     - **output_format**: Output format ('JPEG', 'PNG')
     - **quality**: JPEG quality 1-100
     """
@@ -370,8 +370,8 @@ async def crop_heads_from_bboxes(
         if not 100 <= target_width <= 2048 or not 100 <= target_height <= 2048:
             raise HTTPException(status_code=400, detail="Target dimensions must be between 100 and 2048 pixels")
 
-        if not 0.0 <= padding_factor <= 0.5:
-            raise HTTPException(status_code=400, detail="Padding factor must be between 0.0 and 0.5")
+        if not 0.0 <= padding_factor <= 0.75:
+            raise HTTPException(status_code=400, detail="Padding factor must be between 0.0 and 0.75")
 
         # Read and decode image
         contents = await file.read()
@@ -474,7 +474,7 @@ async def get_processing_stats():
         "parameter_ranges": {
             "confidence_threshold": {"min": 0.1, "max": 0.9, "default": 0.5},
             "target_size": {"min": 100, "max": 2048, "default": 600},
-            "padding_factor": {"min": 0.0, "max": 0.5, "default": 0.15},
+            "padding_factor": {"min": 0.0, "max": 0.75, "default": 0.28},
             "quality": {"min": 1, "max": 100, "default": 95}
         },
         "lazy_loading": {

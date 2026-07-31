@@ -42,11 +42,15 @@ class FrontalPreprocessingPipeline:
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
-        self.default_padding_factor = 0.15
+        self.default_padding_factor = 0.28
 
         # Cranium expansion factors
         self.cranium_height_multiplier = 1.8  # Expand face height by 80% for cranium
         self.cranium_width_multiplier = 1.4   # Expand face width by 40% for cranium
+
+        # Seg edge margin: keep subject off canvas edge so matte does not clip hair/ears
+        self.seg_edge_margin_frac = 0.08
+        self.seg_edge_margin_min_px = 12
 
         # Face alignment parameters
         self.alignment_threshold = 2.0  # Only align if tilt angle > 2 degrees
@@ -345,10 +349,18 @@ class FrontalPreprocessingPipeline:
 
         # Crop → enhance dark (before white-BG so mean-L gate is not skewed by white
         # canvas). CLAHE ownership: preprocess only — morph must not re-apply.
-        # → white-BG → resize → letterbox
+        # → white edge margin → white-BG → resize → letterbox (keep margin)
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
         cropped, illumination_enhanced = maybe_enhance_dark(cropped)
-        cropped, white_bg_applied = self.apply_white_background(cropped)
+        margin = max(
+            self.seg_edge_margin_min_px,
+            int(min(cropped.shape[0], cropped.shape[1]) * self.seg_edge_margin_frac),
+        )
+        cropped_for_matte = cv2.copyMakeBorder(
+            cropped, margin, margin, margin, margin,
+            cv2.BORDER_CONSTANT, value=(255, 255, 255),
+        )
+        cropped, white_bg_applied = self.apply_white_background(cropped_for_matte)
         crop_h, crop_w = cropped.shape[:2]
 
         # Scale to fit within target size while preserving aspect ratio
