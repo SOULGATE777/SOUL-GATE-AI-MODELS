@@ -322,6 +322,56 @@ def test_refine_matte_single_component_untouched():
     assert float(alpha.sum()) == float(mask.sum())  # nothing zeroed
 
 
+def test_refine_matte_fills_interior_hair_hole():
+    """Enclosed zero pocket inside the subject becomes opaque (hair hole fill)."""
+    from app.utils.matte_refine import refine_person_matte
+
+    mask = np.zeros((60, 60), dtype=np.float32)
+    mask[10:50, 10:50] = 1.0
+    mask[25:35, 25:35] = 0.0  # interior hole
+    alpha = refine_person_matte(mask)
+    assert float(alpha[30, 30]) == 1.0
+    assert float(alpha[12, 12]) == 1.0
+    assert float(alpha[2, 2]) == 0.0
+
+
+def test_refine_matte_open_drops_thin_protrusion():
+    """Thin chin/jaw FG stick detached by morph-open is dropped."""
+    from app.utils.matte_refine import refine_person_matte
+
+    mask = np.zeros((80, 80), dtype=np.float32)
+    mask[20:60, 20:55] = 1.0  # head
+    # Thin stick into empty space (pen / pink blob after open)
+    mask[40:42, 55:75] = 1.0
+    alpha = refine_person_matte(mask)
+    assert float(alpha[40, 40]) == 1.0
+    assert float(alpha[40, 70]) == 0.0
+
+
+def test_refine_matte_preserves_soft_edge_without_torch():
+    """Soft AA fringe survives morph close/open (torch-free path)."""
+    from app.utils.matte_refine import refine_person_matte
+
+    mask = np.zeros((40, 40), dtype=np.float32)
+    mask[8:32, 8:32] = 1.0
+    mask[8:32, 7] = 0.5
+    alpha = refine_person_matte(mask)
+    assert float(alpha[20, 20]) == 1.0
+    assert abs(float(alpha[20, 7]) - 0.5) < 1e-6
+
+
+def test_refine_matte_corner_fg_does_not_paint_background():
+    """If subject touches (0,0), hole-fill must not force all BG opaque."""
+    from app.utils.matte_refine import refine_person_matte
+
+    mask = np.zeros((50, 50), dtype=np.float32)
+    mask[0:30, 0:30] = 1.0  # touches corner
+    mask[10:18, 10:18] = 0.0  # interior hole
+    alpha = refine_person_matte(mask)
+    assert float(alpha[14, 14]) == 1.0  # hole filled
+    assert float(alpha[45, 45]) == 0.0  # far BG stays BG
+
+
 # --- Face guard: the face region must NEVER be clipped ---
 
 

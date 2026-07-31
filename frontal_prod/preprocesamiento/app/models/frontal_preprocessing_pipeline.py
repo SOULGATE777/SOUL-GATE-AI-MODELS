@@ -9,6 +9,7 @@ import mediapipe as mp
 from PIL import Image
 
 from ..utils.image_processing import WHITE_BG, composite_on_white, maybe_enhance_dark
+from ..utils.rotation_policy import MAX_ABS_ROTATION_DEG, should_skip_rotation
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +45,11 @@ class FrontalPreprocessingPipeline:
         self.default_target_size = (600, 600)
         self.default_padding_factor = 0.28
 
-        # Cranium expansion factors
-        self.cranium_height_multiplier = 1.8  # Expand face height by 80% for cranium
+        # Cranium expansion factors (taller to reduce flat crown crops)
+        self.cranium_height_multiplier = 2.0  # Expand face height for hair/crown
         self.cranium_width_multiplier = 1.4   # Expand face width by 40% for cranium
+        # Extra top pad relative to side/bottom (asymmetric like profile)
+        self.top_padding_boost = 1.55
 
         # Seg edge margin: keep subject off canvas edge so matte does not clip hair/ears
         self.seg_edge_margin_frac = 0.08
@@ -54,6 +57,7 @@ class FrontalPreprocessingPipeline:
 
         # Face alignment parameters
         self.alignment_threshold = 2.0  # Only align if tilt angle > 2 degrees
+        self.MAX_ABS_ROTATION_DEG = MAX_ABS_ROTATION_DEG
         self.face_mesh_detector = None  # Lazy initialization
         self.selfie_segmenter = None  # Lazy initialization
 
@@ -99,6 +103,57 @@ class FrontalPreprocessingPipeline:
             )
             logger.info("MediaPipe Selfie Segmentation initialized for white background")
 
+    @staticmethod
+    def _refine_selfie_matte(mask: np.ndarray) -> np.ndarray:
+        """Clean MediaPipe selfie probability mask for white-BG composite.
+
+        Selfie seg often yields coarse / polygonal silhouettes. Keep soft values,
+        close small gaps, drop detached blobs, and lightly blur edges.
+        """
+        alpha = mask.astype(np.float32)
+        if alpha.max() > 1.0:
+            alpha = alpha / 255.0
+        alpha = np.clip(alpha, 0.0, 1.0)
+
+        binary = (alpha >= 0.5).astype(np.uint8)
+        close_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        open_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_k)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, open_k)
+
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+        keep = None
+        if num_labels > 2:
+            largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+            alpha[(labels > 0) & (labels != largest)] = 0.0
+            keep = (labels == largest).astype(np.uint8)
+        elif num_labels == 2:
+            keep = (labels == 1).astype(np.uint8)
+
+        if keep is not None and keep.any():
+            # Drop solid FG outside keep (open-eroded sticks); keep soft fringe.
+            alpha[(alpha >= 0.9) & (keep == 0)] = 0.0
+
+            h, w = keep.shape
+            seed = None
+            if keep[0, 0] == 0:
+                seed = (0, 0)
+            else:
+                ys, xs = np.where(keep == 0)
+                if len(xs) > 0:
+                    seed = (int(xs[0]), int(ys[0]))
+            if seed is not None:
+                flood = keep.copy()
+                mask_ff = np.zeros((h + 2, w + 2), dtype=np.uint8)
+                cv2.floodFill(flood, mask_ff, seed, 1)
+                interior_holes = flood == 0
+                if interior_holes.any():
+                    alpha[interior_holes] = 1.0
+            # Soften polygonal / jagged Selfie Seg edges (no hard re-threshold)
+            alpha = cv2.GaussianBlur(alpha, (5, 5), 0)
+
+        return np.clip(alpha, 0.0, 1.0)
+
     def apply_white_background(self, image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
         """
         Soft-composite subject onto white via MediaPipe Selfie Segmentation.
@@ -114,7 +169,8 @@ class FrontalPreprocessingPipeline:
             if results.segmentation_mask is None:
                 logger.warning("Selfie segmentation returned no mask; skipping white BG")
                 return image_rgb, False
-            composited = composite_on_white(image_rgb, results.segmentation_mask)
+            alpha = self._refine_selfie_matte(results.segmentation_mask)
+            composited = composite_on_white(image_rgb, alpha)
             # composite_on_white returns the same object on shape-guard no-op
             return composited, composited is not image_rgb
         except Exception as e:
@@ -133,12 +189,11 @@ class FrontalPreprocessingPipeline:
         """
         self._initialize_face_mesh()
 
-        # Convert RGB to BGR for MediaPipe
-        image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # MediaPipe Face Mesh expects RGB (same as Selfie Segmentation).
         h, w = image.shape[:2]
 
         # Process image with Face Mesh
-        results = self.face_mesh_detector.process(image_bgr)
+        results = self.face_mesh_detector.process(image)
 
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
@@ -213,6 +268,15 @@ class FrontalPreprocessingPipeline:
             logger.info(f"Face tilt angle ({angle:.2f}°) below threshold ({self.alignment_threshold}°), no alignment needed")
             return image, metadata
 
+        # Skip catastrophic mis-rotations from bad landmarks (QA: ~45° diamond crops)
+        if should_skip_rotation(angle, self.MAX_ABS_ROTATION_DEG):
+            logger.warning(
+                f"Face tilt angle ({angle:.2f}°) exceeds max "
+                f"({self.MAX_ABS_ROTATION_DEG}°); skipping alignment (fail-open)"
+            )
+            metadata['alignment_skipped_max_angle'] = True
+            return image, metadata
+
         # Calculate rotation center (midpoint between eyes)
         center_x = (left_eye[0] + right_eye[0]) // 2
         center_y = (left_eye[1] + right_eye[1]) // 2
@@ -248,12 +312,11 @@ class FrontalPreprocessingPipeline:
         if confidence_threshold is None:
             confidence_threshold = self.default_confidence_threshold
 
-        # Convert RGB to BGR for MediaPipe
-        image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # MediaPipe Face Detection expects RGB
         h, w = image.shape[:2]
 
         # Run MediaPipe face detection
-        results = self.face_detection.process(image_bgr)
+        results = self.face_detection.process(image)
 
         detections = []
 
@@ -335,15 +398,16 @@ class FrontalPreprocessingPipeline:
         h, w = image.shape[:2]
         x1, y1, x2, y2 = bbox
 
-        # Add padding around detection
+        # Add padding around detection (extra top for crown/hair)
         box_w = x2 - x1
         box_h = y2 - y1
         pad_w = box_w * padding_factor
         pad_h = box_h * padding_factor
+        pad_top = pad_h * self.top_padding_boost
 
         # Calculate padded coordinates
         x1_pad = max(0, int(x1 - pad_w))
-        y1_pad = max(0, int(y1 - pad_h))
+        y1_pad = max(0, int(y1 - pad_top))
         x2_pad = min(w, int(x2 + pad_w))
         y2_pad = min(h, int(y2 + pad_h))
 

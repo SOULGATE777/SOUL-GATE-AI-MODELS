@@ -173,51 +173,10 @@ class ProfilePreprocessingPipeline:
                       protect_rect: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
         """Clean a rembg person matte and enforce the face guard.
 
-        rembg's u2net matte is already a semantically correct, soft-edged person
-        alpha (it does not confuse adjacent glass/walls/fences for the subject),
-        so this does the minimum and — critically — preserves rembg's anti-aliased
-        edge instead of re-hardening it:
-        - normalise to [0, 1]
-        - keep the largest connected component to drop rare detached specks, then
-          multiply the ORIGINAL soft alpha by that component so the subject's soft
-          edge survives (only stray blobs are zeroed)
-        - ``protect_rect`` (a small on-subject core) → forced fully opaque as a
-          catastrophic-failure backstop; rembg's matte owns the actual face edges
-
-        No threshold / open / feather is applied: those were needed to salvage
-        MediaPipe's coarse probability mask; the matte does not need them and they
-        would only degrade the edge.
-
-        Args:
-            mask: HxW matte. Values in [0, 1] or [0, 255].
-            protect_rect: (x1, y1, x2, y2) region forced to alpha 1 (face guard).
-
-        Returns:
-            HxW float32 alpha in [0, 1].
+        See ``app.utils.matte_refine.refine_person_matte`` for behaviour.
         """
-        alpha = mask.astype(np.float32)
-        if alpha.max() > 1.0:
-            alpha = alpha / 255.0
-        alpha = np.clip(alpha, 0.0, 1.0)
-
-        # Drop detached specks without hardening the subject edge: find the
-        # largest connected component of the binarised matte and zero ONLY the
-        # OTHER foreground blobs. Background-labelled pixels (label 0) — which
-        # include the subject's anti-aliased fringe where 0 < alpha < 0.5 — are
-        # left untouched, so rembg's soft edge survives even when a speck fires.
-        binary = (alpha >= 0.5).astype(np.uint8)
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-        if num_labels > 2:  # background + more than one foreground blob
-            largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-            alpha[(labels > 0) & (labels != largest)] = 0.0
-
-        # Face-core backstop: force the protected rectangle EXACTLY opaque so a
-        # matte failure can't whiten the face core. rembg owns the face edges.
-        if protect_rect is not None:
-            px1, py1, px2, py2 = protect_rect
-            alpha[py1:py2, px1:px2] = 1.0
-
-        return alpha
+        from ..utils.matte_refine import refine_person_matte
+        return refine_person_matte(mask, protect_rect=protect_rect)
 
     def apply_white_background(self, image_rgb: np.ndarray,
                               protect_rect: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, bool]:
