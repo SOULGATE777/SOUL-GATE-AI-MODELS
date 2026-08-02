@@ -50,8 +50,10 @@ class ProfilePreprocessingPipeline:
         self.default_padding_factor = 0.40
         # White border around crop before rembg so the subject is never at the
         # tensor edge (rembg softens edge pixels → “cut” hair / soft neck).
-        self.rembg_edge_margin_frac = 0.08
-        self.rembg_edge_margin_min_px = 12
+        # Calibrated 2026-08-01 against /Downloads/sample (75 imgs): edge 0.16/20
+        # beats 0.08/12 on residual BG mass without raising face-core whitening.
+        self.rembg_edge_margin_frac = 0.16
+        self.rembg_edge_margin_min_px = 20
         # Face-protect core half-extent as fraction of bbox (0.25 → ~50% central core).
         self.face_protect_core_frac = 0.25
 

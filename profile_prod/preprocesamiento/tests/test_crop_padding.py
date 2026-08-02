@@ -44,8 +44,8 @@ def test_default_padding_factor_is_generous():
 
     src = open(mod.__file__, encoding="utf-8").read()
     assert "self.default_padding_factor = 0.40" in src
-    assert "self.rembg_edge_margin_frac = 0.08" in src
-    assert "self.rembg_edge_margin_min_px = 12" in src
+    assert "self.rembg_edge_margin_frac = 0.16" in src
+    assert "self.rembg_edge_margin_min_px = 20" in src
     assert "self.face_protect_core_frac = 0.25" in src
     assert "self._rembg_sessions" in src
 

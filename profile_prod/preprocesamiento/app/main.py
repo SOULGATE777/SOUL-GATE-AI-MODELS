@@ -551,12 +551,12 @@ async def get_processing_stats():
             "rembg_edge_margin_frac": {
                 "min": 0.0,
                 "max": 0.25,
-                "default": getattr(pipeline, "rembg_edge_margin_frac", 0.08) if pipeline else 0.08,
+                "default": getattr(pipeline, "rembg_edge_margin_frac", 0.16) if pipeline else 0.16,
             },
             "rembg_edge_margin_min_px": {
                 "min": 0,
                 "max": 64,
-                "default": getattr(pipeline, "rembg_edge_margin_min_px", 12) if pipeline else 12,
+                "default": getattr(pipeline, "rembg_edge_margin_min_px", 20) if pipeline else 20,
             },
             "face_protect_core_frac": {
                 "min": 0.1,
