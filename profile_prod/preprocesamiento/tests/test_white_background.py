@@ -511,7 +511,10 @@ def test_silhouette_subject_aware_restores_dark_profile_edge():
         silhouette_rect=silhouette,
     )
     # Dark lips/chin strip soft-restored (adjacent to FG; sample mid-strip)
-    assert float(alpha[40, 62]) >= 0.85
+    restored = float(alpha[40, 62])
+    assert restored >= 0.85
+    # Soft restore must not hard-force 1.0 (stair-step / pixelation regression).
+    assert restored < 1.0, f"silhouette restore hardened to 1.0: {restored}"
     # Light tent inside silhouette NOT force-locked
     assert float(alpha[16, 35]) < 0.15
     # Far dark wall NOT restored (outside FG dilate band)
