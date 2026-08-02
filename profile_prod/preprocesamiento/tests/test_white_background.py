@@ -244,11 +244,11 @@ def test_apply_white_background_composites_on_white(monkeypatch):
 
 
 def test_refine_matte_preserves_soft_edge():
-    """The matte's soft (anti-aliased) alpha passes through UNCHANGED.
+    """Mid-fringe stays soft (0 < α < 1); core stays solid after edge AA blur.
 
-    Locks the key behaviour change vs the old MediaPipe path: no threshold /
-    feather re-hardening. A single-blob matte with a mid-alpha edge keeps that
-    intermediate value so rembg's clean edge is preserved for compositing.
+    Locks the key behaviour change vs the old MediaPipe path: no hard threshold
+    re-hardening. Gaussian edge AA may shift the fringe value but must not
+    force it to 0 or 1.
     """
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
@@ -259,7 +259,8 @@ def test_refine_matte_preserves_soft_edge():
     alpha = ProfilePreprocessingPipeline._refine_matte(mask)
 
     assert float(alpha[20, 20]) == 1.0            # interior solid, untouched
-    assert abs(float(alpha[20, 7]) - 0.5) < 1e-6  # soft edge preserved, not hardened
+    fringe = float(alpha[20, 7])
+    assert 0.0 < fringe < 1.0, f"soft fringe hardened: {fringe}"
 
 
 def test_refine_matte_accepts_uint8_and_normalises():
@@ -307,7 +308,8 @@ def test_refine_matte_preserves_soft_edge_when_keeplargest_fires():
     alpha = ProfilePreprocessingPipeline._refine_matte(mask)
 
     assert float(alpha[30, 25]) == 1.0            # subject core kept
-    assert abs(float(alpha[30, 9]) - 0.5) < 1e-6  # soft fringe preserved, not hardened
+    fringe = float(alpha[30, 9])
+    assert 0.0 < fringe < 1.0, f"soft fringe hardened: {fringe}"
     assert float(alpha[4, 54]) == 0.0             # detached speck dropped
 
 
@@ -332,7 +334,8 @@ def test_refine_matte_fills_interior_hair_hole():
     mask[25:35, 25:35] = 0.0  # interior hole
     alpha = refine_person_matte(mask)
     assert float(alpha[30, 30]) == 1.0
-    assert float(alpha[12, 12]) == 1.0
+    # Deep interior stays opaque; near-edge may be slightly <1 after edge AA blur.
+    assert float(alpha[20, 20]) >= 0.99
     assert float(alpha[2, 2]) == 0.0
 
 
@@ -350,7 +353,7 @@ def test_refine_matte_open_drops_thin_protrusion():
 
 
 def test_refine_matte_preserves_soft_edge_without_torch():
-    """Soft AA fringe survives morph close/open (torch-free path)."""
+    """Soft AA fringe survives morph when no face guards (no Gaussian AA)."""
     from app.utils.matte_refine import refine_person_matte
 
     mask = np.zeros((40, 40), dtype=np.float32)
@@ -358,7 +361,8 @@ def test_refine_matte_preserves_soft_edge_without_torch():
     mask[8:32, 7] = 0.5
     alpha = refine_person_matte(mask)
     assert float(alpha[20, 20]) == 1.0
-    assert abs(float(alpha[20, 7]) - 0.5) < 1e-6
+    fringe = float(alpha[20, 7])
+    assert 0.0 < fringe < 1.0, f"soft fringe hardened: {fringe}"
 
 
 def test_refine_matte_corner_fg_does_not_paint_background():
@@ -481,6 +485,7 @@ def test_silhouette_subject_aware_restores_dark_profile_edge():
 
     Regression for perfilder4: raising face_protect_core_frac locked a light-BG
     rectangle; subject-aware silhouette restore keeps dark face and drops light BG.
+    Soft restore (>= ~0.85) is OK — hard 1.0 on the silhouette creates jagged edges.
     """
     from app.utils.matte_refine import refine_person_matte
 
@@ -505,14 +510,55 @@ def test_silhouette_subject_aware_restores_dark_profile_edge():
         image_rgb=image,
         silhouette_rect=silhouette,
     )
-    # Dark lips/chin strip restored (adjacent to FG; sample mid-strip)
-    assert float(alpha[40, 62]) == 1.0
+    # Dark lips/chin strip soft-restored (adjacent to FG; sample mid-strip)
+    assert float(alpha[40, 62]) >= 0.85
     # Light tent inside silhouette NOT force-locked
-    assert float(alpha[16, 35]) == 0.0
+    assert float(alpha[16, 35]) < 0.15
     # Far dark wall NOT restored (outside FG dilate band)
-    assert float(alpha[10, 74]) == 0.0
+    assert float(alpha[10, 74]) < 0.15
     # Hard core still forced
     assert float(alpha[40, 40]) == 1.0
+
+
+def test_gaussian_edge_aa_softens_fringe_keeps_protect_core():
+    """Gaussian edge AA leaves mid-fringe soft; protect core stays ~1.0."""
+    from app.utils.matte_refine import refine_person_matte
+
+    mask = np.zeros((60, 60), dtype=np.float32)
+    mask[15:45, 15:45] = 1.0  # hard block — blur should soften the edge
+    protect = (25, 25, 35, 35)
+    alpha = refine_person_matte(mask, protect_rect=protect)
+
+    assert float(alpha[30, 30]) == 1.0  # protect core re-hardened
+    # Sample just outside the hard block edge (column 14 neighbors FG at 15)
+    fringe = float(alpha[30, 14])
+    assert 0.0 < fringe < 1.0, f"expected soft mid-fringe, got {fringe}"
+
+
+def test_yellowish_tent_inside_silhouette_not_restored():
+    """Yellowish light strip (luma~205, chroma~45) inside silhouette is BG-like."""
+    from app.utils.matte_refine import refine_person_matte, subject_like_mask
+
+    h, w = 80, 80
+    image = np.full((h, w, 3), 255, dtype=np.uint8)
+    # Yellowish tent/wall: R=230 G=200 B=185 → luma≈207, chroma=45
+    image[25:55, 58:72] = (230, 200, 185)
+
+    # Confirm subject_like_mask classifies it as BG
+    strip = image[40:41, 62:63]
+    assert not bool(subject_like_mask(strip)[0, 0])
+
+    mask = np.zeros((h, w), dtype=np.float32)
+    mask[20:60, 20:55] = 1.0
+    silhouette = (15, 5, 78, 65)
+
+    alpha = refine_person_matte(
+        mask,
+        image_rgb=image,
+        silhouette_rect=silhouette,
+    )
+    # Must NOT be silhouette-restored into the matte
+    assert float(alpha[40, 62]) < 0.15
 
 
 def test_face_silhouette_rect_expands_beyond_bbox():

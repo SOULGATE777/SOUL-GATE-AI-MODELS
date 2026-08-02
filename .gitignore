@@ -71,3 +71,6 @@ frontal_prod/*/results/*.tiff
 # Results directory contents (but keep the directories)
 **/results/*
 !**/results/.gitkeep
+.cursor/plans/
+.venv-rembg-eval/
+.venv-frame-extractor/

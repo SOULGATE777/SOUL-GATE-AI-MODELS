@@ -40,8 +40,12 @@ def subject_like_mask(image_rgb: np.ndarray) -> np.ndarray:
     img = image_rgb.astype(np.float32)
     luma = img @ _LUMA_W
     chroma = img.max(axis=2) - img.min(axis=2)
-    # Near-white / washed BG: high luma and low chroma.
-    bg_like = (luma >= 200.0) & (chroma <= 40.0)
+    # Near-white / washed / yellowish tent BG (not dark lips/beard/skin).
+    bg_like = (
+        ((luma >= 195.0) & (chroma <= 55.0))
+        | (luma >= 220.0)
+        | ((luma >= 180.0) & (chroma <= 28.0))
+    )
     return ~bg_like
 
 
@@ -57,10 +61,12 @@ def refine_person_matte(
     close → open → keep-largest → drop solid FG outside keep → fill holes.
 
     Guards (applied last):
-    - ``silhouette_rect`` + ``image_rgb``: subject-aware restore for profile
-      nose/lips/chin at the bbox edge (force opaque only on non-BG-like pixels).
+    - ``silhouette_rect`` + ``image_rgb``: subject-aware soft restore for
+      profile nose/lips/chin (raise alpha, do not hard-force 1.0).
     - ``protect_rect``: hard central core — always force opaque (catastrophic
       backstop; must stay small so light BG inside the head bbox is not locked).
+    - Light Gaussian blur after protect is edge AA only; protect_rect is
+      re-applied so the face core stays solid.
     """
     alpha = mask.astype(np.float32)
     if alpha.max() > 1.0:
@@ -98,10 +104,11 @@ def refine_person_matte(
                 alpha[interior_holes] = 1.0
 
     h, w = alpha.shape[:2]
+    edge_aa = False
 
     # Subject-aware silhouette shell (profile nose/mouth/chin at bbox edge).
-    # Only restore near existing FG so dark walls rembg already removed stay out;
-    # light tent/sky inside the head bbox stays removable via subject_like_mask.
+    # Soft restore only — hard 1.0 creates stair-step edges; light tent/sky
+    # inside the head bbox stays removable via subject_like_mask.
     if (
         silhouette_rect is not None
         and image_rgb is not None
@@ -118,8 +125,9 @@ def refine_person_matte(
             roi_near = near_fg[sy1:sy2, sx1:sx2] > 0
             roi_alpha = alpha[sy1:sy2, sx1:sx2].copy()
             restore = roi_subject & roi_near & (roi_alpha < 0.90)
-            roi_alpha[restore] = 1.0
+            roi_alpha[restore] = np.maximum(roi_alpha[restore], 0.88)
             alpha[sy1:sy2, sx1:sx2] = roi_alpha
+            edge_aa = True
 
     # Hard central core — always opaque.
     if protect_rect is not None:
@@ -127,5 +135,17 @@ def refine_person_matte(
         if clipped is not None:
             px1, py1, px2, py2 = clipped
             alpha[py1:py2, px1:px2] = 1.0
+            edge_aa = True
+
+    # Edge anti-alias only when guards ran (avoids changing unguarded mattes).
+    # Re-harden protect_rect so the face core stays solid opaque.
+    if edge_aa:
+        alpha = cv2.GaussianBlur(alpha, (5, 5), 0)
+        alpha = np.clip(alpha, 0.0, 1.0)
+        if protect_rect is not None:
+            clipped = _clip_rect(protect_rect, w, h)
+            if clipped is not None:
+                px1, py1, px2, py2 = clipped
+                alpha[py1:py2, px1:px2] = 1.0
 
     return alpha
