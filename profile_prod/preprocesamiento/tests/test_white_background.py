@@ -164,7 +164,8 @@ def _make_pipeline():
 
     pipeline = object.__new__(ProfilePreprocessingPipeline)
     # Sentinel session so _get_rembg_session() short-circuits (no real ONNX init).
-    pipeline.rembg_session = object()
+    pipeline.rembg_model_name = "isnet-general-use"
+    pipeline._rembg_sessions = {"isnet-general-use": object()}
     return pipeline
 
 

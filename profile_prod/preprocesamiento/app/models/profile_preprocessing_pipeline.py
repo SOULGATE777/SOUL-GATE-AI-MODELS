@@ -6,7 +6,7 @@ import numpy as np
 import base64
 import io
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 import logging
 from rembg import remove as rembg_remove, new_session as rembg_new_session
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
@@ -16,6 +16,10 @@ from app.utils.rotation_utils import FaceRotationAligner
 from app.utils.image_processing import ImageProcessor, composite_on_white
 
 logger = logging.getLogger(__name__)
+
+# Locked asymmetric pad coeffs relative to base padding (side / top / bottom).
+PADDING_ASYMMETRIC = {"side": 1.35, "top": 1.65, "bottom": 1.20}
+
 
 class ProfilePreprocessingPipeline:
     """
@@ -48,14 +52,17 @@ class ProfilePreprocessingPipeline:
         # tensor edge (rembg softens edge pixels → “cut” hair / soft neck).
         self.rembg_edge_margin_frac = 0.08
         self.rembg_edge_margin_min_px = 12
+        # Face-protect core half-extent as fraction of bbox (0.25 → ~50% central core).
+        self.face_protect_core_frac = 0.25
 
         # rembg person matting for white-background cleaning (REMBG_MODEL). A
         # dedicated matting model: unlike MediaPipe selfie segmentation it does
         # not confidently mis-classify reflective glass / walls / fences adjacent
         # to the head as foreground, so busy real-world profile backgrounds are
-        # removed cleanly. Model overridable via REMBG_MODEL.
+        # removed cleanly. Model overridable via REMBG_MODEL / per-request kwargs.
         self.rembg_model_name = os.getenv("REMBG_MODEL", "isnet-general-use")
-        self.rembg_session = None  # Lazy initialization
+        # Session cache keyed by model name (safe concurrent read after create).
+        self._rembg_sessions: Dict[str, Any] = {}
 
         # Face rotation aligner (optional)
         self.rotation_aligner = None
@@ -115,16 +122,20 @@ class ProfilePreprocessingPipeline:
             logger.error(f"Failed to load model: {str(e)}")
             raise e
 
-    def _get_rembg_session(self):
-        """Lazy initialization of the rembg matting session (reuse instance)."""
-        if self.rembg_session is None:
-            self.rembg_session = rembg_new_session(self.rembg_model_name)
-            logger.info(f"rembg session initialized (model={self.rembg_model_name}) for white background")
-        return self.rembg_session
+    def _get_rembg_session(self, model_name: Optional[str] = None):
+        """Lazy rembg session from cache keyed by model name."""
+        name = model_name or self.rembg_model_name
+        session = self._rembg_sessions.get(name)
+        if session is None:
+            session = rembg_new_session(name)
+            self._rembg_sessions[name] = session
+            logger.info(f"rembg session initialized (model={name}) for white background")
+        return session
 
     @staticmethod
     def _face_protect_rect(fx1: float, fy1: float, fx2: float, fy2: float,
-                           crop_w: int, crop_h: int) -> Optional[Tuple[int, int, int, int]]:
+                           crop_w: int, crop_h: int,
+                           core_frac: float = 0.25) -> Optional[Tuple[int, int, int, int]]:
         """Shrink a crop-local face bbox into a small central protection core.
 
         rembg's person matte (REMBG_MODEL) is a reliable, high-confidence alpha
@@ -134,11 +145,12 @@ class ProfilePreprocessingPipeline:
         The profile detector's bbox is ~the whole head and the crop is tight
         around it (crop = bbox + padding), so an OUTWARD-expanded guard clamps to
         the entire crop and forces the background fully opaque, defeating
-        background removal entirely. Instead we keep the central ~50% of the
-        detected face bbox: that core always lands on the subject (cheek / ear /
-        hair mass), so it guarantees the face core is never whitened WITHOUT
-        re-adding the surrounding background. rembg's matte protects the actual
-        face edges (forehead / nose / jaw), which it does cleanly.
+        background removal entirely. Instead we keep the central core of the
+        detected face bbox (default core_frac=0.25 → ~50% of each side): that
+        core always lands on the subject (cheek / ear / hair mass), so it
+        guarantees the face core is never whitened WITHOUT re-adding the
+        surrounding background. rembg's matte protects the actual face edges
+        (forehead / nose / jaw), which it does cleanly.
 
         Returns (px1, py1, px2, py2) or None when the bbox is degenerate.
         """
@@ -147,13 +159,12 @@ class ProfilePreprocessingPipeline:
         if fw <= 0 or fh <= 0:
             return None
 
-        # Central core (~50% of the bbox), centered on the face bbox. Shrinking
-        # inward keeps the guard on-subject so it can never force background
-        # opaque, unlike the previous outward expansion.
+        # Central core, centered on the face bbox. Shrinking inward keeps the
+        # guard on-subject so it can never force background opaque.
         cx = (fx1 + fx2) / 2.0
         cy = (fy1 + fy2) / 2.0
-        half_w = fw * 0.25
-        half_h = fh * 0.25
+        half_w = fw * core_frac
+        half_h = fh * core_frac
 
         px1 = int(round(cx - half_w))
         px2 = int(round(cx + half_w))
@@ -179,7 +190,8 @@ class ProfilePreprocessingPipeline:
         return refine_person_matte(mask, protect_rect=protect_rect)
 
     def apply_white_background(self, image_rgb: np.ndarray,
-                              protect_rect: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, bool]:
+                              protect_rect: Optional[Tuple[int, int, int, int]] = None,
+                              rembg_model: Optional[str] = None) -> Tuple[np.ndarray, bool]:
         """Soft-composite subject onto white via rembg person matting (REMBG_MODEL).
 
         A dedicated matting model replaces MediaPipe selfie segmentation because
@@ -193,12 +205,13 @@ class ProfilePreprocessingPipeline:
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
             protect_rect: (x1, y1, x2, y2) crop-local face region to never clip.
+            rembg_model: Optional rembg model name; None uses self.rembg_model_name.
 
         Returns:
             Tuple of (composited_or_original_image, white_bg_applied).
         """
         try:
-            session = self._get_rembg_session()
+            session = self._get_rembg_session(rembg_model)
             mask = rembg_remove(image_rgb, session=session, only_mask=True)
             if mask is None or getattr(mask, "size", 0) == 0:
                 logger.warning("rembg returned no mask; skipping white BG")
@@ -272,7 +285,13 @@ class ProfilePreprocessingPipeline:
     
     def crop_face_with_padding(self, image: np.ndarray, bbox: List[float], 
                               target_size: Tuple[int, int] = None, 
-                              padding_factor: float = None) -> Tuple[np.ndarray, bool, bool]:
+                              padding_factor: float = None,
+                              apply_white_bg: bool = True,
+                              rembg_model: Optional[str] = None,
+                              rembg_edge_margin_frac: Optional[float] = None,
+                              rembg_edge_margin_min_px: Optional[int] = None,
+                              face_protect_core_frac: Optional[float] = None,
+                              ) -> Tuple[np.ndarray, bool, bool]:
         """
         Crop face from image with padding and resize to target size while preserving proportions
         
@@ -281,6 +300,11 @@ class ProfilePreprocessingPipeline:
             bbox: Bounding box [x1, y1, x2, y2]
             target_size: Target output size (width, height)
             padding_factor: Padding factor around the bounding box
+            apply_white_bg: When False, skip rembg white-BG and return crop after illumination
+            rembg_model: Optional rembg model override (None → self.rembg_model_name)
+            rembg_edge_margin_frac: Optional rembg edge margin fraction override
+            rembg_edge_margin_min_px: Optional rembg edge margin min px override
+            face_protect_core_frac: Optional face-protect core half-extent override
             
         Returns:
             Tuple of (cropped and resized face image, white_bg_applied, illumination_enhanced)
@@ -289,6 +313,23 @@ class ProfilePreprocessingPipeline:
             target_size = self.default_target_size
         if padding_factor is None:
             padding_factor = self.default_padding_factor
+
+        resolved_rembg_model = rembg_model if rembg_model is not None else self.rembg_model_name
+        resolved_margin_frac = (
+            rembg_edge_margin_frac
+            if rembg_edge_margin_frac is not None
+            else self.rembg_edge_margin_frac
+        )
+        resolved_margin_min = (
+            rembg_edge_margin_min_px
+            if rembg_edge_margin_min_px is not None
+            else self.rembg_edge_margin_min_px
+        )
+        resolved_core_frac = (
+            face_protect_core_frac
+            if face_protect_core_frac is not None
+            else self.face_protect_core_frac
+        )
         
         h, w = image.shape[:2]
         x1, y1, x2, y2 = bbox
@@ -297,10 +338,10 @@ class ProfilePreprocessingPipeline:
         # for crown; slightly more bottom for neck. Locked coeffs (critic).
         box_w = x2 - x1
         box_h = y2 - y1
-        pad_side = box_w * padding_factor * 1.35
+        pad_side = box_w * padding_factor * PADDING_ASYMMETRIC["side"]
         pad_h = box_h * padding_factor
-        pad_top = pad_h * 1.65
-        pad_bottom = pad_h * 1.20
+        pad_top = pad_h * PADDING_ASYMMETRIC["top"]
+        pad_bottom = pad_h * PADDING_ASYMMETRIC["bottom"]
         
         # Calculate padded coordinates
         x1_pad = max(0, int(x1 - pad_side))
@@ -317,37 +358,44 @@ class ProfilePreprocessingPipeline:
         # actual face edges and the surrounding background is removed normally.
         crop_h0, crop_w0 = cropped.shape[:2]
         face_protect_rect = self._face_protect_rect(
-            x1 - x1_pad, y1 - y1_pad, x2 - x1_pad, y2 - y1_pad, crop_w0, crop_h0
+            x1 - x1_pad, y1 - y1_pad, x2 - x1_pad, y2 - y1_pad, crop_w0, crop_h0,
+            core_frac=resolved_core_frac,
         )
 
         # Conditional dark CLAHE before white-BG.
         # CLAHE ownership: preprocess only — morph/antro must not re-apply.
         cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
 
-        # White margin ring before rembg so the subject is never at the tensor
-        # edge (otherwise rembg soft-fades hair/neck into white). Offset the
-        # face-protect rect by the same margin.
-        margin = max(
-            self.rembg_edge_margin_min_px,
-            int(min(cropped.shape[0], cropped.shape[1]) * self.rembg_edge_margin_frac),
-        )
-        cropped_for_matte = cv2.copyMakeBorder(
-            cropped, margin, margin, margin, margin,
-            cv2.BORDER_CONSTANT, value=(255, 255, 255),
-        )
-        protect_for_matte = None
-        if face_protect_rect is not None:
-            px1, py1, px2, py2 = face_protect_rect
-            protect_for_matte = (
-                px1 + margin, py1 + margin, px2 + margin, py2 + margin
+        white_bg_applied = False
+        if apply_white_bg:
+            # White margin ring before rembg so the subject is never at the tensor
+            # edge (otherwise rembg soft-fades hair/neck into white). Offset the
+            # face-protect rect by the same margin.
+            margin = max(
+                resolved_margin_min,
+                int(min(cropped.shape[0], cropped.shape[1]) * resolved_margin_frac),
             )
+            cropped_for_matte = cv2.copyMakeBorder(
+                cropped, margin, margin, margin, margin,
+                cv2.BORDER_CONSTANT, value=(255, 255, 255),
+            )
+            protect_for_matte = None
+            if face_protect_rect is not None:
+                px1, py1, px2, py2 = face_protect_rect
+                protect_for_matte = (
+                    px1 + margin, py1 + margin, px2 + margin, py2 + margin
+                )
 
-        # White-background clean (rembg person matting / REMBG_MODEL); fail-open.
-        matted, white_bg_applied = self.apply_white_background(
-            cropped_for_matte, protect_rect=protect_for_matte
-        )
-        # Keep the margin (becomes letterbox whitespace) — do not trim back to
-        # the pre-ring crop, or edge pixels would again sit on the frame.
+            # White-background clean (rembg person matting); fail-open.
+            matted, white_bg_applied = self.apply_white_background(
+                cropped_for_matte,
+                protect_rect=protect_for_matte,
+                rembg_model=resolved_rembg_model,
+            )
+            # Keep the margin (becomes letterbox whitespace) — do not trim back to
+            # the pre-ring crop, or edge pixels would again sit on the frame.
+        else:
+            matted = cropped
         
         crop_h, crop_w = matted.shape[:2]
         
@@ -399,7 +447,12 @@ class ProfilePreprocessingPipeline:
                      padding_factor: float = None,
                      output_format: str = 'JPEG',
                      quality: int = 95,
-                     apply_rotation: bool = False) -> Dict:
+                     apply_rotation: bool = False,
+                     apply_white_bg: bool = True,
+                     rembg_model: Optional[str] = None,
+                     rembg_edge_margin_frac: Optional[float] = None,
+                     rembg_edge_margin_min_px: Optional[int] = None,
+                     face_protect_core_frac: Optional[float] = None) -> Dict:
         """
         Complete preprocessing pipeline: detect faces, crop, and convert to base64
 
@@ -411,6 +464,11 @@ class ProfilePreprocessingPipeline:
             output_format: Output image format ('JPEG', 'PNG')
             quality: JPEG quality (1-100)
             apply_rotation: Whether to apply face rotation alignment using points 34 and 10
+            apply_white_bg: When False, skip rembg white-background cleaning
+            rembg_model: Optional rembg model override (None → self.rembg_model_name)
+            rembg_edge_margin_frac: Optional rembg edge margin fraction override
+            rembg_edge_margin_min_px: Optional rembg edge margin min px override
+            face_protect_core_frac: Optional face-protect core half-extent override
 
         Returns:
             Dictionary with detection results and base64 encoded cropped faces
@@ -421,6 +479,33 @@ class ProfilePreprocessingPipeline:
             target_size = self.default_target_size
         if padding_factor is None:
             padding_factor = self.default_padding_factor
+
+        resolved_rembg_model = rembg_model if rembg_model is not None else self.rembg_model_name
+        resolved_margin_frac = (
+            rembg_edge_margin_frac
+            if rembg_edge_margin_frac is not None
+            else self.rembg_edge_margin_frac
+        )
+        resolved_margin_min = (
+            rembg_edge_margin_min_px
+            if rembg_edge_margin_min_px is not None
+            else self.rembg_edge_margin_min_px
+        )
+        resolved_core_frac = (
+            face_protect_core_frac
+            if face_protect_core_frac is not None
+            else self.face_protect_core_frac
+        )
+
+        effective_pipeline = {
+            "rembg_model": resolved_rembg_model,
+            "apply_white_bg": apply_white_bg,
+            "rembg_edge_margin_frac": resolved_margin_frac,
+            "rembg_edge_margin_min_px": resolved_margin_min,
+            "face_protect_core_frac": resolved_core_frac,
+            "padding_asymmetric": dict(PADDING_ASYMMETRIC),
+            "default_padding_factor": self.default_padding_factor,
+        }
 
         # Apply rotation alignment if requested and available
         rotation_metadata = None
@@ -446,7 +531,15 @@ class ProfilePreprocessingPipeline:
         for detection in detections:
             # Crop face (dark enhance → segmentation white-bg → letterbox)
             cropped_face, white_bg_applied, illumination_enhanced = self.crop_face_with_padding(
-                working_image, detection['bbox'], target_size, padding_factor
+                working_image,
+                detection['bbox'],
+                target_size,
+                padding_factor,
+                apply_white_bg=apply_white_bg,
+                rembg_model=resolved_rembg_model,
+                rembg_edge_margin_frac=resolved_margin_frac,
+                rembg_edge_margin_min_px=resolved_margin_min,
+                face_protect_core_frac=resolved_core_frac,
             )
 
             # Convert to base64
@@ -469,13 +562,15 @@ class ProfilePreprocessingPipeline:
             'processed_faces': processed_faces,
             'original_image_size': image.shape[:2],
             'working_image': working_image,  # The image used for detection (rotated or original)
+            'effective_pipeline': effective_pipeline,
             'processing_parameters': {
                 'confidence_threshold': confidence_threshold,
                 'target_size': target_size,
                 'padding_factor': padding_factor,
                 'output_format': output_format,
                 'quality': quality,
-                'rotation_applied': apply_rotation
+                'rotation_applied': apply_rotation,
+                'effective_pipeline': effective_pipeline,
             }
         }
 
@@ -499,5 +594,10 @@ class ProfilePreprocessingPipeline:
             'all_classes': self.all_classes,
             'default_confidence_threshold': self.default_confidence_threshold,
             'default_target_size': self.default_target_size,
-            'default_padding_factor': self.default_padding_factor
+            'default_padding_factor': self.default_padding_factor,
+            'rembg_model_name': self.rembg_model_name,
+            'rembg_edge_margin_frac': self.rembg_edge_margin_frac,
+            'rembg_edge_margin_min_px': self.rembg_edge_margin_min_px,
+            'face_protect_core_frac': self.face_protect_core_frac,
+            'padding_asymmetric': dict(PADDING_ASYMMETRIC),
         }

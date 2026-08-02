@@ -16,6 +16,7 @@ from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeli
 from app.utils.image_processing import ImageProcessor
 from app.utils.visualization import ProfileVisualizationManager
 from app.utils.lazy_model_loader import MultiModelLoader
+from app.utils.white_bg_overrides import ALLOWED_REMBG_MODELS, check_white_bg_overrides
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,24 @@ app.mount("/visualization", StaticFiles(directory="results"), name="visualizatio
 
 # Initialize lazy model loader
 model_loader = MultiModelLoader()
+
+
+def validate_white_bg_overrides(
+    rembg_model: Optional[str],
+    rembg_edge_margin_frac: Optional[float],
+    rembg_edge_margin_min_px: Optional[int],
+    face_protect_core_frac: Optional[float],
+) -> None:
+    """Validate optional white-BG Form overrides; raise HTTPException on bad values."""
+    detail = check_white_bg_overrides(
+        rembg_model,
+        rembg_edge_margin_frac,
+        rembg_edge_margin_min_px,
+        face_protect_core_frac,
+    )
+    if detail is not None:
+        raise HTTPException(status_code=400, detail=detail)
+
 
 def _load_pipeline():
     """Lazy load preprocessing pipeline"""
@@ -156,7 +175,12 @@ async def preprocess_profile(
     output_format: str = Form("JPEG"),
     quality: int = Form(95),
     include_visualization: bool = Form(False),
-    apply_rotation: bool = Form(True)
+    apply_rotation: bool = Form(True),
+    apply_white_bg: bool = Form(True),
+    rembg_model: Optional[str] = Form(None),
+    rembg_edge_margin_frac: Optional[float] = Form(None),
+    rembg_edge_margin_min_px: Optional[int] = Form(None),
+    face_protect_core_frac: Optional[float] = Form(None),
 ):
     """
     Complete profile preprocessing: detect faces, crop, resize and convert to base64
@@ -170,6 +194,11 @@ async def preprocess_profile(
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
     - **apply_rotation**: Apply face rotation alignment using points 34 and 10 (default: true)
+    - **apply_white_bg**: Apply rembg white-background cleaning (default: true)
+    - **rembg_model**: rembg model override ('u2net' | 'isnet-general-use'; None = pipeline default)
+    - **rembg_edge_margin_frac**: rembg edge margin fraction (0.0-0.25; None = default)
+    - **rembg_edge_margin_min_px**: rembg edge margin min pixels (0-64; None = default)
+    - **face_protect_core_frac**: face-protect core half-extent (0.1-0.8; None = default)
     """
     
     pipeline = get_pipeline()
@@ -195,6 +224,13 @@ async def preprocess_profile(
     
     if not 1 <= quality <= 100:
         raise HTTPException(status_code=400, detail="Quality must be between 1 and 100")
+
+    validate_white_bg_overrides(
+        rembg_model,
+        rembg_edge_margin_frac,
+        rembg_edge_margin_min_px,
+        face_protect_core_frac,
+    )
     
     try:
         # Read and decode image
@@ -215,7 +251,12 @@ async def preprocess_profile(
             padding_factor=padding_factor,
             output_format=output_format,
             quality=quality,
-            apply_rotation=apply_rotation
+            apply_rotation=apply_rotation,
+            apply_white_bg=apply_white_bg,
+            rembg_model=rembg_model,
+            rembg_edge_margin_frac=rembg_edge_margin_frac,
+            rembg_edge_margin_min_px=rembg_edge_margin_min_px,
+            face_protect_core_frac=face_protect_core_frac,
         )
         
         # Generate unique processing ID
@@ -229,6 +270,7 @@ async def preprocess_profile(
             "faces_processed": len(results['processed_faces']),
             "original_image_size": results['original_image_size'],
             "processing_parameters": results['processing_parameters'],
+            "effective_pipeline": results.get('effective_pipeline'),
             "processed_faces": []
         }
 
@@ -487,7 +529,10 @@ async def get_processing_stats():
             "base64_output": True,
             "batch_processing": False,
             "visualization": True,
-            "rotation_alignment": rotation_available
+            "rotation_alignment": rotation_available,
+            "white_background": True,
+            "white_bg_overrides": True,
+            "rembg_models": sorted(ALLOWED_REMBG_MODELS),
         },
         "supported_formats": {
             "input": ["JPEG", "PNG", "JPG"],
@@ -497,7 +542,27 @@ async def get_processing_stats():
             "confidence_threshold": {"min": 0.1, "max": 0.9, "default": 0.5},
             "target_size": {"min": 100, "max": 2048, "default": 600},
             "padding_factor": {"min": 0.0, "max": 0.75, "default": 0.40},
-            "quality": {"min": 1, "max": 100, "default": 95}
+            "quality": {"min": 1, "max": 100, "default": 95},
+            "apply_white_bg": {"default": True},
+            "rembg_model": {
+                "allowed": sorted(ALLOWED_REMBG_MODELS),
+                "default": getattr(pipeline, "rembg_model_name", "isnet-general-use") if pipeline else "isnet-general-use",
+            },
+            "rembg_edge_margin_frac": {
+                "min": 0.0,
+                "max": 0.25,
+                "default": getattr(pipeline, "rembg_edge_margin_frac", 0.08) if pipeline else 0.08,
+            },
+            "rembg_edge_margin_min_px": {
+                "min": 0,
+                "max": 64,
+                "default": getattr(pipeline, "rembg_edge_margin_min_px", 12) if pipeline else 12,
+            },
+            "face_protect_core_frac": {
+                "min": 0.1,
+                "max": 0.8,
+                "default": getattr(pipeline, "face_protect_core_frac", 0.25) if pipeline else 0.25,
+            },
         },
         "lazy_loading": {
             "enabled": True,
