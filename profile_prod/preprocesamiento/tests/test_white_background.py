@@ -489,19 +489,20 @@ def test_silhouette_subject_aware_restores_dark_profile_edge():
     """
     from app.utils.matte_refine import refine_person_matte
 
-    h, w = 80, 80
+    h, w = 80, 120
     image = np.full((h, w, 3), 255, dtype=np.uint8)  # light BG
     # Dark profile edge strip on the right (lips/chin stand-in), adjacent to FG
     image[25:55, 58:72] = (40, 30, 25)
     # Light tent-like BG inside expanded head area (must stay removable)
     image[10:22, 20:50] = (235, 230, 220)
-    # Dark wall far from FG (must stay removable — not in dilate band)
-    image[5:15, 70:78] = (45, 45, 50)
+    # Dark wall far from FG (must stay removable — not in dilate band).
+    # Band radius is ~31px; place wall ≥40px past FG end (col 55 → col 100+).
+    image[5:15, 100:110] = (45, 45, 50)
 
     mask = np.zeros((h, w), dtype=np.float32)
     mask[20:60, 20:55] = 1.0  # rembg kept head core, dropped right silhouette
 
-    silhouette = (15, 5, 78, 65)  # covers dark strip + light tent + far wall
+    silhouette = (15, 5, 78, 65)  # covers dark strip + light tent (not far wall)
     hard_core = (30, 30, 50, 50)
 
     alpha = refine_person_matte(
@@ -517,10 +518,34 @@ def test_silhouette_subject_aware_restores_dark_profile_edge():
     assert restored < 1.0, f"silhouette restore hardened to 1.0: {restored}"
     # Light tent inside silhouette NOT force-locked
     assert float(alpha[16, 35]) < 0.15
-    # Far dark wall NOT restored (outside FG dilate band)
-    assert float(alpha[10, 74]) < 0.15
+    # Far dark wall NOT restored (outside FG dilate band + outside silhouette)
+    assert float(alpha[10, 105]) < 0.15
     # Hard core still forced
     assert float(alpha[40, 40]) == 1.0
+
+
+def test_silhouette_restores_deep_profile_gap():
+    """rembg often zeros >15px of nose/mouth when the face sits on the frame edge."""
+    from app.utils.matte_refine import refine_person_matte
+
+    h, w = 200, 200
+    image = np.full((h, w, 3), 255, dtype=np.uint8)
+    fg_end = 100
+    gap = 32
+    image[60:140, fg_end : fg_end + gap] = (50, 40, 35)
+    mask = np.zeros((h, w), dtype=np.float32)
+    mask[50:150, 40:fg_end] = 1.0
+    silhouette = (30, 40, 180, 160)
+
+    alpha = refine_person_matte(
+        mask, image_rgb=image, silhouette_rect=silhouette
+    )
+    mid = float(alpha[100, fg_end + gap // 2])
+    tip = float(alpha[100, fg_end + gap - 2])
+    assert mid >= 0.85, f"mid-strip not restored: {mid}"
+    assert tip >= 0.85, f"profile tip not restored after blur: {tip}"
+    assert tip < 1.0
+
 
 
 def test_gaussian_edge_aa_softens_fringe_keeps_protect_core():
@@ -569,11 +594,28 @@ def test_face_silhouette_rect_expands_beyond_bbox():
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
+    # Front hugs right edge → more expand on right than left
     rect = ProfilePreprocessingPipeline._face_silhouette_rect(
-        20, 20, 60, 80, 100, 100, expand_frac=0.10
+        20, 20, 60, 80, 100, 100, expand_frac=0.18
     )
     assert rect is not None
     sx1, sy1, sx2, sy2 = rect
     assert sx1 < 20 and sx2 > 60
     assert sy2 > 80  # chin expand
     assert sx1 >= 0 and sy1 >= 0 and sx2 <= 100 and sy2 <= 100
+    # Asymmetric: right expand (fw*0.18) > left expand (fw*0.18*0.5)
+    assert (sx2 - 60) > (20 - sx1)
+
+
+def test_face_silhouette_rect_asymmetric_toward_left_edge():
+    """When face is closer to left crop edge, expand more leftward."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    # gap_left=10, gap_right=30 → front is left
+    rect = ProfilePreprocessingPipeline._face_silhouette_rect(
+        10, 20, 70, 80, 100, 100, expand_frac=0.18
+    )
+    assert rect is not None
+    sx1, _, sx2, _ = rect
+    assert (10 - sx1) > (sx2 - 70)

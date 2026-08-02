@@ -98,3 +98,63 @@ def test_crop_adds_white_ring_before_rembg():
     assert protect == (10 + margin, 10 + margin, 50 + margin, 50 + margin)
     silhouette = pipe.apply_white_background.call_args.kwargs.get("silhouette_rect")
     assert silhouette == (5 + margin, 5 + margin, 55 + margin, 55 + margin)
+
+
+def test_crop_pins_to_image_border_when_face_near_edge():
+    """When face bbox hugs the frame edge, crop pads pin to that border."""
+    pytest.importorskip("torch")
+    from unittest.mock import MagicMock
+
+    from app.models.profile_preprocessing_pipeline import (
+        PADDING_ASYMMETRIC,
+        ProfilePreprocessingPipeline,
+    )
+    from app.utils.image_processing import ImageProcessor
+
+    pipe = ProfilePreprocessingPipeline.__new__(ProfilePreprocessingPipeline)
+    pipe.default_target_size = (600, 600)
+    pipe.default_padding_factor = 0.01  # tiny so pad alone misses the border
+    pipe.rembg_edge_margin_frac = 0.08
+    pipe.rembg_edge_margin_min_px = 12
+    pipe.face_protect_core_frac = 0.25
+    pipe.rembg_model_name = "isnet-general-use"
+    pipe._face_protect_rect = MagicMock(return_value=(10, 10, 50, 50))
+    pipe._face_silhouette_rect = MagicMock(return_value=(5, 5, 55, 55))
+    pipe.apply_white_background = MagicMock(
+        side_effect=lambda img, protect_rect=None, rembg_model=None,
+        silhouette_rect=None: (img, True)
+    )
+    ImageProcessor.maybe_enhance_dark = staticmethod(lambda img: (img, False))
+
+    w, h = 400, 400
+    image = np.full((h, w, 3), 120, dtype=np.uint8)
+    # Face near right: (w - x2)=4 <= max(8, box_w*0.12); tiny pad won't reach w
+    bbox = [250.0, 100.0, 396.0, 280.0]
+    pf = 0.01
+    box_w = 396.0 - 250.0
+    pad_side = box_w * pf * PADDING_ASYMMETRIC["side"]
+    x1_pad = max(0, int(250.0 - pad_side))
+    x2_pad_unpinned = min(w, int(396.0 + pad_side))
+    assert x2_pad_unpinned < w  # precondition: pin must matter
+
+    out, applied, _ = pipe.crop_face_with_padding(image, bbox, (600, 600), pf)
+    assert out.shape == (600, 600, 3)
+    assert applied is True
+
+    # Silhouette gets crop dims; pinned crop must extend to image right edge
+    crop_w_arg = pipe._face_silhouette_rect.call_args[0][4]
+    assert crop_w_arg == w - x1_pad
+    assert crop_w_arg > x2_pad_unpinned - x1_pad
+
+
+def test_crop_edge_pin_math():
+    """Edge-pin thresholds: hug within max(8, box*0.12) → pad to border."""
+    box_w, box_h = 190.0, 180.0
+    w, h = 800, 600
+    x1, y1, x2, y2 = 600.0, 10.0, 790.0, 190.0  # near right + top
+    edge_tol_x = max(8, box_w * 0.12)
+    edge_tol_y = max(8, box_h * 0.12)
+    assert (w - x2) <= edge_tol_x
+    assert y1 <= edge_tol_y
+    x2_pad, y1_pad = w, 0  # pinned
+    assert x2_pad == w and y1_pad == 0

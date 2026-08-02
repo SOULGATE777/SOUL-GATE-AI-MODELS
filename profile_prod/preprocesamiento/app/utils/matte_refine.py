@@ -49,6 +49,46 @@ def subject_like_mask(image_rgb: np.ndarray) -> np.ndarray:
     return ~bg_like
 
 
+# Ellipse diameter for near-FG dilate (~31px radius). rembg often zeros a
+# deeper profile strip than the old ~15px band when the face sits on the
+# frame edge; tips beyond the band stay white after soft restore.
+_SILHOUETTE_BAND_K = 63
+_SILHOUETTE_SOFT_ALPHA = 0.88
+
+
+def _silhouette_near_fg(alpha: np.ndarray) -> np.ndarray:
+    """Dilate band from current FG. Freeze this before soft-restore so a second
+    pass (post-blur) cannot grow the band from the newly raised shell."""
+    fg = (alpha >= 0.45).astype(np.uint8)
+    band_k = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (_SILHOUETTE_BAND_K, _SILHOUETTE_BAND_K)
+    )
+    return cv2.dilate(fg, band_k, iterations=1)
+
+
+def _apply_soft_silhouette_restore(
+    alpha: np.ndarray,
+    image_rgb: np.ndarray,
+    silhouette_rect: Tuple[int, int, int, int],
+    near_fg: Optional[np.ndarray] = None,
+) -> bool:
+    """Raise alpha on subject-like pixels near the FG silhouette. Returns True if applied."""
+    h, w = alpha.shape[:2]
+    clipped = _clip_rect(silhouette_rect, w, h)
+    if clipped is None:
+        return False
+    sx1, sy1, sx2, sy2 = clipped
+    if near_fg is None:
+        near_fg = _silhouette_near_fg(alpha)
+    roi_subject = subject_like_mask(image_rgb[sy1:sy2, sx1:sx2])
+    roi_near = near_fg[sy1:sy2, sx1:sx2] > 0
+    roi_alpha = alpha[sy1:sy2, sx1:sx2].copy()
+    restore = roi_subject & roi_near & (roi_alpha < 0.90)
+    roi_alpha[restore] = np.maximum(roi_alpha[restore], _SILHOUETTE_SOFT_ALPHA)
+    alpha[sy1:sy2, sx1:sx2] = roi_alpha
+    return True
+
+
 def refine_person_matte(
     mask: np.ndarray,
     protect_rect: Optional[Tuple[int, int, int, int]] = None,
@@ -105,6 +145,9 @@ def refine_person_matte(
 
     h, w = alpha.shape[:2]
     edge_aa = False
+    silhouette_applied = False
+    # Freeze dilate band from pre-restore FG so post-blur re-apply cannot grow it.
+    frozen_near_fg: Optional[np.ndarray] = None
 
     # Subject-aware silhouette shell (profile nose/mouth/chin at bbox edge).
     # Soft restore only — hard 1.0 creates stair-step edges; light tent/sky
@@ -114,19 +157,11 @@ def refine_person_matte(
         and image_rgb is not None
         and image_rgb.shape[:2] == alpha.shape[:2]
     ):
-        clipped = _clip_rect(silhouette_rect, w, h)
-        if clipped is not None:
-            sx1, sy1, sx2, sy2 = clipped
-            fg = (alpha >= 0.45).astype(np.uint8)
-            # ~15px band: enough for profile lips/chin on a tight detector edge.
-            band_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
-            near_fg = cv2.dilate(fg, band_k, iterations=1)
-            roi_subject = subject_like_mask(image_rgb[sy1:sy2, sx1:sx2])
-            roi_near = near_fg[sy1:sy2, sx1:sx2] > 0
-            roi_alpha = alpha[sy1:sy2, sx1:sx2].copy()
-            restore = roi_subject & roi_near & (roi_alpha < 0.90)
-            roi_alpha[restore] = np.maximum(roi_alpha[restore], 0.88)
-            alpha[sy1:sy2, sx1:sx2] = roi_alpha
+        frozen_near_fg = _silhouette_near_fg(alpha)
+        if _apply_soft_silhouette_restore(
+            alpha, image_rgb, silhouette_rect, near_fg=frozen_near_fg
+        ):
+            silhouette_applied = True
             edge_aa = True
 
     # Hard central core — always opaque.
@@ -139,9 +174,20 @@ def refine_person_matte(
 
     # Edge anti-alias only when guards ran (avoids changing unguarded mattes).
     # Re-harden protect_rect so the face core stays solid opaque.
+    # Re-apply soft silhouette after blur so thin nose/lip tips are not
+    # diluted back toward white by the 5x5 Gaussian (same frozen band).
     if edge_aa:
         alpha = cv2.GaussianBlur(alpha, (5, 5), 0)
         alpha = np.clip(alpha, 0.0, 1.0)
+        if (
+            silhouette_applied
+            and silhouette_rect is not None
+            and image_rgb is not None
+            and frozen_near_fg is not None
+        ):
+            _apply_soft_silhouette_restore(
+                alpha, image_rgb, silhouette_rect, near_fg=frozen_near_fg
+            )
         if protect_rect is not None:
             clipped = _clip_rect(protect_rect, w, h)
             if clipped is not None:

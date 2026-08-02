@@ -184,7 +184,7 @@ class ProfilePreprocessingPipeline:
     @staticmethod
     def _face_silhouette_rect(fx1: float, fy1: float, fx2: float, fy2: float,
                               crop_w: int, crop_h: int,
-                              expand_frac: float = 0.10,
+                              expand_frac: float = 0.18,
                               ) -> Optional[Tuple[int, int, int, int]]:
         """Expanded face bbox for subject-aware silhouette protect.
 
@@ -192,15 +192,27 @@ class ProfilePreprocessingPipeline:
         (clamped to the crop) lets subject-aware protect restore those pixels
         without using a hard opaque rectangle that would lock light BG inside
         the head box (the failure mode of raising face_protect_core_frac).
+
+        Horizontal expand is asymmetric toward the side closer to the crop edge
+        (profile front usually hugs one side).
         """
         fw = fx2 - fx1
         fh = fy2 - fy1
         if fw <= 0 or fh <= 0:
             return None
-        ex = fw * expand_frac
+        gap_left = fx1
+        gap_right = crop_w - fx2
+        if gap_right <= gap_left:
+            # Front toward right edge
+            ex_right = fw * expand_frac
+            ex_left = fw * expand_frac * 0.5
+        else:
+            # Front toward left edge
+            ex_left = fw * expand_frac
+            ex_right = fw * expand_frac * 0.5
         ey = fh * expand_frac
-        sx1 = int(round(fx1 - ex))
-        sx2 = int(round(fx2 + ex))
+        sx1 = int(round(fx1 - ex_left))
+        sx2 = int(round(fx2 + ex_right))
         sy1 = int(round(fy1 - ey * 0.5))  # less top (hair/BG)
         sy2 = int(round(fy2 + ey))        # more bottom (chin)
         sx1 = max(0, min(sx1, crop_w))
@@ -398,6 +410,19 @@ class ProfilePreprocessingPipeline:
         y1_pad = max(0, int(y1 - pad_top))
         x2_pad = min(w, int(x2 + pad_side))
         y2_pad = min(h, int(y2 + pad_bottom))
+
+        # Pin crop to image border when face bbox hugs that edge so profile
+        # nose/mouth at the frame edge are never left outside the crop.
+        edge_tol_x = max(8, box_w * 0.12)
+        edge_tol_y = max(8, box_h * 0.12)
+        if (w - x2) <= edge_tol_x:
+            x2_pad = w
+        if x1 <= edge_tol_x:
+            x1_pad = 0
+        if (h - y2) <= edge_tol_y:
+            y2_pad = h
+        if y1 <= edge_tol_y:
+            y1_pad = 0
         
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
