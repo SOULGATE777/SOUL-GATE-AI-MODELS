@@ -49,12 +49,12 @@ class ProfilePreprocessingPipeline:
         self.rembg_edge_margin_frac = 0.08
         self.rembg_edge_margin_min_px = 12
 
-        # rembg (u2net) person matting for white-background cleaning. A dedicated
-        # matting model: unlike MediaPipe selfie segmentation it does not
-        # confidently mis-classify reflective glass / walls / fences adjacent to
-        # the head as foreground, so busy real-world profile backgrounds are
+        # rembg person matting for white-background cleaning (REMBG_MODEL). A
+        # dedicated matting model: unlike MediaPipe selfie segmentation it does
+        # not confidently mis-classify reflective glass / walls / fences adjacent
+        # to the head as foreground, so busy real-world profile backgrounds are
         # removed cleanly. Model overridable via REMBG_MODEL.
-        self.rembg_model_name = os.getenv("REMBG_MODEL", "u2net")
+        self.rembg_model_name = os.getenv("REMBG_MODEL", "isnet-general-use")
         self.rembg_session = None  # Lazy initialization
 
         # Face rotation aligner (optional)
@@ -127,9 +127,9 @@ class ProfilePreprocessingPipeline:
                            crop_w: int, crop_h: int) -> Optional[Tuple[int, int, int, int]]:
         """Shrink a crop-local face bbox into a small central protection core.
 
-        rembg's u2net matte is a reliable, high-confidence person alpha that keeps
-        the whole face/head on its own, so this guard is only a catastrophic-
-        failure backstop — and it MUST stay strictly INSIDE the subject.
+        rembg's person matte (REMBG_MODEL) is a reliable, high-confidence alpha
+        that keeps the whole face/head on its own, so this guard is only a
+        catastrophic-failure backstop — and it MUST stay strictly INSIDE the subject.
 
         The profile detector's bbox is ~the whole head and the crop is tight
         around it (crop = bbox + padding), so an OUTWARD-expanded guard clamps to
@@ -180,7 +180,7 @@ class ProfilePreprocessingPipeline:
 
     def apply_white_background(self, image_rgb: np.ndarray,
                               protect_rect: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, bool]:
-        """Soft-composite subject onto white via rembg (u2net) person matting.
+        """Soft-composite subject onto white via rembg person matting (REMBG_MODEL).
 
         A dedicated matting model replaces MediaPipe selfie segmentation because
         MediaPipe confidently mis-classified reflective glass / walls / fences
@@ -342,7 +342,7 @@ class ProfilePreprocessingPipeline:
                 px1 + margin, py1 + margin, px2 + margin, py2 + margin
             )
 
-        # White-background clean (rembg u2net matting); fail-open.
+        # White-background clean (rembg person matting / REMBG_MODEL); fail-open.
         matted, white_bg_applied = self.apply_white_background(
             cropped_for_matte, protect_rect=protect_for_matte
         )

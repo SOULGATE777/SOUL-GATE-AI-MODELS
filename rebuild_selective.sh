@@ -130,5 +130,8 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Rebuild Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
+echo "Pruning Docker build cache and dangling images..."
+docker builder prune -af && docker image prune -f
+echo ""
 echo "Checking running containers..."
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
