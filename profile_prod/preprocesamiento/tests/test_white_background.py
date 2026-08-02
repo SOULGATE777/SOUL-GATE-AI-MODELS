@@ -474,3 +474,57 @@ def test_apply_white_background_never_clips_face(monkeypatch):
     assert applied is True
     # Face pixels survive (not whitened) thanks to the protection rect.
     assert np.allclose(out[20, 20], (12, 34, 56), atol=1)
+
+
+def test_silhouette_subject_aware_restores_dark_profile_edge():
+    """Dark nose/lips at bbox edge survive even when rembg zeros them.
+
+    Regression for perfilder4: raising face_protect_core_frac locked a light-BG
+    rectangle; subject-aware silhouette restore keeps dark face and drops light BG.
+    """
+    from app.utils.matte_refine import refine_person_matte
+
+    h, w = 80, 80
+    image = np.full((h, w, 3), 255, dtype=np.uint8)  # light BG
+    # Dark profile edge strip on the right (lips/chin stand-in), adjacent to FG
+    image[25:55, 58:72] = (40, 30, 25)
+    # Light tent-like BG inside expanded head area (must stay removable)
+    image[10:22, 20:50] = (235, 230, 220)
+    # Dark wall far from FG (must stay removable — not in dilate band)
+    image[5:15, 70:78] = (45, 45, 50)
+
+    mask = np.zeros((h, w), dtype=np.float32)
+    mask[20:60, 20:55] = 1.0  # rembg kept head core, dropped right silhouette
+
+    silhouette = (15, 5, 78, 65)  # covers dark strip + light tent + far wall
+    hard_core = (30, 30, 50, 50)
+
+    alpha = refine_person_matte(
+        mask,
+        protect_rect=hard_core,
+        image_rgb=image,
+        silhouette_rect=silhouette,
+    )
+    # Dark lips/chin strip restored (adjacent to FG; sample mid-strip)
+    assert float(alpha[40, 62]) == 1.0
+    # Light tent inside silhouette NOT force-locked
+    assert float(alpha[16, 35]) == 0.0
+    # Far dark wall NOT restored (outside FG dilate band)
+    assert float(alpha[10, 74]) == 0.0
+    # Hard core still forced
+    assert float(alpha[40, 40]) == 1.0
+
+
+def test_face_silhouette_rect_expands_beyond_bbox():
+    """Silhouette rect is larger than the detector bbox (clamped to crop)."""
+    pytest.importorskip("torch")
+    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
+
+    rect = ProfilePreprocessingPipeline._face_silhouette_rect(
+        20, 20, 60, 80, 100, 100, expand_frac=0.10
+    )
+    assert rect is not None
+    sx1, sy1, sx2, sy2 = rect
+    assert sx1 < 20 and sx2 > 60
+    assert sy2 > 80  # chin expand
+    assert sx1 >= 0 and sy1 >= 0 and sx2 <= 100 and sy2 <= 100

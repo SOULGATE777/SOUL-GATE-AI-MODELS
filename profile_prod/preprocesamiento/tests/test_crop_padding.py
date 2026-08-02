@@ -66,8 +66,10 @@ def test_crop_adds_white_ring_before_rembg():
     pipe.face_protect_core_frac = 0.25
     pipe.rembg_model_name = "isnet-general-use"
     pipe._face_protect_rect = MagicMock(return_value=(10, 10, 50, 50))
+    pipe._face_silhouette_rect = MagicMock(return_value=(5, 5, 55, 55))
     pipe.apply_white_background = MagicMock(
-        side_effect=lambda img, protect_rect=None, rembg_model=None: (img, True)
+        side_effect=lambda img, protect_rect=None, rembg_model=None,
+        silhouette_rect=None: (img, True)
     )
     ImageProcessor.maybe_enhance_dark = staticmethod(lambda img: (img, False))
 
@@ -94,3 +96,5 @@ def test_crop_adds_white_ring_before_rembg():
     if protect is None and len(pipe.apply_white_background.call_args) > 1:
         protect = pipe.apply_white_background.call_args[1].get("protect_rect")
     assert protect == (10 + margin, 10 + margin, 50 + margin, 50 + margin)
+    silhouette = pipe.apply_white_background.call_args.kwargs.get("silhouette_rect")
+    assert silhouette == (5 + margin, 5 + margin, 55 + margin, 55 + margin)

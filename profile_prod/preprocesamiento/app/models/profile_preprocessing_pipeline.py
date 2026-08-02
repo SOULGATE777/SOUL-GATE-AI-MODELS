@@ -182,18 +182,58 @@ class ProfilePreprocessingPipeline:
         return px1, py1, px2, py2
 
     @staticmethod
+    def _face_silhouette_rect(fx1: float, fy1: float, fx2: float, fy2: float,
+                              crop_w: int, crop_h: int,
+                              expand_frac: float = 0.10,
+                              ) -> Optional[Tuple[int, int, int, int]]:
+        """Expanded face bbox for subject-aware silhouette protect.
+
+        Profile detectors put nose/lips on the bbox edge; a small outward expand
+        (clamped to the crop) lets subject-aware protect restore those pixels
+        without using a hard opaque rectangle that would lock light BG inside
+        the head box (the failure mode of raising face_protect_core_frac).
+        """
+        fw = fx2 - fx1
+        fh = fy2 - fy1
+        if fw <= 0 or fh <= 0:
+            return None
+        ex = fw * expand_frac
+        ey = fh * expand_frac
+        sx1 = int(round(fx1 - ex))
+        sx2 = int(round(fx2 + ex))
+        sy1 = int(round(fy1 - ey * 0.5))  # less top (hair/BG)
+        sy2 = int(round(fy2 + ey))        # more bottom (chin)
+        sx1 = max(0, min(sx1, crop_w))
+        sx2 = max(0, min(sx2, crop_w))
+        sy1 = max(0, min(sy1, crop_h))
+        sy2 = max(0, min(sy2, crop_h))
+        if sx2 <= sx1 or sy2 <= sy1:
+            return None
+        return sx1, sy1, sx2, sy2
+
+    @staticmethod
     def _refine_matte(mask: np.ndarray,
-                      protect_rect: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
-        """Clean a rembg person matte and enforce the face guard.
+                      protect_rect: Optional[Tuple[int, int, int, int]] = None,
+                      image_rgb: Optional[np.ndarray] = None,
+                      silhouette_rect: Optional[Tuple[int, int, int, int]] = None,
+                      ) -> np.ndarray:
+        """Clean a rembg person matte and enforce the face guards.
 
         See ``app.utils.matte_refine.refine_person_matte`` for behaviour.
         """
         from ..utils.matte_refine import refine_person_matte
-        return refine_person_matte(mask, protect_rect=protect_rect)
+        return refine_person_matte(
+            mask,
+            protect_rect=protect_rect,
+            image_rgb=image_rgb,
+            silhouette_rect=silhouette_rect,
+        )
 
     def apply_white_background(self, image_rgb: np.ndarray,
                               protect_rect: Optional[Tuple[int, int, int, int]] = None,
-                              rembg_model: Optional[str] = None) -> Tuple[np.ndarray, bool]:
+                              rembg_model: Optional[str] = None,
+                              silhouette_rect: Optional[Tuple[int, int, int, int]] = None,
+                              ) -> Tuple[np.ndarray, bool]:
         """Soft-composite subject onto white via rembg person matting (REMBG_MODEL).
 
         A dedicated matting model replaces MediaPipe selfie segmentation because
@@ -201,13 +241,16 @@ class ProfilePreprocessingPipeline:
         adjacent to the head as foreground, leaving large background regions on
         real-world profile photos. rembg's ``only_mask`` output is a clean soft
         matte; it is lightly refined (keep-largest to drop specks) and a small
-        on-subject face core is forced opaque as a backstop (rembg owns the face
-        edges). Fail-open on errors / missing mask (returns the original crop untouched).
+        on-subject face core is forced opaque as a backstop. Profile silhouette
+        edges (nose/lips/chin) use a subject-aware shell so rembg cannot zero
+        dark face pixels at the detector bbox edge without locking light BG.
+        Fail-open on errors / missing mask (returns the original crop untouched).
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
-            protect_rect: (x1, y1, x2, y2) crop-local face region to never clip.
+            protect_rect: (x1, y1, x2, y2) hard face-core region to never clip.
             rembg_model: Optional rembg model name; None uses self.rembg_model_name.
+            silhouette_rect: Expanded face bbox for subject-aware edge restore.
 
         Returns:
             Tuple of (composited_or_original_image, white_bg_applied).
@@ -218,7 +261,12 @@ class ProfilePreprocessingPipeline:
             if mask is None or getattr(mask, "size", 0) == 0:
                 logger.warning("rembg returned no mask; skipping white BG")
                 return image_rgb, False
-            alpha = self._refine_matte(mask, protect_rect=protect_rect)
+            alpha = self._refine_matte(
+                mask,
+                protect_rect=protect_rect,
+                image_rgb=image_rgb,
+                silhouette_rect=silhouette_rect,
+            )
             composited = composite_on_white(image_rgb, alpha)
             # composite_on_white returns the same object on shape-guard no-op
             return composited, composited is not image_rgb
@@ -354,14 +402,21 @@ class ProfilePreprocessingPipeline:
         # Crop the image
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
 
-        # Detected face rectangle in crop-local coordinates. A small central core
-        # of this bbox (kept strictly on-subject) is forced fully opaque during
-        # matte refinement as a face-clip backstop; rembg's matte handles the
-        # actual face edges and the surrounding background is removed normally.
+        # Detected face rectangle in crop-local coordinates.
+        # Hard core: small central protect (catastrophic backstop).
+        # Silhouette shell: slightly expanded bbox + subject-aware restore so
+        # profile nose/lips/chin at the detector edge are not whitened.
         crop_h0, crop_w0 = cropped.shape[:2]
+        fx1_c = x1 - x1_pad
+        fy1_c = y1 - y1_pad
+        fx2_c = x2 - x1_pad
+        fy2_c = y2 - y1_pad
         face_protect_rect = self._face_protect_rect(
-            x1 - x1_pad, y1 - y1_pad, x2 - x1_pad, y2 - y1_pad, crop_w0, crop_h0,
+            fx1_c, fy1_c, fx2_c, fy2_c, crop_w0, crop_h0,
             core_frac=resolved_core_frac,
+        )
+        face_silhouette_rect = self._face_silhouette_rect(
+            fx1_c, fy1_c, fx2_c, fy2_c, crop_w0, crop_h0,
         )
 
         # Conditional dark CLAHE before white-BG.
@@ -372,7 +427,7 @@ class ProfilePreprocessingPipeline:
         if apply_white_bg:
             # White margin ring before rembg so the subject is never at the tensor
             # edge (otherwise rembg soft-fades hair/neck into white). Offset the
-            # face-protect rect by the same margin.
+            # face-protect / silhouette rects by the same margin.
             margin = max(
                 resolved_margin_min,
                 int(min(cropped.shape[0], cropped.shape[1]) * resolved_margin_frac),
@@ -387,12 +442,19 @@ class ProfilePreprocessingPipeline:
                 protect_for_matte = (
                     px1 + margin, py1 + margin, px2 + margin, py2 + margin
                 )
+            silhouette_for_matte = None
+            if face_silhouette_rect is not None:
+                sx1, sy1, sx2, sy2 = face_silhouette_rect
+                silhouette_for_matte = (
+                    sx1 + margin, sy1 + margin, sx2 + margin, sy2 + margin
+                )
 
             # White-background clean (rembg person matting); fail-open.
             matted, white_bg_applied = self.apply_white_background(
                 cropped_for_matte,
                 protect_rect=protect_for_matte,
                 rembg_model=resolved_rembg_model,
+                silhouette_rect=silhouette_for_matte,
             )
             # Keep the margin (becomes letterbox whitespace) — do not trim back to
             # the pre-ring crop, or edge pixels would again sit on the frame.
