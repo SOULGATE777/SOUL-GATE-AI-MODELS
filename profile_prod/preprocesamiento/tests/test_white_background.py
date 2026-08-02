@@ -547,6 +547,38 @@ def test_silhouette_restores_deep_profile_gap():
     assert tip < 1.0
 
 
+def test_frozen_near_fg_post_blur_does_not_grow_restore_band():
+    """Post-blur soft restore must reuse frozen near_fg — not dilate from the shell.
+
+    Subject-like pixels just outside the pre-restore dilate band stay unrestored.
+    Recomputing near_fg after soft restore would grow the band (~31px) into them.
+    """
+    from app.utils.matte_refine import refine_person_matte, _silhouette_near_fg
+
+    h, w = 200, 220
+    image = np.full((h, w, 3), 255, dtype=np.uint8)
+    fg_end = 100
+    # In-band dark tip (within ~31px dilate) — should soft-restore.
+    image[70:130, fg_end : fg_end + 18] = (50, 40, 35)
+    # Outside pre-restore band, but inside a band grown from the soft shell.
+    outside_col = fg_end + 40  # 140
+    image[70:130, outside_col : outside_col + 12] = (48, 38, 32)
+
+    mask = np.zeros((h, w), dtype=np.float32)
+    mask[50:150, 40:fg_end] = 1.0
+    frozen = _silhouette_near_fg(mask)
+    assert int(frozen[100, fg_end + 10]) > 0
+    assert int(frozen[100, outside_col + 5]) == 0
+
+    silhouette = (30, 40, 210, 160)
+    alpha = refine_person_matte(
+        mask, image_rgb=image, silhouette_rect=silhouette
+    )
+    assert float(alpha[100, fg_end + 10]) >= 0.85
+    # Freeze invariant: second pass must not pull outside-band subject into matte.
+    outside = float(alpha[100, outside_col + 5])
+    assert outside < 0.15, f"restore band grew past freeze: alpha={outside}"
+
 
 def test_gaussian_edge_aa_softens_fringe_keeps_protect_core():
     """Gaussian edge AA leaves mid-fringe soft; protect core stays ~1.0."""
