@@ -40,8 +40,8 @@ def test_face_protect_rect_default_core_frac_keeps_legacy_calls():
     assert px1 > 0 and py1 > 0 and px2 < 200 and py2 < 200
 
 
-def test_apply_white_bg_false_skips_rembg():
-    """apply_white_bg=False must not call rembg / apply_white_background."""
+def test_apply_white_bg_false_skips_white_bg():
+    """apply_white_bg=False must not call apply_white_background (Photoroom)."""
     pytest.importorskip("torch")
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
     from app.utils.image_processing import ImageProcessor
@@ -52,10 +52,9 @@ def test_apply_white_bg_false_skips_rembg():
     pipe.rembg_edge_margin_frac = 0.08
     pipe.rembg_edge_margin_min_px = 12
     pipe.face_protect_core_frac = 0.25
-    pipe.rembg_model_name = "isnet-general-use"
-    pipe._rembg_sessions = {}
+    pipe.rembg_model_name = "photoroom"
     pipe.apply_white_background = MagicMock(
-        side_effect=AssertionError("rembg must not be called when apply_white_bg=False")
+        side_effect=AssertionError("white-BG must not be called when apply_white_bg=False")
     )
     ImageProcessor.maybe_enhance_dark = staticmethod(lambda img: (img, False))
 
@@ -86,7 +85,7 @@ def test_effective_pipeline_echo_defaults():
     pipe.rembg_edge_margin_frac = 0.08
     pipe.rembg_edge_margin_min_px = 12
     pipe.face_protect_core_frac = 0.25
-    pipe.rembg_model_name = "isnet-general-use"
+    pipe.rembg_model_name = "photoroom"
     pipe.rotation_aligner = None
     pipe.detect_faces = MagicMock(return_value=[])
 
@@ -94,8 +93,9 @@ def test_effective_pipeline_echo_defaults():
     result = pipe.process_image(image, apply_rotation=False)
 
     ep = result["effective_pipeline"]
-    assert ep["rembg_model"] == "isnet-general-use"
+    assert ep["rembg_model"] == "photoroom"
     assert ep["apply_white_bg"] is True
+    assert ep["use_photoroom"] is False
     assert ep["rembg_edge_margin_frac"] == 0.08
     assert ep["rembg_edge_margin_min_px"] == 12
     assert ep["face_protect_core_frac"] == 0.25
@@ -116,7 +116,7 @@ def test_effective_pipeline_echo_overrides():
     pipe.rembg_edge_margin_frac = 0.08
     pipe.rembg_edge_margin_min_px = 12
     pipe.face_protect_core_frac = 0.25
-    pipe.rembg_model_name = "isnet-general-use"
+    pipe.rembg_model_name = "photoroom"
     pipe.rotation_aligner = None
     pipe.detect_faces = MagicMock(return_value=[])
 
@@ -125,6 +125,7 @@ def test_effective_pipeline_echo_overrides():
         image,
         apply_rotation=False,
         apply_white_bg=False,
+        use_photoroom=True,
         rembg_model="u2net",
         rembg_edge_margin_frac=0.12,
         rembg_edge_margin_min_px=20,
@@ -133,44 +134,15 @@ def test_effective_pipeline_echo_overrides():
 
     ep = result["effective_pipeline"]
     assert ep["apply_white_bg"] is False
+    assert ep["use_photoroom"] is True
     assert ep["rembg_model"] == "u2net"
     assert ep["rembg_edge_margin_frac"] == 0.12
     assert ep["rembg_edge_margin_min_px"] == 20
     assert ep["face_protect_core_frac"] == 0.4
     # Instance defaults unchanged (no request-local mutation leak).
-    assert pipe.rembg_model_name == "isnet-general-use"
+    assert pipe.rembg_model_name == "photoroom"
     assert pipe.rembg_edge_margin_frac == 0.08
     assert pipe.face_protect_core_frac == 0.25
-
-
-def test_get_rembg_session_caches_by_model_name(monkeypatch):
-    """Sessions are cached per model name; None uses rembg_model_name."""
-    pytest.importorskip("torch")
-    import app.models.profile_preprocessing_pipeline as mod
-    from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
-
-    created = []
-
-    def fake_new_session(name):
-        created.append(name)
-        return f"session:{name}"
-
-    monkeypatch.setattr(mod, "rembg_new_session", fake_new_session)
-
-    pipe = ProfilePreprocessingPipeline.__new__(ProfilePreprocessingPipeline)
-    pipe.rembg_model_name = "isnet-general-use"
-    pipe._rembg_sessions = {}
-
-    s1 = pipe._get_rembg_session()
-    s2 = pipe._get_rembg_session()
-    s3 = pipe._get_rembg_session("u2net")
-    s4 = pipe._get_rembg_session("u2net")
-
-    assert s1 == "session:isnet-general-use"
-    assert s2 is s1
-    assert s3 == "session:u2net"
-    assert s4 is s3
-    assert created == ["isnet-general-use", "u2net"]
 
 
 def test_check_white_bg_overrides_accepts_valid():
@@ -179,6 +151,7 @@ def test_check_white_bg_overrides_accepts_valid():
     assert check_white_bg_overrides(None, None, None, None) is None
     assert check_white_bg_overrides("u2net", 0.1, 12, 0.25) is None
     assert check_white_bg_overrides("isnet-general-use", 0.0, 0, 0.1) is None
+    assert check_white_bg_overrides("photoroom", None, None, None) is None
     assert check_white_bg_overrides("u2net", 0.25, 64, 0.8) is None
 
 
@@ -226,13 +199,13 @@ def test_get_model_info_includes_white_bg_knobs():
     pipe.default_confidence_threshold = 0.5
     pipe.default_target_size = (600, 600)
     pipe.default_padding_factor = 0.40
-    pipe.rembg_model_name = "isnet-general-use"
+    pipe.rembg_model_name = "photoroom"
     pipe.rembg_edge_margin_frac = 0.08
     pipe.rembg_edge_margin_min_px = 12
     pipe.face_protect_core_frac = 0.25
 
     info = pipe.get_model_info()
-    assert info["rembg_model_name"] == "isnet-general-use"
+    assert info["rembg_model_name"] == "photoroom"
     assert info["rembg_edge_margin_frac"] == 0.08
     assert info["rembg_edge_margin_min_px"] == 12
     assert info["face_protect_core_frac"] == 0.25

@@ -17,6 +17,7 @@ from app.utils.image_processing import ImageProcessor
 from app.utils.visualization import ProfileVisualizationManager
 from app.utils.lazy_model_loader import MultiModelLoader
 from app.utils.white_bg_overrides import ALLOWED_REMBG_MODELS, check_white_bg_overrides
+from app.utils.photoroom_client import is_configured as photoroom_is_configured
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -162,6 +163,9 @@ async def health_check():
         "lazy_loading_enabled": True,
         "models_loaded": model_loader.get_loaded_models(),
         "device": str(pipeline.device) if pipeline else "unknown",
+        "photoroom_configured": photoroom_is_configured(),
+        "photoroom_default_enabled": False,
+        "white_bg_provider": "photoroom",
         "timestamp": datetime.utcnow().isoformat()
     }
 
@@ -177,6 +181,7 @@ async def preprocess_profile(
     include_visualization: bool = Form(False),
     apply_rotation: bool = Form(True),
     apply_white_bg: bool = Form(True),
+    use_photoroom: bool = Form(False),
     rembg_model: Optional[str] = Form(None),
     rembg_edge_margin_frac: Optional[float] = Form(None),
     rembg_edge_margin_min_px: Optional[int] = Form(None),
@@ -194,10 +199,11 @@ async def preprocess_profile(
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
     - **apply_rotation**: Apply face rotation alignment using points 34 and 10 (default: true)
-    - **apply_white_bg**: Apply rembg white-background cleaning (default: true)
-    - **rembg_model**: rembg model override ('u2net' | 'isnet-general-use'; None = pipeline default)
-    - **rembg_edge_margin_frac**: rembg edge margin fraction (0.0-0.25; None = default)
-    - **rembg_edge_margin_min_px**: rembg edge margin min pixels (0-64; None = default)
+    - **apply_white_bg**: Apply white-background cleaning when enabled (default: true)
+    - **use_photoroom**: Admin testing only — call Photoroom white-BG API (default: false / off)
+    - **rembg_model**: Legacy Form override (accepted for admin compat; ignored — white-BG uses Photoroom)
+    - **rembg_edge_margin_frac**: White-ring edge margin fraction before white-BG (0.0-0.25; None = default)
+    - **rembg_edge_margin_min_px**: White-ring edge margin min pixels (0-64; None = default)
     - **face_protect_core_frac**: face-protect core half-extent (0.1-0.8; None = default)
     """
     
@@ -253,6 +259,7 @@ async def preprocess_profile(
             quality=quality,
             apply_rotation=apply_rotation,
             apply_white_bg=apply_white_bg,
+            use_photoroom=use_photoroom,
             rembg_model=rembg_model,
             rembg_edge_margin_frac=rembg_edge_margin_frac,
             rembg_edge_margin_min_px=rembg_edge_margin_min_px,
@@ -546,7 +553,9 @@ async def get_processing_stats():
             "apply_white_bg": {"default": True},
             "rembg_model": {
                 "allowed": sorted(ALLOWED_REMBG_MODELS),
-                "default": getattr(pipeline, "rembg_model_name", "isnet-general-use") if pipeline else "isnet-general-use",
+                # null = pipeline Photoroom default; legacy names accepted but ignored
+                "default": None,
+                "note": "white_bg_provider=photoroom; rembg_model Form overrides are ignored",
             },
             "rembg_edge_margin_frac": {
                 "min": 0.0,

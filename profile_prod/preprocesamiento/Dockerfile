@@ -33,15 +33,6 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-bake the rembg matting model into the image so the first request does not
-# trigger a runtime download (and works with no outbound net).
-# bake ≡ REMBG_MODEL must stay in sync; override ENV only if you also bake that model.
-# isnet-general-use chosen after EC2 hard-subset A/B (u2net failed glued BG);
-# birefnet better but ~46s/image — do not bake unless async path exists.
-ENV U2NET_HOME=/app/.u2net
-ENV REMBG_MODEL=isnet-general-use
-RUN python -c "from rembg import new_session; new_session('isnet-general-use')"
-
 # Copy application code
 COPY app/ ./app/
 COPY models/ ./models/

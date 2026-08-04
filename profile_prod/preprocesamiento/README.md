@@ -233,7 +233,7 @@ GET /processing-stats
 3. **Face Detection**: Faster R-CNN inference with confidence filtering on the (optionally rotated) image
 4. **Bounding Box Processing**: Padding calculation and boundary validation
 5. **Cropping**: Intelligent cropping with aspect ratio preservation
-6. **Resizing**: Target size fitting with letterboxing on white background (after rembg u2net matting white-BG clean)
+6. **Resizing**: Target size fitting with letterboxing on white background (after Photoroom Remove Background API white-BG clean; requires `PHOTOROOM_API_KEY`)
 7. **Format Conversion**: Base64 encoding with configurable quality
 
 ### Input Requirements

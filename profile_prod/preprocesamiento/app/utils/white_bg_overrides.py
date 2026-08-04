@@ -2,7 +2,9 @@
 
 from typing import Optional
 
-ALLOWED_REMBG_MODELS = frozenset({"u2net", "isnet-general-use"})
+# Legacy Form values (ignored by Photoroom path) + "photoroom" so admin echo of
+# pipeline rembg_model_name does not 400.
+ALLOWED_REMBG_MODELS = frozenset({"u2net", "isnet-general-use", "photoroom"})
 
 
 def check_white_bg_overrides(

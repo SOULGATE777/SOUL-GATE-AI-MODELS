@@ -47,7 +47,10 @@ def test_default_padding_factor_is_generous():
     assert "self.rembg_edge_margin_frac = 0.16" in src
     assert "self.rembg_edge_margin_min_px = 20" in src
     assert "self.face_protect_core_frac = 0.25" in src
-    assert "self._rembg_sessions" in src
+    assert 'self.rembg_model_name = "photoroom"' in src
+    assert "self._rembg_sessions" not in src
+    assert "_get_rembg_session" not in src
+    assert "photoroom_client" in src
 
 
 def test_crop_adds_white_ring_before_rembg():
@@ -64,12 +67,12 @@ def test_crop_adds_white_ring_before_rembg():
     pipe.rembg_edge_margin_frac = 0.08
     pipe.rembg_edge_margin_min_px = 12
     pipe.face_protect_core_frac = 0.25
-    pipe.rembg_model_name = "isnet-general-use"
+    pipe.rembg_model_name = "photoroom"
     pipe._face_protect_rect = MagicMock(return_value=(10, 10, 50, 50))
     pipe._face_silhouette_rect = MagicMock(return_value=(5, 5, 55, 55))
     pipe.apply_white_background = MagicMock(
         side_effect=lambda img, protect_rect=None, rembg_model=None,
-        silhouette_rect=None: (img, True)
+        silhouette_rect=None, use_photoroom=False: (img, True)
     )
     ImageProcessor.maybe_enhance_dark = staticmethod(lambda img: (img, False))
 
@@ -81,7 +84,9 @@ def test_crop_adds_white_ring_before_rembg():
     expected_top = box_h * pf * 1.65
     expected_bottom = box_h * pf * 1.20
 
-    out, applied, _ = pipe.crop_face_with_padding(image, bbox, (600, 600), pf)
+    out, applied, _ = pipe.crop_face_with_padding(
+        image, bbox, (600, 600), pf, use_photoroom=True
+    )
     assert out.shape == (600, 600, 3)
     assert applied is True
 
@@ -117,12 +122,12 @@ def test_crop_pins_to_image_border_when_face_near_edge():
     pipe.rembg_edge_margin_frac = 0.08
     pipe.rembg_edge_margin_min_px = 12
     pipe.face_protect_core_frac = 0.25
-    pipe.rembg_model_name = "isnet-general-use"
+    pipe.rembg_model_name = "photoroom"
     pipe._face_protect_rect = MagicMock(return_value=(10, 10, 50, 50))
     pipe._face_silhouette_rect = MagicMock(return_value=(5, 5, 55, 55))
     pipe.apply_white_background = MagicMock(
         side_effect=lambda img, protect_rect=None, rembg_model=None,
-        silhouette_rect=None: (img, True)
+        silhouette_rect=None, use_photoroom=False: (img, True)
     )
     ImageProcessor.maybe_enhance_dark = staticmethod(lambda img: (img, False))
 
@@ -137,7 +142,9 @@ def test_crop_pins_to_image_border_when_face_near_edge():
     x2_pad_unpinned = min(w, int(396.0 + pad_side))
     assert x2_pad_unpinned < w  # precondition: pin must matter
 
-    out, applied, _ = pipe.crop_face_with_padding(image, bbox, (600, 600), pf)
+    out, applied, _ = pipe.crop_face_with_padding(
+        image, bbox, (600, 600), pf, use_photoroom=True
+    )
     assert out.shape == (600, 600, 3)
     assert applied is True
 

@@ -16,6 +16,7 @@ from app.models.frontal_preprocessing_pipeline import FrontalPreprocessingPipeli
 from app.utils.image_processing import ImageProcessor
 from app.utils.visualization import FrontalVisualizationManager
 from app.utils.lazy_model_loader import MultiModelLoader
+from app.utils.photoroom_client import is_configured as photoroom_is_configured
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -133,6 +134,9 @@ async def health_check():
         "lazy_loading_enabled": True,
         "models_loaded": model_loader.get_loaded_models(),
         "device": str(pipeline.device) if pipeline else "unknown",
+        "photoroom_configured": photoroom_is_configured(),
+        "photoroom_default_enabled": False,
+        "white_bg_provider": "photoroom",
         "timestamp": datetime.utcnow().isoformat()
     }
 
@@ -146,7 +150,8 @@ async def preprocess_frontal(
     output_format: str = Form("JPEG"),
     quality: int = Form(95),
     include_visualization: bool = Form(False),
-    align_face: bool = Form(True)
+    align_face: bool = Form(True),
+    use_photoroom: bool = Form(False),
 ):
     """
     Complete frontal preprocessing: detect heads, crop, resize and convert to base64
@@ -160,6 +165,7 @@ async def preprocess_frontal(
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
     - **align_face**: Align tilted faces to anatomical position (default: true)
+    - **use_photoroom**: Admin testing only — call Photoroom white-BG API (default: false / off)
     """
 
     pipeline = get_pipeline()
@@ -205,7 +211,8 @@ async def preprocess_frontal(
             padding_factor=padding_factor,
             output_format=output_format,
             quality=quality,
-            align_face=align_face
+            align_face=align_face,
+            use_photoroom=use_photoroom,
         )
 
         # Generate unique processing ID

@@ -1,21 +1,22 @@
-import os
 import torch
-import torch.nn as nn
 import cv2
 import numpy as np
 import base64
 import io
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 import logging
-from rembg import remove as rembg_remove, new_session as rembg_new_session
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
 from PIL import Image
 from app.utils.rotation_utils import FaceRotationAligner
-from app.utils.image_processing import ImageProcessor, composite_on_white
+from app.utils.image_processing import ImageProcessor
+from app.utils import photoroom_client
 
 logger = logging.getLogger(__name__)
+
+# Log once that rembg-era kwargs on apply_white_background are ignored.
+_REMBG_OVERRIDES_IGNORED_LOGGED = False
 
 # Locked asymmetric pad coeffs relative to base padding (side / top / bottom).
 PADDING_ASYMMETRIC = {"side": 1.35, "top": 1.65, "bottom": 1.20}
@@ -48,23 +49,17 @@ class ProfilePreprocessingPipeline:
         # Generous pad so nose/crown/back-of-head stay inside the crop frame
         # (gateway previously forced 0.15 and clipped anatomy).
         self.default_padding_factor = 0.40
-        # White border around crop before rembg so the subject is never at the
-        # tensor edge (rembg softens edge pixels → “cut” hair / soft neck).
-        # Calibrated 2026-08-01 against /Downloads/sample (75 imgs): edge 0.16/20
-        # beats 0.08/12 on residual BG mass without raising face-core whitening.
+        # White border around crop before white-BG so the subject is never at
+        # the tensor edge. Calibrated 2026-08-01 against /Downloads/sample
+        # (75 imgs): edge 0.16/20 beats 0.08/12 on residual BG mass.
         self.rembg_edge_margin_frac = 0.16
         self.rembg_edge_margin_min_px = 20
         # Face-protect core half-extent as fraction of bbox (0.25 → ~50% central core).
         self.face_protect_core_frac = 0.25
 
-        # rembg person matting for white-background cleaning (REMBG_MODEL). A
-        # dedicated matting model: unlike MediaPipe selfie segmentation it does
-        # not confidently mis-classify reflective glass / walls / fences adjacent
-        # to the head as foreground, so busy real-world profile backgrounds are
-        # removed cleanly. Model overridable via REMBG_MODEL / per-request kwargs.
-        self.rembg_model_name = os.getenv("REMBG_MODEL", "isnet-general-use")
-        # Session cache keyed by model name (safe concurrent read after create).
-        self._rembg_sessions: Dict[str, Any] = {}
+        # White-BG provider meta (Photoroom). Legacy rembg_model Form/kwargs kept
+        # for call-site compat but ignored by apply_white_background.
+        self.rembg_model_name = "photoroom"
 
         # Face rotation aligner (optional)
         self.rotation_aligner = None
@@ -123,16 +118,6 @@ class ProfilePreprocessingPipeline:
         except Exception as e:
             logger.error(f"Failed to load model: {str(e)}")
             raise e
-
-    def _get_rembg_session(self, model_name: Optional[str] = None):
-        """Lazy rembg session from cache keyed by model name."""
-        name = model_name or self.rembg_model_name
-        session = self._rembg_sessions.get(name)
-        if session is None:
-            session = rembg_new_session(name)
-            self._rembg_sessions[name] = session
-            logger.info(f"rembg session initialized (model={name}) for white background")
-        return session
 
     @staticmethod
     def _face_protect_rect(fx1: float, fy1: float, fx2: float, fy2: float,
@@ -245,43 +230,40 @@ class ProfilePreprocessingPipeline:
                               protect_rect: Optional[Tuple[int, int, int, int]] = None,
                               rembg_model: Optional[str] = None,
                               silhouette_rect: Optional[Tuple[int, int, int, int]] = None,
+                              use_photoroom: bool = False,
                               ) -> Tuple[np.ndarray, bool]:
-        """Soft-composite subject onto white via rembg person matting (REMBG_MODEL).
+        """Composite subject onto white via Photoroom Remove Background API.
 
-        A dedicated matting model replaces MediaPipe selfie segmentation because
-        MediaPipe confidently mis-classified reflective glass / walls / fences
-        adjacent to the head as foreground, leaving large background regions on
-        real-world profile photos. rembg's ``only_mask`` output is a clean soft
-        matte; it is lightly refined (keep-largest to drop specks) and a small
-        on-subject face core is forced opaque as a backstop. Profile silhouette
-        edges (nose/lips/chin) use a subject-aware shell so rembg cannot zero
-        dark face pixels at the detector bbox edge without locking light BG.
-        Fail-open on errors / missing mask (returns the original crop untouched).
+        Signature keeps protect_rect / rembg_model / silhouette_rect for call-site
+        compatibility; those rembg-era overrides are ignored (Photoroom returns a
+        finished white-BG RGB image). Fail-open on missing key / API errors.
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
-            protect_rect: (x1, y1, x2, y2) hard face-core region to never clip.
-            rembg_model: Optional rembg model name; None uses self.rembg_model_name.
-            silhouette_rect: Expanded face bbox for subject-aware edge restore.
+            protect_rect: Ignored (legacy rembg face-core guard).
+            rembg_model: Ignored (legacy rembg model override).
+            silhouette_rect: Ignored (legacy rembg silhouette restore).
+            use_photoroom: When False (default), skip Photoroom and return image unchanged.
 
         Returns:
             Tuple of (composited_or_original_image, white_bg_applied).
         """
-        try:
-            session = self._get_rembg_session(rembg_model)
-            mask = rembg_remove(image_rgb, session=session, only_mask=True)
-            if mask is None or getattr(mask, "size", 0) == 0:
-                logger.warning("rembg returned no mask; skipping white BG")
-                return image_rgb, False
-            alpha = self._refine_matte(
-                mask,
-                protect_rect=protect_rect,
-                image_rgb=image_rgb,
-                silhouette_rect=silhouette_rect,
+        if not use_photoroom:
+            return image_rgb, False
+
+        global _REMBG_OVERRIDES_IGNORED_LOGGED
+        if not _REMBG_OVERRIDES_IGNORED_LOGGED:
+            logger.debug(
+                "rembg overrides (protect_rect/silhouette_rect/rembg_model) "
+                "ignored; white-BG uses Photoroom"
             )
-            composited = composite_on_white(image_rgb, alpha)
-            # composite_on_white returns the same object on shape-guard no-op
-            return composited, composited is not image_rgb
+            _REMBG_OVERRIDES_IGNORED_LOGGED = True
+
+        try:
+            composited = photoroom_client.remove_background_white(image_rgb)
+            if composited is None:
+                return image_rgb, False
+            return composited, True
         except Exception as e:
             logger.warning(f"White background cleaning failed (fail-open): {e}")
             return image_rgb, False
@@ -353,6 +335,7 @@ class ProfilePreprocessingPipeline:
                               rembg_edge_margin_frac: Optional[float] = None,
                               rembg_edge_margin_min_px: Optional[int] = None,
                               face_protect_core_frac: Optional[float] = None,
+                              use_photoroom: bool = False,
                               ) -> Tuple[np.ndarray, bool, bool]:
         """
         Crop face from image with padding and resize to target size while preserving proportions
@@ -362,11 +345,12 @@ class ProfilePreprocessingPipeline:
             bbox: Bounding box [x1, y1, x2, y2]
             target_size: Target output size (width, height)
             padding_factor: Padding factor around the bounding box
-            apply_white_bg: When False, skip rembg white-BG and return crop after illumination
-            rembg_model: Optional rembg model override (None → self.rembg_model_name)
-            rembg_edge_margin_frac: Optional rembg edge margin fraction override
-            rembg_edge_margin_min_px: Optional rembg edge margin min px override
+            apply_white_bg: When False, skip Photoroom white-BG and return crop after illumination
+            rembg_model: Legacy override (echoed in meta; ignored by Photoroom path)
+            rembg_edge_margin_frac: Optional edge margin fraction override
+            rembg_edge_margin_min_px: Optional edge margin min px override
             face_protect_core_frac: Optional face-protect core half-extent override
+            use_photoroom: When False (default), skip Photoroom API even if apply_white_bg
             
         Returns:
             Tuple of (cropped and resized face image, white_bg_applied, illumination_enhanced)
@@ -449,10 +433,10 @@ class ProfilePreprocessingPipeline:
         cropped, illumination_enhanced = ImageProcessor.maybe_enhance_dark(cropped)
 
         white_bg_applied = False
-        if apply_white_bg:
-            # White margin ring before rembg so the subject is never at the tensor
-            # edge (otherwise rembg soft-fades hair/neck into white). Offset the
-            # face-protect / silhouette rects by the same margin.
+        if apply_white_bg and use_photoroom:
+            # White margin ring before Photoroom so the subject is never at the
+            # tensor edge. Offset face-protect / silhouette rects by the same
+            # margin (kwargs kept for call-site compat; Photoroom ignores them).
             margin = max(
                 resolved_margin_min,
                 int(min(cropped.shape[0], cropped.shape[1]) * resolved_margin_frac),
@@ -474,12 +458,13 @@ class ProfilePreprocessingPipeline:
                     sx1 + margin, sy1 + margin, sx2 + margin, sy2 + margin
                 )
 
-            # White-background clean (rembg person matting); fail-open.
+            # White-background clean (Photoroom); fail-open.
             matted, white_bg_applied = self.apply_white_background(
                 cropped_for_matte,
                 protect_rect=protect_for_matte,
                 rembg_model=resolved_rembg_model,
                 silhouette_rect=silhouette_for_matte,
+                use_photoroom=use_photoroom,
             )
             # Keep the margin (becomes letterbox whitespace) — do not trim back to
             # the pre-ring crop, or edge pixels would again sit on the frame.
@@ -541,7 +526,8 @@ class ProfilePreprocessingPipeline:
                      rembg_model: Optional[str] = None,
                      rembg_edge_margin_frac: Optional[float] = None,
                      rembg_edge_margin_min_px: Optional[int] = None,
-                     face_protect_core_frac: Optional[float] = None) -> Dict:
+                     face_protect_core_frac: Optional[float] = None,
+                     use_photoroom: bool = False) -> Dict:
         """
         Complete preprocessing pipeline: detect faces, crop, and convert to base64
 
@@ -553,11 +539,12 @@ class ProfilePreprocessingPipeline:
             output_format: Output image format ('JPEG', 'PNG')
             quality: JPEG quality (1-100)
             apply_rotation: Whether to apply face rotation alignment using points 34 and 10
-            apply_white_bg: When False, skip rembg white-background cleaning
-            rembg_model: Optional rembg model override (None → self.rembg_model_name)
-            rembg_edge_margin_frac: Optional rembg edge margin fraction override
-            rembg_edge_margin_min_px: Optional rembg edge margin min px override
+            apply_white_bg: When False, skip Photoroom white-background cleaning
+            rembg_model: Legacy override (echoed in meta; ignored by Photoroom path)
+            rembg_edge_margin_frac: Optional edge margin fraction override
+            rembg_edge_margin_min_px: Optional edge margin min px override
             face_protect_core_frac: Optional face-protect core half-extent override
+            use_photoroom: Admin testing — call Photoroom when True (default False)
 
         Returns:
             Dictionary with detection results and base64 encoded cropped faces
@@ -589,6 +576,7 @@ class ProfilePreprocessingPipeline:
         effective_pipeline = {
             "rembg_model": resolved_rembg_model,
             "apply_white_bg": apply_white_bg,
+            "use_photoroom": use_photoroom,
             "rembg_edge_margin_frac": resolved_margin_frac,
             "rembg_edge_margin_min_px": resolved_margin_min,
             "face_protect_core_frac": resolved_core_frac,
@@ -629,6 +617,7 @@ class ProfilePreprocessingPipeline:
                 rembg_edge_margin_frac=resolved_margin_frac,
                 rembg_edge_margin_min_px=resolved_margin_min,
                 face_protect_core_frac=resolved_core_frac,
+                use_photoroom=use_photoroom,
             )
 
             # Convert to base64

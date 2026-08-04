@@ -1,10 +1,10 @@
 """Unit tests for white-background cleaning (profile preprocess).
 
 Covers the shared ``composite_on_white`` helper, the retained GrabCut utility,
-and the rembg (u2net) matting path on the pipeline. Pipeline tests lazily import
+and the Photoroom white-BG path on the pipeline. Pipeline tests lazily import
 ``ProfilePreprocessingPipeline`` behind ``importorskip('torch')`` so they run in
-CI/Docker (where torch is installed) and skip locally, and they monkeypatch the
-module-level ``rembg_remove`` so no ONNX model is needed to test the wiring.
+CI/Docker (where torch is installed) and skip locally, and they monkeypatch
+``photoroom_client.remove_background_white`` so no live Photoroom calls are made.
 """
 
 import numpy as np
@@ -151,10 +151,10 @@ def test_grabcut_removes_detached_fg_blob():
     assert float(corner.mean()) > 210, f"Detached blob not removed: {corner}"
 
 
-# --- rembg (u2net) matting path (pipeline.apply_white_background) ---
+# --- Photoroom white-BG path (pipeline.apply_white_background) ---
 # Guarded by importorskip('torch'): the pipeline module imports torch at module
 # scope, so these run in CI/Docker and skip in a torch-less local env. The
-# module-level ``rembg_remove`` is monkeypatched so no ONNX model is needed.
+# Photoroom client is monkeypatched so no live API calls are made.
 
 
 def _make_pipeline():
@@ -163,81 +163,116 @@ def _make_pipeline():
     from app.models.profile_preprocessing_pipeline import ProfilePreprocessingPipeline
 
     pipeline = object.__new__(ProfilePreprocessingPipeline)
-    # Sentinel session so _get_rembg_session() short-circuits (no real ONNX init).
-    pipeline.rembg_model_name = "isnet-general-use"
-    pipeline._rembg_sessions = {"isnet-general-use": object()}
+    pipeline.rembg_model_name = "photoroom"
     return pipeline
 
 
-def _patch_rembg(monkeypatch, mask_or_exc):
-    """Patch module-level rembg_remove to return a mask (or raise)."""
+def _patch_photoroom(monkeypatch, result_or_exc):
+    """Patch photoroom_client.remove_background_white to return result or raise."""
     import app.models.profile_preprocessing_pipeline as mod
 
-    def fake_remove(image, session=None, only_mask=False):
-        if isinstance(mask_or_exc, Exception):
-            raise mask_or_exc
-        return mask_or_exc
+    def fake_remove(image_rgb):
+        if isinstance(result_or_exc, Exception):
+            raise result_or_exc
+        return result_or_exc
 
-    monkeypatch.setattr(mod, "rembg_remove", fake_remove)
+    monkeypatch.setattr(mod.photoroom_client, "remove_background_white", fake_remove)
+
+
+def test_apply_white_background_default_skips_photoroom(monkeypatch):
+    """use_photoroom=False must not call Photoroom."""
+    pipeline = _make_pipeline()
+    called = {"n": 0}
+
+    def boom(_image):
+        called["n"] += 1
+        raise AssertionError("Photoroom must not be called when use_photoroom=False")
+
+    import app.models.profile_preprocessing_pipeline as mod
+    monkeypatch.setattr(mod.photoroom_client, "remove_background_white", boom)
+
+    image = np.full((16, 16, 3), 77, dtype=np.uint8)
+    original = image.copy()
+    out, applied = pipeline.apply_white_background(image)
+
+    assert applied is False
+    np.testing.assert_array_equal(out, original)
+    assert called["n"] == 0
 
 
 def test_apply_white_background_fail_open(monkeypatch):
-    """rembg raises → image unchanged and False (fail-open)."""
+    """Photoroom client raises → image unchanged and False (fail-open)."""
     pipeline = _make_pipeline()
-    _patch_rembg(monkeypatch, RuntimeError("rembg boom"))
+    _patch_photoroom(monkeypatch, RuntimeError("photoroom boom"))
 
     image = np.full((16, 16, 3), 77, dtype=np.uint8)
     original = image.copy()
 
-    out, applied = pipeline.apply_white_background(image)
+    out, applied = pipeline.apply_white_background(image, use_photoroom=True)
 
     assert applied is False
     np.testing.assert_array_equal(out, original)
 
 
-def test_apply_white_background_none_mask_fail_open(monkeypatch):
-    """No matte returned → image unchanged and False (fail-open)."""
+def test_apply_white_background_none_fail_open(monkeypatch):
+    """Client returns None → image unchanged and False (fail-open)."""
     pipeline = _make_pipeline()
-    _patch_rembg(monkeypatch, None)
+    _patch_photoroom(monkeypatch, None)
 
     image = np.full((16, 16, 3), 99, dtype=np.uint8)
     original = image.copy()
 
-    out, applied = pipeline.apply_white_background(image)
-
-    assert applied is False
-    np.testing.assert_array_equal(out, original)
-
-
-def test_apply_white_background_empty_mask_fail_open(monkeypatch):
-    """Empty (size 0) matte → image unchanged and False (fail-open)."""
-    pipeline = _make_pipeline()
-    _patch_rembg(monkeypatch, np.empty((0, 0), dtype=np.uint8))
-
-    image = np.full((16, 16, 3), 55, dtype=np.uint8)
-    original = image.copy()
-
-    out, applied = pipeline.apply_white_background(image)
+    out, applied = pipeline.apply_white_background(image, use_photoroom=True)
 
     assert applied is False
     np.testing.assert_array_equal(out, original)
 
 
 def test_apply_white_background_composites_on_white(monkeypatch):
-    """A hard matte makes background white and keeps subject; applied is True."""
-    mask = np.zeros((40, 40), dtype=np.uint8)
-    mask[10:30, 10:30] = 255
+    """Photoroom RGB result is returned and applied is True."""
     pipeline = _make_pipeline()
-    _patch_rembg(monkeypatch, mask)
+
+    def fake_white_bg(image_rgb):
+        out = np.full_like(image_rgb, 255)
+        out[10:30, 10:30] = image_rgb[10:30, 10:30]
+        return out
+
+    import app.models.profile_preprocessing_pipeline as mod
+    monkeypatch.setattr(mod.photoroom_client, "remove_background_white", fake_white_bg)
 
     image = np.full((40, 40, 3), (10, 20, 30), dtype=np.uint8)
-    out, applied = pipeline.apply_white_background(image)
+    out, applied = pipeline.apply_white_background(image, use_photoroom=True)
 
     assert applied is True
     # Subject core preserved
     assert np.allclose(out[15:25, 15:25], (10, 20, 30), atol=1)
     # A background corner is white
     assert np.all(out[0, 0] == 255)
+
+
+def test_apply_white_background_ignores_legacy_kwargs(monkeypatch):
+    """protect_rect / rembg_model / silhouette_rect do not change Photoroom path."""
+    pipeline = _make_pipeline()
+    seen = {}
+
+    def fake_remove(image_rgb):
+        seen["called"] = True
+        return np.full_like(image_rgb, 255)
+
+    import app.models.profile_preprocessing_pipeline as mod
+    monkeypatch.setattr(mod.photoroom_client, "remove_background_white", fake_remove)
+
+    image = np.full((20, 20, 3), 50, dtype=np.uint8)
+    out, applied = pipeline.apply_white_background(
+        image,
+        protect_rect=(2, 2, 10, 10),
+        rembg_model="u2net",
+        silhouette_rect=(1, 1, 18, 18),
+        use_photoroom=True,
+    )
+    assert seen.get("called") is True
+    assert applied is True
+    assert np.all(out == 255)
 
 
 # --- Matte refinement (_refine_matte) ---
@@ -377,7 +412,7 @@ def test_refine_matte_corner_fg_does_not_paint_background():
     assert float(alpha[45, 45]) == 0.0  # far BG stays BG
 
 
-# --- Face guard: the face region must NEVER be clipped ---
+# --- Face guard helpers (matte_refine still used; Photoroom ignores these) ---
 
 
 def test_refine_matte_protect_rect_forces_face_opaque():
@@ -449,7 +484,7 @@ def test_face_protect_rect_bbox_fills_crop_leaves_corners_free():
     assert px1 > 0 and py1 > 0 and px2 < cw and py2 < ch
     margin_frac = px1 / cw
     assert margin_frac > 0.2, f"guard margin too thin: {margin_frac:.2f}"
-    # Guard covers well under half the crop area (rembg removes the rest).
+    # Guard covers well under half the crop area.
     guard_area = (px2 - px1) * (py2 - py1)
     assert guard_area < 0.30 * (cw * ch), f"guard covers too much: {guard_area}"
 
@@ -461,23 +496,6 @@ def test_face_protect_rect_degenerate_returns_none():
 
     assert ProfilePreprocessingPipeline._face_protect_rect(10, 10, 10, 10, 100, 100) is None
     assert ProfilePreprocessingPipeline._face_protect_rect(50, 50, 10, 10, 100, 100) is None
-
-
-def test_apply_white_background_never_clips_face(monkeypatch):
-    """End-to-end: the matte drops the face, protect_rect restores it."""
-    pipeline = _make_pipeline()
-
-    # Matte marks the face region as background (alpha 0) — worst case.
-    mask = np.full((40, 40), 255, dtype=np.uint8)
-    mask[10:30, 10:30] = 0
-    _patch_rembg(monkeypatch, mask)
-
-    image = np.full((40, 40, 3), (12, 34, 56), dtype=np.uint8)
-    out, applied = pipeline.apply_white_background(image, protect_rect=(12, 12, 28, 28))
-
-    assert applied is True
-    # Face pixels survive (not whitened) thanks to the protection rect.
-    assert np.allclose(out[20, 20], (12, 34, 56), atol=1)
 
 
 def test_silhouette_subject_aware_restores_dark_profile_edge():

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""A/B rembg models for white-BG quality (SERVER ONLY — needs >=12GB RAM).
+"""Offline A/B helper for historical rembg mattes (NOT used by the live service).
 
-Compares full-image rembg mattes (not the production crop+ring path). Use
-results to pick a bake candidate, then confirm with POST /preprocess-profile.
+Production white-BG is Photoroom (`PHOTOROOM_API_KEY`). This script still imports
+`rembg`, which is no longer in service requirements — pip-install rembg separately
+if you need to re-run A/B offline (SERVER ONLY — needs >=12GB RAM).
 
 Defaults:
   --protect none   (never invent a half-frame protect rect — that fabricates BG shards)

@@ -12,6 +12,7 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=0
       - PYTHONPATH=/app
+      - PHOTOROOM_API_KEY=${PHOTOROOM_API_KEY:-}
     deploy:
       resources:
         reservations:

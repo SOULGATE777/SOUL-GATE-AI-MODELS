@@ -8,7 +8,8 @@ import logging
 import mediapipe as mp
 from PIL import Image
 
-from ..utils.image_processing import WHITE_BG, composite_on_white, maybe_enhance_dark
+from ..utils.image_processing import WHITE_BG, maybe_enhance_dark
+from ..utils.photoroom_client import remove_background_white
 from ..utils.rotation_policy import MAX_ABS_ROTATION_DEG, should_skip_rotation
 
 logger = logging.getLogger(__name__)
@@ -37,9 +38,6 @@ class FrontalPreprocessingPipeline:
         # Initialize MediaPipe Face Mesh for alignment
         self.mp_face_mesh = mp.solutions.face_mesh
 
-        # MediaPipe Selfie Segmentation for white-background cleaning
-        self.mp_selfie_segmentation = mp.solutions.selfie_segmentation
-
         # Default processing parameters
         self.default_confidence_threshold = 0.5
         self.default_target_size = (600, 600)
@@ -59,7 +57,6 @@ class FrontalPreprocessingPipeline:
         self.alignment_threshold = 2.0  # Only align if tilt angle > 2 degrees
         self.MAX_ABS_ROTATION_DEG = MAX_ABS_ROTATION_DEG
         self.face_mesh_detector = None  # Lazy initialization
-        self.selfie_segmenter = None  # Lazy initialization
 
         logger.info(f"Initializing FrontalPreprocessingPipeline with MediaPipe")
         self._load_model()
@@ -95,84 +92,26 @@ class FrontalPreprocessingPipeline:
             )
             logger.info("MediaPipe Face Mesh initialized for alignment")
 
-    def _initialize_selfie_segmenter(self):
-        """Lazy initialization of Selfie Segmentation (reuse instance like face_mesh)."""
-        if self.selfie_segmenter is None:
-            self.selfie_segmenter = self.mp_selfie_segmentation.SelfieSegmentation(
-                model_selection=1
-            )
-            logger.info("MediaPipe Selfie Segmentation initialized for white background")
-
-    @staticmethod
-    def _refine_selfie_matte(mask: np.ndarray) -> np.ndarray:
-        """Clean MediaPipe selfie probability mask for white-BG composite.
-
-        Selfie seg often yields coarse / polygonal silhouettes. Keep soft values,
-        close small gaps, drop detached blobs, and lightly blur edges.
+    def apply_white_background(self, image_rgb: np.ndarray,
+                              use_photoroom: bool = False) -> Tuple[np.ndarray, bool]:
         """
-        alpha = mask.astype(np.float32)
-        if alpha.max() > 1.0:
-            alpha = alpha / 255.0
-        alpha = np.clip(alpha, 0.0, 1.0)
+        Replace background with white via Photoroom Remove Background API.
 
-        binary = (alpha >= 0.5).astype(np.uint8)
-        close_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        open_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_k)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, open_k)
-
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-        keep = None
-        if num_labels > 2:
-            largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-            alpha[(labels > 0) & (labels != largest)] = 0.0
-            keep = (labels == largest).astype(np.uint8)
-        elif num_labels == 2:
-            keep = (labels == 1).astype(np.uint8)
-
-        if keep is not None and keep.any():
-            # Drop solid FG outside keep (open-eroded sticks); keep soft fringe.
-            alpha[(alpha >= 0.9) & (keep == 0)] = 0.0
-
-            h, w = keep.shape
-            seed = None
-            if keep[0, 0] == 0:
-                seed = (0, 0)
-            else:
-                ys, xs = np.where(keep == 0)
-                if len(xs) > 0:
-                    seed = (int(xs[0]), int(ys[0]))
-            if seed is not None:
-                flood = keep.copy()
-                mask_ff = np.zeros((h + 2, w + 2), dtype=np.uint8)
-                cv2.floodFill(flood, mask_ff, seed, 1)
-                interior_holes = flood == 0
-                if interior_holes.any():
-                    alpha[interior_holes] = 1.0
-            # Soften polygonal / jagged Selfie Seg edges (no hard re-threshold)
-            alpha = cv2.GaussianBlur(alpha, (5, 5), 0)
-
-        return np.clip(alpha, 0.0, 1.0)
-
-    def apply_white_background(self, image_rgb: np.ndarray) -> Tuple[np.ndarray, bool]:
-        """
-        Soft-composite subject onto white via MediaPipe Selfie Segmentation.
-
-        Passes RGB directly to segmenter.process (not BGR). Fail-open on errors.
+        Photoroom returns a finished white-BG RGB image (bg_color=white).
+        Fail-open on missing key, HTTP errors, or exceptions.
+        When use_photoroom is False (default), skip the API and return unchanged.
 
         Returns:
             Tuple of (composited_or_original_image, success)
         """
+        if not use_photoroom:
+            return image_rgb, False
+
         try:
-            self._initialize_selfie_segmenter()
-            results = self.selfie_segmenter.process(image_rgb)
-            if results.segmentation_mask is None:
-                logger.warning("Selfie segmentation returned no mask; skipping white BG")
+            result = remove_background_white(image_rgb)
+            if result is None:
                 return image_rgb, False
-            alpha = self._refine_selfie_matte(results.segmentation_mask)
-            composited = composite_on_white(image_rgb, alpha)
-            # composite_on_white returns the same object on shape-guard no-op
-            return composited, composited is not image_rgb
+            return result, True
         except Exception as e:
             logger.warning(f"White background cleaning failed (fail-open): {e}")
             return image_rgb, False
@@ -189,7 +128,7 @@ class FrontalPreprocessingPipeline:
         """
         self._initialize_face_mesh()
 
-        # MediaPipe Face Mesh expects RGB (same as Selfie Segmentation).
+        # MediaPipe Face Mesh expects RGB.
         h, w = image.shape[:2]
 
         # Process image with Face Mesh
@@ -377,7 +316,8 @@ class FrontalPreprocessingPipeline:
 
     def crop_head_with_padding(self, image: np.ndarray, bbox: List[float],
                               target_size: Tuple[int, int] = None,
-                              padding_factor: float = None) -> Tuple[np.ndarray, bool, bool]:
+                              padding_factor: float = None,
+                              use_photoroom: bool = False) -> Tuple[np.ndarray, bool, bool]:
         """
         Crop cranium from image with padding and resize to target size while preserving proportions
 
@@ -386,6 +326,7 @@ class FrontalPreprocessingPipeline:
             bbox: Bounding box [x1, y1, x2, y2]
             target_size: Target output size (width, height)
             padding_factor: Padding factor around the bounding box
+            use_photoroom: When True, call Photoroom white-BG (admin testing only)
 
         Returns:
             Tuple of (cropped and resized cranium image, white_bg_applied, illumination_enhanced)
@@ -416,15 +357,19 @@ class FrontalPreprocessingPipeline:
         # → white edge margin → white-BG → resize → letterbox (keep margin)
         cropped = image[y1_pad:y2_pad, x1_pad:x2_pad]
         cropped, illumination_enhanced = maybe_enhance_dark(cropped)
-        margin = max(
-            self.seg_edge_margin_min_px,
-            int(min(cropped.shape[0], cropped.shape[1]) * self.seg_edge_margin_frac),
-        )
-        cropped_for_matte = cv2.copyMakeBorder(
-            cropped, margin, margin, margin, margin,
-            cv2.BORDER_CONSTANT, value=(255, 255, 255),
-        )
-        cropped, white_bg_applied = self.apply_white_background(cropped_for_matte)
+        white_bg_applied = False
+        if use_photoroom:
+            margin = max(
+                self.seg_edge_margin_min_px,
+                int(min(cropped.shape[0], cropped.shape[1]) * self.seg_edge_margin_frac),
+            )
+            cropped_for_matte = cv2.copyMakeBorder(
+                cropped, margin, margin, margin, margin,
+                cv2.BORDER_CONSTANT, value=(255, 255, 255),
+            )
+            cropped, white_bg_applied = self.apply_white_background(
+                cropped_for_matte, use_photoroom=True
+            )
         crop_h, crop_w = cropped.shape[:2]
 
         # Scale to fit within target size while preserving aspect ratio
@@ -475,7 +420,8 @@ class FrontalPreprocessingPipeline:
                      padding_factor: float = None,
                      output_format: str = 'JPEG',
                      quality: int = 95,
-                     align_face: bool = True) -> Dict:
+                     align_face: bool = True,
+                     use_photoroom: bool = False) -> Dict:
         """
         Complete preprocessing pipeline: detect cranium, crop, and convert to base64
 
@@ -487,6 +433,7 @@ class FrontalPreprocessingPipeline:
             output_format: Output image format ('JPEG', 'PNG')
             quality: JPEG quality (1-100)
             align_face: Whether to align tilted faces (default: True)
+            use_photoroom: Admin testing — call Photoroom when True (default False)
 
         Returns:
             Dictionary with detection results and base64 encoded cropped cranium
@@ -514,7 +461,8 @@ class FrontalPreprocessingPipeline:
         for detection in detections:
             # Crop cranium from aligned image (includes white-BG cleaning)
             cropped_cranium, white_bg_applied, illumination_enhanced = self.crop_head_with_padding(
-                working_image, detection['bbox'], target_size, padding_factor
+                working_image, detection['bbox'], target_size, padding_factor,
+                use_photoroom=use_photoroom,
             )
 
             # Convert to base64
@@ -545,7 +493,8 @@ class FrontalPreprocessingPipeline:
                 'padding_factor': padding_factor,
                 'output_format': output_format,
                 'quality': quality,
-                'align_face': align_face
+                'align_face': align_face,
+                'use_photoroom': use_photoroom,
             }
         }
 
