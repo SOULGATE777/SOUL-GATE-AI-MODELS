@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
@@ -97,8 +97,8 @@ async def health_check():
 @app.post("/analyze-face")
 async def analyze_face(
     file: UploadFile = File(...),
-    confidence_threshold: float = 0.5,
-    include_visualization: bool = True
+    confidence_threshold: float = Form(0.5),
+    include_visualization: bool = Form(True)
 ):
     """
     Complete facial analysis with all three models:
@@ -200,8 +200,8 @@ async def analyze_face(
 @app.post("/detect-landmarks")
 async def detect_landmarks(
     file: UploadFile = File(...),
-    confidence_threshold: float = 0.5,
-    include_visualization: bool = True
+    confidence_threshold: float = Form(0.5),
+    include_visualization: bool = Form(True)
 ):
     """Detect and classify facial landmarks only"""
     if not file.content_type.startswith('image/'):
@@ -256,8 +256,8 @@ async def detect_landmarks(
 @app.post("/detect-points")
 async def detect_anthropometric_points(
     file: UploadFile = File(...),
-    confidence_threshold: float = 0.5,
-    include_visualization: bool = True
+    confidence_threshold: float = Form(0.5),
+    include_visualization: bool = Form(True)
 ):
     """Detect anthropometric points only"""
     if not file.content_type.startswith('image/'):
