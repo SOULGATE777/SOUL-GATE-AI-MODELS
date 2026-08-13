@@ -60,7 +60,8 @@ class ProfileValidationPipeline:
         self.model.to(self.device)
         self.model.eval()
         
-        # Set detection thresholds for each class
+        # Class-tuned baselines at slider default 0.5. Moving the request
+        # confidence_threshold scales these so the admin slider always applies.
         self.class_thresholds = {
             'objeto': 0.6,
             'cabello_tapando_oreja': 0.5,
@@ -300,6 +301,20 @@ class ProfileValidationPipeline:
             recommendations.append("Use plain background without distracting elements")
         
         return recommendations
+
+    def _scaled_class_threshold(
+        self, class_name: str, confidence_threshold: float
+    ) -> float:
+        """Scale class baselines with the request slider (default 0.5 = no change)."""
+        base = self.class_thresholds.get(
+            class_name, self.class_thresholds.get("default", 0.5)
+        )
+        scale = (
+            float(confidence_threshold) / 0.5
+            if confidence_threshold is not None
+            else 1.0
+        )
+        return min(1.0, max(0.05, base * scale))
     
     def analyze_profile_validation(self, image: np.ndarray, confidence_threshold: float = 0.5) -> Dict[str, Any]:
         """
@@ -334,7 +349,9 @@ class ProfileValidationPipeline:
             
             for box, label, score in zip(boxes, labels, scores):
                 class_name = self.all_classes[label - 1]
-                threshold = self.class_thresholds.get(class_name, confidence_threshold)
+                threshold = self._scaled_class_threshold(
+                    class_name, confidence_threshold
+                )
                 
                 if score > threshold:
                     detections.append({
@@ -437,7 +454,9 @@ class ProfileValidationPipeline:
             
             for box, label, score in zip(boxes, labels, scores):
                 class_name = self.all_classes[label - 1]
-                threshold = self.class_thresholds.get(class_name, confidence_threshold)
+                threshold = self._scaled_class_threshold(
+                    class_name, confidence_threshold
+                )
                 
                 if score > threshold:
                     detections.append({

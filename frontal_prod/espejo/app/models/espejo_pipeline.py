@@ -914,7 +914,16 @@ class EspejoAnalyzer:
         
         return final_diagnoses, applied_rules
     
-    def _classify_mirror_images(self, right_mirrored_face, left_mirrored_face, right_face_prop, left_face_prop, right_forehead_prop, left_forehead_prop):
+    def _classify_mirror_images(
+        self,
+        right_mirrored_face,
+        left_mirrored_face,
+        right_face_prop,
+        left_face_prop,
+        right_forehead_prop,
+        left_forehead_prop,
+        confidence_threshold=0.5,
+    ):
         """Classify mirror images with decision tree and hybrid splitting"""
         results = {
             'right_mirrored': {
@@ -949,8 +958,10 @@ class EspejoAnalyzer:
                 current_face_prop = right_face_prop if side == 'right_mirrored' else left_face_prop
                 current_forehead_prop = right_forehead_prop if side == 'right_mirrored' else left_forehead_prop
                 
-                # Detect facial regions using Faster R-CNN
-                detected_regions = self._detect_facial_regions(image, confidence_threshold=0.5)
+                # Detect facial regions using Faster R-CNN (honor request threshold)
+                detected_regions = self._detect_facial_regions(
+                    image, confidence_threshold=confidence_threshold
+                )
 
                 # Store detected regions for visualization
                 results[side]['detected_regions'] = detected_regions
@@ -1109,11 +1120,12 @@ class EspejoAnalyzer:
             right_mirrored_face = self._create_mirrored_face(img_aligned, midline_x, side="right")
             left_mirrored_face = self._create_mirrored_face(img_aligned, midline_x, side="left")
             
-            # Classify mirror images
+            # Classify mirror images (region detect uses the same confidence slider)
             classification_results = self._classify_mirror_images(
-                right_mirrored_face, left_mirrored_face, 
-                right_face_prop, left_face_prop, 
-                right_forehead_prop, left_forehead_prop
+                right_mirrored_face, left_mirrored_face,
+                right_face_prop, left_face_prop,
+                right_forehead_prop, left_forehead_prop,
+                confidence_threshold=confidence_threshold,
             )
             
             # Prepare results
