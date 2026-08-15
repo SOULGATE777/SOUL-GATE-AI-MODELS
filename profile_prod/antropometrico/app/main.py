@@ -175,8 +175,8 @@ async def analyze_profile_anthropometric(
         raise HTTPException(status_code=400, detail="File must be an image")
     
     # Validate confidence threshold
-    if not 0.05 <= confidence_threshold <= 0.9:
-        raise HTTPException(status_code=400, detail="Confidence threshold must be between 0.05 and 0.9")
+    if not 0.05 <= confidence_threshold <= 1.0:
+        raise HTTPException(status_code=400, detail="Confidence threshold must be between 0.05 and 1.0")
     
     try:
         # Read and decode image
@@ -193,7 +193,8 @@ async def analyze_profile_anthropometric(
         # Perform analysis
         results = pipeline.analyze_image(
             image=image_rgb,
-            include_visualization=include_visualization
+            include_visualization=include_visualization,
+            confidence_threshold=confidence_threshold
         )
         
         # Generate unique ID for this analysis
@@ -264,8 +265,8 @@ async def detect_profile_points(
         raise HTTPException(status_code=400, detail="File must be an image")
     
     # Validate confidence threshold
-    if not 0.05 <= confidence_threshold <= 0.9:
-        raise HTTPException(status_code=400, detail="Confidence threshold must be between 0.05 and 0.9")
+    if not 0.05 <= confidence_threshold <= 1.0:
+        raise HTTPException(status_code=400, detail="Confidence threshold must be between 0.05 and 1.0")
     
     try:
         # Read and decode image
@@ -281,7 +282,8 @@ async def detect_profile_points(
         
         # Use enhanced pipeline's point detection (includes preprocessing)
         detected_points = pipeline.detect_points(
-            pipeline.preprocess_image(image_rgb)[1]  # Get tensor from preprocessing
+            pipeline.preprocess_image(image_rgb)[1],  # Get tensor from preprocessing
+            confidence_threshold
         )
         
         # Filter spurious predictions using enhanced logic

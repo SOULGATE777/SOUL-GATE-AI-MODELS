@@ -441,7 +441,7 @@ class ProfileAnalysisPipeline:
         
         return classifications
     
-    def detect_points(self, image_tensor):
+    def detect_points(self, image_tensor, confidence_threshold=0.15):
         """Detect anthropometric points with spurious point filtering"""
         with torch.no_grad():
             heatmaps, profile_logits = self.point_model(image_tensor)
@@ -475,11 +475,15 @@ class ProfileAnalysisPipeline:
         keypoints_np = keypoints[0].cpu().numpy()
         confidences_np = confidences[0].cpu().numpy()
         
-        # Use adaptive threshold
-        threshold = 0.15 if any(conf > 0.15 for conf in confidences_np) else 0.05
+        try:
+            threshold = float(confidence_threshold)
+        except (TypeError, ValueError):
+            threshold = 0.15
+        if not (0.0 <= threshold <= 1.0):
+            threshold = 0.15
         
         for i, (point, conf) in enumerate(zip(keypoints_np, confidences_np)):
-            if conf > threshold and i < len(self.point_classes):
+            if conf >= threshold and i < len(self.point_classes):
                 detected_points.append({
                     'class': self.point_classes[i],
                     'coordinates': point,
@@ -491,14 +495,14 @@ class ProfileAnalysisPipeline:
         
         return detected_points
     
-    def analyze_image(self, image_path, bbox_threshold=0.5, save_result=True):
+    def analyze_image(self, image_path, bbox_threshold=0.5, confidence_threshold=0.5, save_result=True):
         """Complete analysis pipeline with improved filtering - NO PROFILE PREDICTION"""
         logger.info(f"Analyzing image: {image_path}")
         
         # Preprocess image
         original_image, image_tensor = self.preprocess_image(image_path)
         
-        # Step 1: Detect bounding boxes (with duplicate removal)
+        # Step 1: Detect bounding boxes — bbox_threshold only (confianza general is points)
         logger.info("Detecting bounding boxes...")
         detected_objects = self.detect_bboxes(image_tensor, bbox_threshold)
         
@@ -508,7 +512,7 @@ class ProfileAnalysisPipeline:
         
         # Step 3: Detect anthropometric points (with spurious point filtering)
         logger.info("Detecting anthropometric points...")
-        detected_points = self.detect_points(image_tensor)
+        detected_points = self.detect_points(image_tensor, confidence_threshold)
         
         # Step 4: Infer profile side from point suffixes
         profile_side = ""

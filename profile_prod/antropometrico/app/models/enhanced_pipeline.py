@@ -437,7 +437,7 @@ class EnhancedProfileAnthropometricPipeline:
         logger.info(f"Profile filtering: {profile_type} profile → reduced confidence for {removed_count} {wrong_suffix} points")
         return filtered_confidences
     
-    def detect_points(self, image_tensor: torch.Tensor) -> List[Dict]:
+    def detect_points(self, image_tensor: torch.Tensor, confidence_threshold: float = 0.15) -> List[Dict]:
         """Detect anthropometric points using enhanced pipeline"""
         with torch.no_grad():
             # Step 1: Point detection and profile classification
@@ -479,13 +479,18 @@ class EnhancedProfileAnthropometricPipeline:
         
         # Extract detected points with confidence threshold
         detected_points = []
-        confidence_threshold = 0.15
+        try:
+            threshold = float(confidence_threshold)
+        except (TypeError, ValueError):
+            threshold = 0.15
+        if not (0.0 <= threshold <= 1.0):
+            threshold = 0.15
         
         for i, class_name in enumerate(self.point_classes):
             conf = final_confidences[i].item()
             x, y = refined_coords[i].cpu().numpy()
             
-            if conf > confidence_threshold:
+            if conf >= threshold:
                 detected_points.append({
                     'class': class_name,
                     'coordinates': [float(x), float(y)],
@@ -702,7 +707,7 @@ class EnhancedCompatibilityPipeline(EnhancedProfileAnthropometricPipeline):
             summary_lines.append(f"{key}: {value}")
         return '\n'.join(summary_lines)
     
-    def analyze_image(self, image: np.ndarray, include_visualization: bool = True) -> Dict:
+    def analyze_image(self, image: np.ndarray, include_visualization: bool = True, confidence_threshold: float = 0.15) -> Dict:
         """Complete analysis pipeline with enhanced detection and original measurements"""
         logger.info("Analyzing profile image with enhanced pipeline...")
         
@@ -712,7 +717,7 @@ class EnhancedCompatibilityPipeline(EnhancedProfileAnthropometricPipeline):
         
         # Detect anthropometric points using enhanced pipeline (returns coords in 224x224 space)
         logger.info("Detecting anthropometric points with enhanced CNN + GNN...")
-        detected_points = self.detect_points(image_tensor)
+        detected_points = self.detect_points(image_tensor, confidence_threshold)
         
         # Filter spurious predictions (working in 224x224 space, same as original)
         logger.info("Filtering spurious predictions...")

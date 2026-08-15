@@ -139,6 +139,7 @@ async def health_check():
 async def analyze_profile_morphological(
     file: UploadFile = File(...),
     bbox_threshold: float = Form(0.5),
+    confidence_threshold: float = Form(0.5),
     include_visualization: bool = Form(True),
     save_results: bool = Form(True)
 ):
@@ -148,6 +149,7 @@ async def analyze_profile_morphological(
     Args:
         file: Input profile image
         bbox_threshold: Confidence threshold for bounding box detection
+        confidence_threshold: Minimum confidence for anthropometric point detection (not boxes)
         include_visualization: Whether to generate visualization
         save_results: Whether to save results to disk
     
@@ -178,6 +180,7 @@ async def analyze_profile_morphological(
         results = pipeline.analyze_image(
             image_path=str(temp_path),
             bbox_threshold=bbox_threshold,
+            confidence_threshold=confidence_threshold,
             save_result=False  # We'll handle visualization ourselves
         )
         
@@ -189,6 +192,7 @@ async def analyze_profile_morphological(
                 "total_classified_landmarks": len(results["landmark_classifications"]),
                 "total_anthropometric_points": len(results["anthropometric_points"]),
                 "bbox_threshold_used": bbox_threshold,
+                "confidence_threshold_used": confidence_threshold,
                 "profile_side": results.get("profile_side", "")
             },
             "detected_objects": [
@@ -443,7 +447,7 @@ async def detect_profile_points(
         original_image, image_tensor = pipeline.preprocess_image(str(temp_path))
         
         # Detect points (NO PROFILE PREDICTION RETURNED)
-        detected_points = pipeline.detect_points(image_tensor)
+        detected_points = pipeline.detect_points(image_tensor, confidence_threshold)
         
         # Prepare response
         response_data = {
