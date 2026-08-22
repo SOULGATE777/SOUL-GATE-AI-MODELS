@@ -152,6 +152,7 @@ async def preprocess_frontal(
     include_visualization: bool = Form(False),
     align_face: bool = Form(True),
     use_photoroom: bool = Form(False),
+    photoroom_bg_color: str = Form("white"),
 ):
     """
     Complete frontal preprocessing: detect heads, crop, resize and convert to base64
@@ -165,7 +166,8 @@ async def preprocess_frontal(
     - **quality**: JPEG quality 1-100 (default: 95)
     - **include_visualization**: Generate debug visualizations (default: false)
     - **align_face**: Align tilted faces to anatomical position (default: true)
-    - **use_photoroom**: Admin testing only — call Photoroom white-BG API (default: false / off)
+    - **use_photoroom**: Admin testing only — call Photoroom BG API (default: false / off)
+    - **photoroom_bg_color**: Allowlisted Photoroom bg (`white` or `#a6a6a6`; default white)
     """
 
     pipeline = get_pipeline()
@@ -213,6 +215,7 @@ async def preprocess_frontal(
             quality=quality,
             align_face=align_face,
             use_photoroom=use_photoroom,
+            photoroom_bg_color=photoroom_bg_color,
         )
 
         # Generate unique processing ID

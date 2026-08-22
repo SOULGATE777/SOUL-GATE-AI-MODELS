@@ -231,12 +231,13 @@ class ProfilePreprocessingPipeline:
                               rembg_model: Optional[str] = None,
                               silhouette_rect: Optional[Tuple[int, int, int, int]] = None,
                               use_photoroom: bool = False,
+                              photoroom_bg_color: str = "white",
                               ) -> Tuple[np.ndarray, bool]:
-        """Composite subject onto white via Photoroom Remove Background API.
+        """Composite subject onto bg via Photoroom Remove Background API.
 
         Signature keeps protect_rect / rembg_model / silhouette_rect for call-site
         compatibility; those rembg-era overrides are ignored (Photoroom returns a
-        finished white-BG RGB image). Fail-open on missing key / API errors.
+        finished RGB image). Fail-open on missing key / API errors.
 
         Args:
             image_rgb: HxWx3 uint8 RGB image (a face/head crop).
@@ -244,6 +245,7 @@ class ProfilePreprocessingPipeline:
             rembg_model: Ignored (legacy rembg model override).
             silhouette_rect: Ignored (legacy rembg silhouette restore).
             use_photoroom: When False (default), skip Photoroom and return image unchanged.
+            photoroom_bg_color: Photoroom bg_color (white or #a6a6a6; unknown → white).
 
         Returns:
             Tuple of (composited_or_original_image, white_bg_applied).
@@ -260,7 +262,9 @@ class ProfilePreprocessingPipeline:
             _REMBG_OVERRIDES_IGNORED_LOGGED = True
 
         try:
-            composited = photoroom_client.remove_background_white(image_rgb)
+            composited = photoroom_client.remove_background_white(
+                image_rgb, bg_color=photoroom_bg_color
+            )
             if composited is None:
                 return image_rgb, False
             return composited, True
@@ -336,6 +340,7 @@ class ProfilePreprocessingPipeline:
                               rembg_edge_margin_min_px: Optional[int] = None,
                               face_protect_core_frac: Optional[float] = None,
                               use_photoroom: bool = False,
+                              photoroom_bg_color: str = "white",
                               ) -> Tuple[np.ndarray, bool, bool]:
         """
         Crop face from image with padding and resize to target size while preserving proportions
@@ -351,6 +356,7 @@ class ProfilePreprocessingPipeline:
             rembg_edge_margin_min_px: Optional edge margin min px override
             face_protect_core_frac: Optional face-protect core half-extent override
             use_photoroom: When False (default), skip Photoroom API even if apply_white_bg
+            photoroom_bg_color: Photoroom bg_color (white or #a6a6a6; unknown → white)
             
         Returns:
             Tuple of (cropped and resized face image, white_bg_applied, illumination_enhanced)
@@ -375,6 +381,12 @@ class ProfilePreprocessingPipeline:
             face_protect_core_frac
             if face_protect_core_frac is not None
             else self.face_protect_core_frac
+        )
+        resolved_bg = photoroom_client.normalize_photoroom_bg_color(photoroom_bg_color)
+        fill_rgb = (
+            photoroom_client.bg_color_to_rgb(resolved_bg)
+            if (apply_white_bg and use_photoroom)
+            else (255, 255, 255)
         )
         
         h, w = image.shape[:2]
@@ -434,7 +446,7 @@ class ProfilePreprocessingPipeline:
 
         white_bg_applied = False
         if apply_white_bg and use_photoroom:
-            # White margin ring before Photoroom so the subject is never at the
+            # Color margin ring before Photoroom so the subject is never at the
             # tensor edge. Offset face-protect / silhouette rects by the same
             # margin (kwargs kept for call-site compat; Photoroom ignores them).
             margin = max(
@@ -443,7 +455,7 @@ class ProfilePreprocessingPipeline:
             )
             cropped_for_matte = cv2.copyMakeBorder(
                 cropped, margin, margin, margin, margin,
-                cv2.BORDER_CONSTANT, value=(255, 255, 255),
+                cv2.BORDER_CONSTANT, value=fill_rgb,
             )
             protect_for_matte = None
             if face_protect_rect is not None:
@@ -458,13 +470,14 @@ class ProfilePreprocessingPipeline:
                     sx1 + margin, sy1 + margin, sx2 + margin, sy2 + margin
                 )
 
-            # White-background clean (Photoroom); fail-open.
+            # Background clean (Photoroom); fail-open.
             matted, white_bg_applied = self.apply_white_background(
                 cropped_for_matte,
                 protect_rect=protect_for_matte,
                 rembg_model=resolved_rembg_model,
                 silhouette_rect=silhouette_for_matte,
                 use_photoroom=use_photoroom,
+                photoroom_bg_color=resolved_bg,
             )
             # Keep the margin (becomes letterbox whitespace) — do not trim back to
             # the pre-ring crop, or edge pixels would again sit on the frame.
@@ -479,8 +492,10 @@ class ProfilePreprocessingPipeline:
         new_h = int(crop_h * scale)
         resized = cv2.resize(matted, (new_w, new_h))
         
-        # Center in target size canvas with white letterbox
-        final_image = np.full((target_size[1], target_size[0], 3), 255, dtype=np.uint8)
+        # Center in target size canvas (match Photoroom bg when enabled)
+        final_image = np.full(
+            (target_size[1], target_size[0], 3), fill_rgb, dtype=np.uint8
+        )
         start_y = (target_size[1] - new_h) // 2
         start_x = (target_size[0] - new_w) // 2
         final_image[start_y:start_y + new_h, start_x:start_x + new_w] = resized
@@ -527,7 +542,8 @@ class ProfilePreprocessingPipeline:
                      rembg_edge_margin_frac: Optional[float] = None,
                      rembg_edge_margin_min_px: Optional[int] = None,
                      face_protect_core_frac: Optional[float] = None,
-                     use_photoroom: bool = False) -> Dict:
+                     use_photoroom: bool = False,
+                     photoroom_bg_color: str = "white") -> Dict:
         """
         Complete preprocessing pipeline: detect faces, crop, and convert to base64
 
@@ -545,6 +561,7 @@ class ProfilePreprocessingPipeline:
             rembg_edge_margin_min_px: Optional edge margin min px override
             face_protect_core_frac: Optional face-protect core half-extent override
             use_photoroom: Admin testing — call Photoroom when True (default False)
+            photoroom_bg_color: Photoroom bg_color (white or #a6a6a6; unknown → white)
 
         Returns:
             Dictionary with detection results and base64 encoded cropped faces
@@ -572,11 +589,13 @@ class ProfilePreprocessingPipeline:
             if face_protect_core_frac is not None
             else self.face_protect_core_frac
         )
+        resolved_bg = photoroom_client.normalize_photoroom_bg_color(photoroom_bg_color)
 
         effective_pipeline = {
             "rembg_model": resolved_rembg_model,
             "apply_white_bg": apply_white_bg,
             "use_photoroom": use_photoroom,
+            "photoroom_bg_color": resolved_bg,
             "rembg_edge_margin_frac": resolved_margin_frac,
             "rembg_edge_margin_min_px": resolved_margin_min,
             "face_protect_core_frac": resolved_core_frac,
@@ -590,7 +609,12 @@ class ProfilePreprocessingPipeline:
 
         if apply_rotation and self.rotation_aligner is not None:
             logger.info("Applying face rotation alignment...")
-            rotated_image, rotation_metadata = self.rotation_aligner.align_face(image)
+            rotated_image, rotation_metadata = self.rotation_aligner.align_face(
+                image,
+                border_value=photoroom_client.bg_color_to_rgb(resolved_bg)
+                if use_photoroom
+                else (255, 255, 255),
+            )
 
             if rotated_image is not None:
                 working_image = rotated_image
@@ -618,6 +642,7 @@ class ProfilePreprocessingPipeline:
                 rembg_edge_margin_min_px=resolved_margin_min,
                 face_protect_core_frac=resolved_core_frac,
                 use_photoroom=use_photoroom,
+                photoroom_bg_color=resolved_bg,
             )
 
             # Convert to base64

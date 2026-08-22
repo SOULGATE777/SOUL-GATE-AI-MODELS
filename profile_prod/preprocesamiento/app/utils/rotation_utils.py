@@ -219,8 +219,13 @@ class FaceRotationAligner:
 
         return rotation_angle
 
-    def rotate_image(self, image: np.ndarray, angle: float,
-                    center: Optional[Tuple[float, float]] = None) -> np.ndarray:
+    def rotate_image(
+        self,
+        image: np.ndarray,
+        angle: float,
+        center: Optional[Tuple[float, float]] = None,
+        border_value: Tuple[int, int, int] = (255, 255, 255),
+    ) -> np.ndarray:
         """
         Rotate image around a center point
 
@@ -228,6 +233,7 @@ class FaceRotationAligner:
             image: Input image
             angle: Rotation angle in degrees (positive = counter-clockwise)
             center: Center of rotation (if None, uses image center)
+            border_value: warpAffine fill (match Photoroom bg when gray)
 
         Returns:
             Rotated image
@@ -255,16 +261,21 @@ class FaceRotationAligner:
         rotated = cv2.warpAffine(image, rotation_matrix, (new_w, new_h),
                                  flags=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_CONSTANT,
-                                 borderValue=(255, 255, 255))
+                                 borderValue=border_value)
 
         return rotated
 
-    def align_face(self, image: np.ndarray) -> Tuple[Optional[np.ndarray], Dict]:
+    def align_face(
+        self,
+        image: np.ndarray,
+        border_value: Tuple[int, int, int] = (255, 255, 255),
+    ) -> Tuple[Optional[np.ndarray], Dict]:
         """
         Align face by detecting points 34 and 10 and rotating to make their vector vertical
 
         Args:
             image: Input image in RGB format
+            border_value: warpAffine fill (match Photoroom bg when gray)
 
         Returns:
             Tuple of (rotated_image, metadata_dict)
@@ -326,7 +337,9 @@ class FaceRotationAligner:
             )
 
             # Rotate image
-            rotated_image = self.rotate_image(image, rotation_angle, center)
+            rotated_image = self.rotate_image(
+                image, rotation_angle, center, border_value=border_value
+            )
 
             metadata['rotation_applied'] = True
             metadata['rotation_center'] = list(center)  # Convert tuple to list

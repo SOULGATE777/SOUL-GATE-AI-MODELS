@@ -182,6 +182,7 @@ async def preprocess_profile(
     apply_rotation: bool = Form(True),
     apply_white_bg: bool = Form(True),
     use_photoroom: bool = Form(False),
+    photoroom_bg_color: str = Form("white"),
     rembg_model: Optional[str] = Form(None),
     rembg_edge_margin_frac: Optional[float] = Form(None),
     rembg_edge_margin_min_px: Optional[int] = Form(None),
@@ -200,7 +201,8 @@ async def preprocess_profile(
     - **include_visualization**: Generate debug visualizations (default: false)
     - **apply_rotation**: Apply face rotation alignment using points 34 and 10 (default: true)
     - **apply_white_bg**: Apply white-background cleaning when enabled (default: true)
-    - **use_photoroom**: Admin testing only — call Photoroom white-BG API (default: false / off)
+    - **use_photoroom**: Admin testing only — call Photoroom BG API (default: false / off)
+    - **photoroom_bg_color**: Allowlisted Photoroom bg (`white` or `#a6a6a6`; default white)
     - **rembg_model**: Legacy Form override (accepted for admin compat; ignored — white-BG uses Photoroom)
     - **rembg_edge_margin_frac**: White-ring edge margin fraction before white-BG (0.0-0.25; None = default)
     - **rembg_edge_margin_min_px**: White-ring edge margin min pixels (0-64; None = default)
@@ -260,6 +262,7 @@ async def preprocess_profile(
             apply_rotation=apply_rotation,
             apply_white_bg=apply_white_bg,
             use_photoroom=use_photoroom,
+            photoroom_bg_color=photoroom_bg_color,
             rembg_model=rembg_model,
             rembg_edge_margin_frac=rembg_edge_margin_frac,
             rembg_edge_margin_min_px=rembg_edge_margin_min_px,

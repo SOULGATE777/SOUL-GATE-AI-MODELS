@@ -1,20 +1,22 @@
-"""Photoroom Remove Background API client (white-BG).
+"""Photoroom Remove Background API client (solid BG).
 
 Keep in sync with the twin copy in the other preprocess service
 (profile_prod/preprocesamiento and frontal_prod/preprocesamiento).
 
 Privacy: face/head crops are sent to Photoroom (third-party egress) when
-white-BG runs — accepted product risk; ops must cover DPA/retention.
+BG removal runs — accepted product risk; ops must cover DPA/retention.
 
 Fail-open: returns None on missing key, non-200, or any exception.
 Never logs the API key or raw response body.
+
+bg_color allowlist: white | #a6a6a6 (admin Analysis Testing gray).
 """
 from __future__ import annotations
 
 import io
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 import cv2
@@ -28,6 +30,33 @@ logger = logging.getLogger(__name__)
 PHOTOROOM_API_URL = "https://sdk.photoroom.com/v1/segment"
 ALLOWED_PHOTOROOM_API_URL = PHOTOROOM_API_URL
 REQUEST_TIMEOUT_SEC = 30
+
+# Photoroom form bg_color values we accept from callers (gateway / admin testing).
+_ALLOWED_BG = {
+    "white": "white",
+    "#ffffff": "white",
+    "#a6a6a6": "#a6a6a6",
+}
+WHITE_BG_RGB: Tuple[int, int, int] = (255, 255, 255)
+GRAY_BG_RGB: Tuple[int, int, int] = (166, 166, 166)
+
+
+def normalize_photoroom_bg_color(raw: Optional[str]) -> str:
+    """Return allowlisted Photoroom bg_color; unknown/empty → white."""
+    if raw is None:
+        return "white"
+    key = str(raw).strip().lower()
+    if not key:
+        return "white"
+    return _ALLOWED_BG.get(key, "white")
+
+
+def bg_color_to_rgb(bg_color: Optional[str]) -> Tuple[int, int, int]:
+    """RGB tuple for margin/letterbox fills matching Photoroom bg_color."""
+    normalized = normalize_photoroom_bg_color(bg_color)
+    if normalized == "#a6a6a6":
+        return GRAY_BG_RGB
+    return WHITE_BG_RGB
 
 
 def is_configured() -> bool:
@@ -53,11 +82,14 @@ def _resolved_api_url() -> Optional[str]:
     return ALLOWED_PHOTOROOM_API_URL
 
 
-def remove_background_white(image_rgb: np.ndarray) -> Optional[np.ndarray]:
+def remove_background_white(
+    image_rgb: np.ndarray, bg_color: str = "white"
+) -> Optional[np.ndarray]:
     """
-    Call Photoroom segment API with bg_color=white; return RGB uint8 or None.
+    Call Photoroom segment API with allowlisted bg_color; return RGB uint8 or None.
 
     Resizes output to input HxW when dimensions differ. Fail-open on errors.
+    Default bg_color is white (platform); admin testing may pass #a6a6a6.
     """
     if image_rgb is None or not isinstance(image_rgb, np.ndarray):
         logger.warning("Photoroom: invalid image input; skipping")
@@ -75,6 +107,7 @@ def remove_background_white(image_rgb: np.ndarray) -> Optional[np.ndarray]:
     if api_url is None:
         return None
 
+    resolved_bg = normalize_photoroom_bg_color(bg_color)
     h, w = image_rgb.shape[:2]
 
     try:
@@ -85,7 +118,7 @@ def remove_background_white(image_rgb: np.ndarray) -> Optional[np.ndarray]:
 
         files = {"image_file": ("image.png", buf, "image/png")}
         data = {
-            "bg_color": "white",
+            "bg_color": resolved_bg,
             "format": "png",
             "size": "full",
         }

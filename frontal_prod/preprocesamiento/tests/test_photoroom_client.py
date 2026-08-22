@@ -90,3 +90,36 @@ def test_remove_background_white_resizes_mismatched_output(monkeypatch):
 
     assert out is not None
     assert out.shape == (20, 30, 3)
+
+
+def test_normalize_photoroom_bg_color_allowlist():
+    assert photoroom_client.normalize_photoroom_bg_color(None) == "white"
+    assert photoroom_client.normalize_photoroom_bg_color("") == "white"
+    assert photoroom_client.normalize_photoroom_bg_color("WHITE") == "white"
+    assert photoroom_client.normalize_photoroom_bg_color("#FFFFFF") == "white"
+    assert photoroom_client.normalize_photoroom_bg_color("#a6a6a6") == "#a6a6a6"
+    assert photoroom_client.normalize_photoroom_bg_color("#A6A6A6") == "#a6a6a6"
+    assert photoroom_client.normalize_photoroom_bg_color("red") == "white"
+    assert photoroom_client.normalize_photoroom_bg_color("#ff0000") == "white"
+
+
+def test_bg_color_to_rgb():
+    assert photoroom_client.bg_color_to_rgb("white") == (255, 255, 255)
+    assert photoroom_client.bg_color_to_rgb("#a6a6a6") == (166, 166, 166)
+    assert photoroom_client.bg_color_to_rgb("nope") == (255, 255, 255)
+
+
+def test_remove_background_white_posts_gray_bg_color(monkeypatch):
+    monkeypatch.setenv("PHOTOROOM_API_KEY", "test-key")
+    monkeypatch.delenv("PHOTOROOM_API_URL", raising=False)
+    image = np.full((8, 8, 3), 40, dtype=np.uint8)
+    gray_bgr = np.full((8, 8, 3), 166, dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", gray_bgr)
+    assert ok
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = buf.tobytes()
+    with patch.object(photoroom_client.requests, "post", return_value=mock_resp) as post:
+        out = photoroom_client.remove_background_white(image, bg_color="#a6a6a6")
+    assert out is not None
+    assert post.call_args.kwargs["data"]["bg_color"] == "#a6a6a6"

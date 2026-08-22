@@ -9,7 +9,11 @@ import mediapipe as mp
 from PIL import Image
 
 from ..utils.image_processing import WHITE_BG, maybe_enhance_dark
-from ..utils.photoroom_client import remove_background_white
+from ..utils.photoroom_client import (
+    bg_color_to_rgb,
+    normalize_photoroom_bg_color,
+    remove_background_white,
+)
 from ..utils.rotation_policy import MAX_ABS_ROTATION_DEG, should_skip_rotation
 
 logger = logging.getLogger(__name__)
@@ -93,13 +97,14 @@ class FrontalPreprocessingPipeline:
             logger.info("MediaPipe Face Mesh initialized for alignment")
 
     def apply_white_background(self, image_rgb: np.ndarray,
-                              use_photoroom: bool = False) -> Tuple[np.ndarray, bool]:
+                              use_photoroom: bool = False,
+                              photoroom_bg_color: str = "white") -> Tuple[np.ndarray, bool]:
         """
-        Replace background with white via Photoroom Remove Background API.
+        Replace background via Photoroom Remove Background API.
 
-        Photoroom returns a finished white-BG RGB image (bg_color=white).
-        Fail-open on missing key, HTTP errors, or exceptions.
-        When use_photoroom is False (default), skip the API and return unchanged.
+        Photoroom returns a finished RGB image with the requested bg_color
+        (allowlisted: white or #a6a6a6). Fail-open on missing key, HTTP errors,
+        or exceptions. When use_photoroom is False (default), skip the API.
 
         Returns:
             Tuple of (composited_or_original_image, success)
@@ -108,7 +113,9 @@ class FrontalPreprocessingPipeline:
             return image_rgb, False
 
         try:
-            result = remove_background_white(image_rgb)
+            result = remove_background_white(
+                image_rgb, bg_color=photoroom_bg_color
+            )
             if result is None:
                 return image_rgb, False
             return result, True
@@ -173,12 +180,17 @@ class FrontalPreprocessingPipeline:
 
         return angle_deg
 
-    def align_face(self, image: np.ndarray) -> Tuple[np.ndarray, Dict]:
+    def align_face(
+        self,
+        image: np.ndarray,
+        fill_rgb: Tuple[int, int, int] = WHITE_BG,
+    ) -> Tuple[np.ndarray, Dict]:
         """
         Align tilted face to anatomical position based on eye landmarks
 
         Args:
             image: Input image in RGB format
+            fill_rgb: warpAffine border fill (match Photoroom bg when gray)
 
         Returns:
             Tuple of (aligned_image, alignment_metadata)
@@ -229,7 +241,7 @@ class FrontalPreprocessingPipeline:
         aligned_image = cv2.warpAffine(image, rotation_matrix, (w, h),
                                        flags=cv2.INTER_LINEAR,
                                        borderMode=cv2.BORDER_CONSTANT,
-                                       borderValue=WHITE_BG)
+                                       borderValue=fill_rgb)
 
         metadata['was_aligned'] = True
         metadata['alignment_applied'] = True
@@ -317,7 +329,8 @@ class FrontalPreprocessingPipeline:
     def crop_head_with_padding(self, image: np.ndarray, bbox: List[float],
                               target_size: Tuple[int, int] = None,
                               padding_factor: float = None,
-                              use_photoroom: bool = False) -> Tuple[np.ndarray, bool, bool]:
+                              use_photoroom: bool = False,
+                              photoroom_bg_color: str = "white") -> Tuple[np.ndarray, bool, bool]:
         """
         Crop cranium from image with padding and resize to target size while preserving proportions
 
@@ -327,6 +340,7 @@ class FrontalPreprocessingPipeline:
             target_size: Target output size (width, height)
             padding_factor: Padding factor around the bounding box
             use_photoroom: When True, call Photoroom white-BG (admin testing only)
+            photoroom_bg_color: Photoroom bg_color (white or #a6a6a6; unknown → white)
 
         Returns:
             Tuple of (cropped and resized cranium image, white_bg_applied, illumination_enhanced)
@@ -335,6 +349,9 @@ class FrontalPreprocessingPipeline:
             target_size = self.default_target_size
         if padding_factor is None:
             padding_factor = self.default_padding_factor
+
+        resolved_bg = normalize_photoroom_bg_color(photoroom_bg_color)
+        fill_rgb = bg_color_to_rgb(resolved_bg) if use_photoroom else (255, 255, 255)
 
         h, w = image.shape[:2]
         x1, y1, x2, y2 = bbox
@@ -365,10 +382,12 @@ class FrontalPreprocessingPipeline:
             )
             cropped_for_matte = cv2.copyMakeBorder(
                 cropped, margin, margin, margin, margin,
-                cv2.BORDER_CONSTANT, value=(255, 255, 255),
+                cv2.BORDER_CONSTANT, value=fill_rgb,
             )
             cropped, white_bg_applied = self.apply_white_background(
-                cropped_for_matte, use_photoroom=True
+                cropped_for_matte,
+                use_photoroom=True,
+                photoroom_bg_color=resolved_bg,
             )
         crop_h, crop_w = cropped.shape[:2]
 
@@ -378,8 +397,10 @@ class FrontalPreprocessingPipeline:
         new_h = int(crop_h * scale)
         resized = cv2.resize(cropped, (new_w, new_h))
 
-        # Center in target size canvas with white background
-        final_image = np.full((target_size[1], target_size[0], 3), 255, dtype=np.uint8)
+        # Center in target size canvas (match Photoroom bg when enabled)
+        final_image = np.full(
+            (target_size[1], target_size[0], 3), fill_rgb, dtype=np.uint8
+        )
         start_y = (target_size[1] - new_h) // 2
         start_x = (target_size[0] - new_w) // 2
         final_image[start_y:start_y + new_h, start_x:start_x + new_w] = resized
@@ -421,7 +442,8 @@ class FrontalPreprocessingPipeline:
                      output_format: str = 'JPEG',
                      quality: int = 95,
                      align_face: bool = True,
-                     use_photoroom: bool = False) -> Dict:
+                     use_photoroom: bool = False,
+                     photoroom_bg_color: str = "white") -> Dict:
         """
         Complete preprocessing pipeline: detect cranium, crop, and convert to base64
 
@@ -434,6 +456,7 @@ class FrontalPreprocessingPipeline:
             quality: JPEG quality (1-100)
             align_face: Whether to align tilted faces (default: True)
             use_photoroom: Admin testing — call Photoroom when True (default False)
+            photoroom_bg_color: Photoroom bg_color (white or #a6a6a6; unknown → white)
 
         Returns:
             Dictionary with detection results and base64 encoded cropped cranium
@@ -445,11 +468,18 @@ class FrontalPreprocessingPipeline:
         if padding_factor is None:
             padding_factor = self.default_padding_factor
 
+        resolved_bg = normalize_photoroom_bg_color(photoroom_bg_color)
+        align_fill = (
+            bg_color_to_rgb(resolved_bg) if use_photoroom else WHITE_BG
+        )
+
         # Step 1: Align face if requested
         alignment_metadata = None
         working_image = image
         if align_face:
-            working_image, alignment_metadata = self.align_face(image)
+            working_image, alignment_metadata = self.align_face(
+                image, fill_rgb=align_fill
+            )
         else:
             logger.info("Face alignment disabled by parameter")
 
@@ -463,6 +493,7 @@ class FrontalPreprocessingPipeline:
             cropped_cranium, white_bg_applied, illumination_enhanced = self.crop_head_with_padding(
                 working_image, detection['bbox'], target_size, padding_factor,
                 use_photoroom=use_photoroom,
+                photoroom_bg_color=resolved_bg,
             )
 
             # Convert to base64
@@ -495,6 +526,7 @@ class FrontalPreprocessingPipeline:
                 'quality': quality,
                 'align_face': align_face,
                 'use_photoroom': use_photoroom,
+                'photoroom_bg_color': resolved_bg,
             }
         }
 
