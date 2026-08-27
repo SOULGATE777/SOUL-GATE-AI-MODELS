@@ -121,6 +121,9 @@ def remove_background_white(
             "bg_color": resolved_bg,
             "format": "png",
             "size": "full",
+            # Tighten output to subject bounds so letterboxing to 600x600
+            # does not shrink the face vs keeping the full input canvas.
+            "crop": "true",
         }
         headers = {"x-api-key": api_key.strip()}
 

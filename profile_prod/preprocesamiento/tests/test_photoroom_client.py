@@ -48,6 +48,7 @@ def test_remove_background_white_http_error_fail_open(monkeypatch):
         assert kwargs["verify"] is True
         assert kwargs["allow_redirects"] is False
         assert kwargs["data"]["size"] == "full"
+        assert kwargs["data"]["crop"] == "true"
 
 
 def test_remove_background_white_success_decodes_png(monkeypatch):
