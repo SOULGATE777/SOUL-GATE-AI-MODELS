@@ -201,7 +201,7 @@ async def preprocess_profile(
     - **include_visualization**: Generate debug visualizations (default: false)
     - **apply_rotation**: Apply face rotation alignment using points 34 and 10 (default: true)
     - **apply_white_bg**: Apply white-background cleaning when enabled (default: true)
-    - **use_photoroom**: Admin testing only — call Photoroom BG API (default: false / off)
+    - **use_photoroom**: When true, call Photoroom BG API (default: false). Production gateway may force true for profile with gray `#a6a6a6`.
     - **photoroom_bg_color**: Allowlisted Photoroom bg (`white` or `#a6a6a6`; default white)
     - **rembg_model**: Legacy Form override (accepted for admin compat; ignored — white-BG uses Photoroom)
     - **rembg_edge_margin_frac**: White-ring edge margin fraction before white-BG (0.0-0.25; None = default)
