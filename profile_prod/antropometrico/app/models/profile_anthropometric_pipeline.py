@@ -273,9 +273,9 @@ class ProfileAnthropometricPipeline:
             print(f"Proportion between points 18 and 17: {normalized_distance_18_17:.3f}")
             
             # Classify nose
-            if normalized_distance_18_17 > 0.185:
+            if normalized_distance_18_17 > 0.195:
                 nose_label = "nariz protruyente"
-            elif 0.16 <= normalized_distance_18_17 <= 0.185:
+            elif 0.16 <= normalized_distance_18_17 <= 0.195:
                 nose_label = "nariz normal"
             else:
                 nose_label = "nariz corta"
@@ -331,14 +331,10 @@ class ProfileAnthropometricPipeline:
                 print(f"Mandible proportion to lower third: {normalized_distance_3_9:.3f}")
                 
                 # Classify mandibula
-                if normalized_distance_3_9 >= 0.8:
+                if normalized_distance_3_9 >= 0.775:
                     mandibula_label = "Mandibula Sanguinea"
-                elif 0.75 <= normalized_distance_3_9 < 0.8:
-                    mandibula_label = "Mandibula intermedia sanguineo/bilosa"
-                elif 0.40 <= normalized_distance_3_9 < 0.75:
+                elif 0.35 <= normalized_distance_3_9 < 0.775:
                     mandibula_label = "Mandibula Bilosa"
-                elif 0.35 <= normalized_distance_3_9 < 0.40:
-                    mandibula_label = "Mandibula intermedia bilosa/nerviosa"
                 elif normalized_distance_3_9 < 0.35:
                     mandibula_label = "Mandibula Nerviosa"
                 else:
@@ -373,9 +369,9 @@ class ProfileAnthropometricPipeline:
             print(f"Ear length proportion: {ear_length_proportion:.3f}")
             
             # Classify ear length
-            if ear_length_proportion > 0.432:
+            if ear_length_proportion > 0.4325:
                 ear_length_label = "oreja larga"
-            elif 0.38 <= ear_length_proportion <= 0.432:
+            elif 0.38 <= ear_length_proportion <= 0.4325:
                 ear_length_label = "oreja normal"
             else:  # <= 0.38
                 ear_length_label = "oreja corta"
@@ -403,9 +399,9 @@ class ProfileAnthropometricPipeline:
             # Classify ear lobe
             if ear_lobe_proportion > 0.31:
                 ear_lobe_label = "lobulo grande"
-            elif 0.28 <= ear_lobe_proportion <= 0.31:
+            elif 0.23 <= ear_lobe_proportion <= 0.31:
                 ear_lobe_label = "lobulo normal"
-            else:  # < 0.28
+            else:  # < 0.23
                 ear_lobe_label = "lobulo chico"
             
             measurements['ear_lobe_classification'] = ear_lobe_label
@@ -605,11 +601,9 @@ class ProfileAnthropometricPipeline:
             print(f"Forehead angle (24-33): {angle_degrees:.2f} degrees")
             
             # Classify forehead using np.select logic from original
-            if angle_degrees > 15:
+            if angle_degrees > 22:
                 forehead_label = 'frente inclinada hacia atras'
-            elif 11 <= angle_degrees <= 15:
-                forehead_label = 'frente neutra'
-            else:  # < 11
+            else:  # <= 22
                 forehead_label = 'frente vertical'
             
             measurements['forehead_classification'] = forehead_label
@@ -652,9 +646,9 @@ class ProfileAnthropometricPipeline:
             print(f"Chin angle (18-11): {angle_degrees:.2f} degrees")
             
             # Classify chin using the exact logic from your original code
-            if angle_degrees <= -4:
+            if angle_degrees <= -4.5:
                 chin_label = 'menton nervioso'
-            elif -4 < angle_degrees <= 5.5:
+            elif -4.5 < angle_degrees <= 5.5:
                 chin_label = 'menton biloso/linfatico'
             else:  # > 5.5
                 chin_label = 'menton sanguineo'
@@ -734,9 +728,11 @@ class ProfileAnthropometricPipeline:
             if eye_protrusion_classification_results[0] is not None:
                 eye_protrusion_distance, eye_protrusion_classification = eye_protrusion_classification_results
                 measurements['eye_protrusion_distance'] = eye_protrusion_distance
-                measurements['eye_protrusion_classification'] = eye_protrusion_classification
+                if eye_protrusion_classification:
+                    measurements['eye_protrusion_classification'] = eye_protrusion_classification
                 print(f"Eye protrusion distance from orbital plane: {eye_protrusion_distance:.2f} pixels")
-                print(f"Eye protrusion classification: {eye_protrusion_classification}")
+                if eye_protrusion_classification:
+                    print(f"Eye protrusion classification: {eye_protrusion_classification}")
         
         # Implantation angles with head direction consideration
         if all([point_24, point_18, point_4, point_5, point_1, point_3]):
@@ -1049,8 +1045,13 @@ class ProfileAnthropometricPipeline:
         print(f"X difference (cornea - orbital plane): {x_difference:.2f}")
         print(f"Protrusion distance (profile-aware): {protrusion_distance:.2f} pixels")
 
+        # Thresholds apply only to the left profile.
+        if head_direction != 'left':
+            print("Eye protrusion classification skipped: thresholds apply only to the left profile")
+            return protrusion_distance, None
+
         # Classification based on protrusion distance
-        # New thresholds: positive > 0, nula between -3 and 0, negativa < -3
+        # Thresholds: positive > 0, nula between -3 and 0, negativa < -3
         if protrusion_distance > 0:
             classification = "protusion positiva"
             print(f"Classification: PROTUSION POSITIVA (cornea extends {protrusion_distance:.2f} pixels beyond orbital plane)")

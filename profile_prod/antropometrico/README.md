@@ -73,7 +73,7 @@ POST /analyze-profile-anthropometric
     "reference_distance": 156.2,
     "nose_classification": "nariz normal",
     "mandibula_classification": "Mandibula Sanguinea",
-    "forehead_classification": "frente neutra",
+    "forehead_classification": "frente vertical",
     "chin_classification": "menton biloso/linfatico",
     "ear_length_classification": "oreja normal",
     "nasal_triangulation_classification": "sin triangulacion de fosa"
@@ -195,8 +195,8 @@ nasal_proportion = nasal_protrusion_distance / reference_distance
 ```
 
 **Classifications:**
-- **nariz protruyente** (protruding nose): proportion > 0.185
-- **nariz normal** (normal nose): 0.16 ≤ proportion ≤ 0.185
+- **nariz protruyente** (protruding nose): proportion > 0.195
+- **nariz normal** (normal nose): 0.16 ≤ proportion ≤ 0.195
 - **nariz corta** (short nose): proportion < 0.16
 
 #### 2.2 Nasal Tip Angle (Points 18 to 17)
@@ -282,10 +282,8 @@ mandibular_proportion = mandibular_distance / inferior_third_distance
 ```
 
 **Classifications:**
-- **Mandibula Sanguinea** (sanguine mandible): proportion ≥ 0.8 (wide, robust jaw)
-- **Mandibula intermedia sanguineo/bilosa** (intermediate sanguine/bilious): 0.75 ≤ proportion < 0.8
-- **Mandibula Bilosa** (bilious mandible): 0.40 ≤ proportion < 0.75 (moderate jaw)
-- **Mandibula intermedia bilosa/nerviosa** (intermediate bilious/nervous): 0.35 ≤ proportion < 0.40
+- **Mandibula Sanguinea** (sanguine mandible): proportion ≥ 0.775 (wide, robust jaw)
+- **Mandibula Bilosa** (bilious mandible): 0.35 ≤ proportion < 0.775 (moderate jaw)
 - **Mandibula Nerviosa** (nervous mandible): proportion < 0.35 (narrow, delicate jaw)
 - **Mandibula Linfatica** (lymphatic mandible): classification when point 9 is not detected (indicates very recessed mandibular angle)
 
@@ -363,9 +361,8 @@ angle = arccos(clip(dot(v1, v2), -1, 1)) * (180/π)
 ```
 
 **Classification Thresholds:**
-- **frente inclinada hacia atras** (reclined forehead): angle > 15 degrees
-- **frente neutra** (neutral forehead): 11 ≤ angle ≤ 15 degrees
-- **frente vertical** (vertical forehead): angle < 11 degrees
+- **frente inclinada hacia atras** (reclined forehead): angle > 22 degrees
+- **frente vertical** (vertical forehead): angle ≤ 22 degrees
 
 #### 5.3 Chin Angle Calculation (Points 18 to 11)
 Measures the projection angle of the chin relative to the facial reference line for constitutional classification.
@@ -394,8 +391,8 @@ if angle < -90: angle = 180 + angle
 ```
 
 **Classification Thresholds:**
-- **menton nervioso** (receding chin): angle ≤ -4 degrees
-- **menton biloso/linfatico** (neutral chin): -4 < angle ≤ 5.5 degrees
+- **menton nervioso** (receding chin): angle ≤ -4.5 degrees
+- **menton biloso/linfatico** (neutral chin): -4.5 < angle ≤ 5.5 degrees
 - **menton sanguineo** (protruding chin): angle > 5.5 degrees
 
 #### 5.4 Ear Implantation Angular Analysis
@@ -491,10 +488,12 @@ protrusion_distance = -x_difference if head_direction == 'right' else x_differen
 - Near-zero protrusion distance: Cornea aligns with the orbital plane (normal eye position)
 - Negative protrusion distance: Cornea recedes behind the orbital plane (deep-set eyes)
 
-**Classifications:**
+**Classifications (left profile only):**
 - **protusion positiva** (positive protrusion): protrusion_distance > 0 pixels (eye protrudes beyond orbital plane)
 - **protusion nula** (no protrusion): -3 ≤ protrusion_distance ≤ 0 pixels (eye aligned with orbital plane)
 - **protusion negativa** (negative protrusion): protrusion_distance < -3 pixels (deep-set eye, recessed behind orbital plane)
+
+The right profile still computes the signed distance. It does not receive `eye_protrusion_classification`.
 
 ##### 5.5.3 Angular Analysis (Vectors 39-37 and 38-37)
 Supplementary measurement calculating the opening angle of the eye structure.
@@ -535,8 +534,8 @@ ear_proportion = ear_length / reference_distance
 ```
 
 **Classifications:**
-- **oreja larga** (long ear): proportion > 0.432 (ear exceeds 43.2% of facial height)
-- **oreja normal** (normal ear): 0.38 ≤ proportion ≤ 0.432 (ear is 38-43.2% of facial height)
+- **oreja larga** (long ear): proportion > 0.4325 (ear exceeds 43.25% of facial height)
+- **oreja normal** (normal ear): 0.38 ≤ proportion ≤ 0.4325 (ear is 38-43.25% of facial height)
 - **oreja corta** (short ear): proportion < 0.38 (ear less than 38% of facial height)
 
 #### 6.3 Ear Lobe Length (Points 3 to 5)
@@ -555,8 +554,8 @@ lobe_proportion = lobe_length / ear_length
 
 **Classifications:**
 - **lobulo grande** (large lobe): proportion > 0.31 (lobe exceeds 31% of ear length)
-- **lobulo normal** (normal lobe): 0.28 ≤ proportion ≤ 0.31 (lobe is 28-31% of ear length)
-- **lobulo chico** (small lobe): proportion < 0.28 (lobe less than 28% of ear length)
+- **lobulo normal** (normal lobe): 0.23 ≤ proportion ≤ 0.31 (lobe is 23-31% of ear length)
+- **lobulo chico** (small lobe): proportion < 0.23 (lobe less than 23% of ear length)
 
 #### 6.4 Tragus-Antitragus Distance (Points 7 to 8)
 Measures the distance between tragus and antitragus cartilage structures relative to ear width.
@@ -611,14 +610,14 @@ This section provides a quick reference table of all measurements, their point d
 | Measurement | Points Used | Normalization | Thresholds | Classifications |
 |------------|-------------|---------------|------------|-----------------|
 | **Reference Distance** | 24-10 | None (baseline) | N/A | Primary scaling factor for all proportional measurements |
-| **Nasal Protrusion** | 18-17 | Divide by reference distance | > 0.185<br>0.16-0.185<br>< 0.16 | nariz protruyente<br>nariz normal<br>nariz corta |
+| **Nasal Protrusion** | 18-17 | Divide by reference distance | > 0.195<br>0.16-0.195<br>< 0.16 | nariz protruyente<br>nariz normal<br>nariz corta |
 | **Superior Third** | 34-22 | Divide by reference distance | N/A | tercio superior (proportional measurement) |
 | **Middle Third** | 22-18 | Divide by reference distance | N/A | tercio medio (proportional measurement) |
 | **Inferior Third** | 18-10 | Divide by reference distance | N/A | tercio inferior (proportional measurement) |
-| **Mandibular Width** | 3-9 | Divide by inferior third | ≥ 0.8<br>0.75-0.8<br>0.40-0.75<br>0.35-0.40<br>< 0.35<br>Point 9 missing | Mandibula Sanguinea<br>Mandibula intermedia sanguineo/bilosa<br>Mandibula Bilosa<br>Mandibula intermedia bilosa/nerviosa<br>Mandibula Nerviosa<br>Mandibula Linfatica |
+| **Mandibular Width** | 3-9 | Divide by inferior third | ≥ 0.775<br>0.35-0.775<br>< 0.35<br>Point 9 missing | Mandibula Sanguinea<br>Mandibula Bilosa<br>Mandibula Nerviosa<br>Mandibula Linfatica |
 | **Ear Width** | 2-6 | None | N/A | Used as baseline for tragus-antitragus proportion |
-| **Ear Length** | 4-5 | Divide by reference distance | > 0.432<br>0.38-0.432<br>< 0.38 | oreja larga<br>oreja normal<br>oreja corta |
-| **Ear Lobe Length** | 3-5 | Divide by ear length (4-5) | > 0.31<br>0.28-0.31<br>< 0.28 | lobulo grande<br>lobulo normal<br>lobulo chico |
+| **Ear Length** | 4-5 | Divide by reference distance | > 0.4325<br>0.38-0.4325<br>< 0.38 | oreja larga<br>oreja normal<br>oreja corta |
+| **Ear Lobe Length** | 3-5 | Divide by ear length (4-5) | > 0.31<br>0.23-0.31<br>< 0.23 | lobulo grande<br>lobulo normal<br>lobulo chico |
 | **Tragus-Antitragus** | 7-8 | Divide by ear width (2-6) | ≥ 0.255<br>0.22-0.255<br>< 0.22 | grande<br>normal<br>corta |
 | **Nasal Triangulation** | 26-17 | Divide by nose reference (18-30) | > 0.27<br>≤ 0.27 | triangulacion de fosa<br>sin triangulacion de fosa |
 
@@ -628,8 +627,8 @@ This section provides a quick reference table of all measurements, their point d
 |------------|-------------|------------------|-------------|------------|-----------------|
 | **Nasal Tip Angle** | 18-17 | 24-18 (perpendicular) | -90° to +90° | ≥ 26°<br>4° to 26°<br>< 4° | punta de nariz hacia arriba<br>punta de nariz promedio<br>punta hacia abajo |
 | **Nasal Dorsum Slope** | 19-17 | N/A (slope calculation) | N/A | N/A | Provides slope angle for nasal bridge assessment |
-| **Forehead Angle** | 24-33 | 24-18 | 0° to 90° | > 15°<br>11° to 15°<br>< 11° | frente inclinada hacia atras<br>frente neutra<br>frente vertical |
-| **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4°<br>-4° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
+| **Forehead Angle** | 24-33 | 24-18 | 0° to 90° | > 22°<br>≤ 22° | frente inclinada hacia atras<br>frente vertical |
+| **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4.5°<br>-4.5° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
 | **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | 10° to 170°<br>> 170° or < 10° | implantacion alta<br>implantacion estandard |
 | **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | ≥ 170° or ≤ 10°<br>10° < angle < 170° | implantacion baja<br>implantacion estandard |
 | **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 90° | < 20°<br>≥ 20° | normal mandible angle<br>forward mandible angle |
@@ -640,7 +639,7 @@ This section provides a quick reference table of all measurements, their point d
 
 | Measurement | Points Used | Method | Tolerance | Classifications |
 |------------|-------------|--------|-----------|-----------------|
-| **Eye Protrusion Distance** | 37-39-38 | X-coordinate comparison from cornea (38) to orbital plane line (37-39) | Range: -3 to 0 | > 0 px: protusion positiva<br>-3 to 0 px: protusion nula<br>< -3 px: protusion negativa |
+| **Eye Protrusion Distance** | 37-39-38 | X-coordinate comparison from cornea (38) to orbital plane line (37-39). Labels only on the left profile. | Range: -3 to 0 | > 0 px: protusion positiva<br>-3 to 0 px: protusion nula<br>< -3 px: protusion negativa |
 
 ### Profile Direction Determination
 
