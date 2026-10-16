@@ -10,8 +10,12 @@ Pillow==10.0.1
 # InsightFace and deep learning dependencies
 insightface==0.7.3
 onnxruntime==1.16.0
-torch==2.1.0
-torchvision==0.16.0
+# Deep Learning: torch + torchvision are provided by
+# FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+# Do NOT pin torch/torchvision/torchaudio here — pip would re-download multi-GB CUDA nvidia-* wheels
+# and fill the disk (Errno 28) on constrained EC2 hosts.
+# torch==2.1.0
+# torchvision==0.16.0
 
 # Visualization and plotting
 matplotlib==3.7.2

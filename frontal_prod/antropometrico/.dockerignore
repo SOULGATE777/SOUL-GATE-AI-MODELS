@@ -1,45 +1,50 @@
-# Git files
+# Git / VCS
 .git
 .gitignore
 .gitattributes
 
-# Documentation
-README.md
-*.md
+# Runtime output (compose volume)
+results/
+results/**
 
-# Python cache
+# Model weights (compose mounts ./models:ro — keep .gitkeep if present)
+models/*.pth
+models/*.pt
+models/*.onnx
+models/*.ckpt
+models/*.dat
+
+# Agent / IDE / test / cache
+.agents/
+.pytest_cache/
+tests/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .Python
+*.egg-info/
+.eggs/
 
-# Virtual environments
-venv/
-env/
-.venv/
+# Docs / dev metadata
+*.md
+skills-lock.json
 
-# IDE files
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
+# Logs / temp
 *.log
-
-# Temporary files
 *.tmp
 *.temp
-
-# Test files
-tests/
-test_*
-
-# Development files
-.env.local
-.env.development
+temp/
+tmp/

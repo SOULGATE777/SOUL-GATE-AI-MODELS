@@ -3,10 +3,10 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
-# Deep Learning
-torch==2.1.0
-torchvision==0.16.0
-torchaudio==2.1.0
+# Deep Learning: torch + torchvision are provided by
+# FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+# Do NOT pin torch/torchvision/torchaudio here — pip would re-download multi-GB CUDA nvidia-* wheels
+# and fill the disk (Errno 28) on constrained EC2 hosts.
 
 # Computer Vision
 opencv-python==4.8.1.78

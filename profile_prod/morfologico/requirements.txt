@@ -3,8 +3,12 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-torch==2.1.0
-torchvision==0.16.0
+# Deep Learning: torch + torchvision are provided by
+# FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+# Do NOT pin torch/torchvision/torchaudio here — pip would re-download multi-GB CUDA nvidia-* wheels
+# and fill the disk (Errno 28) on constrained EC2 hosts.
+# torch==2.1.0
+# torchvision==0.16.0
 opencv-python-headless==4.8.1.78
 numpy==1.24.3
 matplotlib==3.7.2
