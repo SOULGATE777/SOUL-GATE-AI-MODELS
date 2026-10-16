@@ -104,9 +104,11 @@ def test_ear_length_boundaries():
         })
         return result["ear_length_classification"], result["ear_length_proportion"]
 
-    assert ear(4325.0) == ("oreja normal", pytest.approx(0.4325))
+    assert ear(5000.0) == ("oreja normal", pytest.approx(0.5))
     assert ear(3800.0)[0] == "oreja normal"
-    assert ear(4326.0)[0] == "oreja larga"
+    assert ear(4770.0)[0] == "oreja normal"
+    assert ear(5001.0)[0] == "oreja larga"
+    assert ear(5070.0)[0] == "oreja larga"
     assert ear(3799.0)[0] == "oreja corta"
 
 
@@ -179,9 +181,15 @@ def test_chin_boundaries():
         })
         return result["chin_classification"], result["chin_angle"]
 
-    label, angle = chin(4.5, -1)
-    assert angle == pytest.approx(-4.5, abs=1e-3)
-    assert angle <= -4.5
+    degrees = 0.5
+    label, angle = chin(degrees, -1)
+    for _ in range(8):
+        if angle <= -0.5:
+            break
+        degrees += 1e-4
+        label, angle = chin(degrees, -1)
+    assert angle == pytest.approx(-0.5, abs=1e-3)
+    assert angle <= -0.5
     assert label == "menton nervioso"
 
     degrees = 5.5
@@ -204,7 +212,8 @@ def test_chin_boundaries():
         label_over, angle_over = chin(degrees, 1)
     assert angle_over == pytest.approx(5.5, abs=1e-3)
     assert label_over == "menton sanguineo"
-    assert chin(3.0, -1)[0] == "menton biloso/linfatico"
+    assert chin(2.12, -1)[0] == "menton nervioso"
+    assert chin(0.41, -1)[0] == "menton biloso/linfatico"
 
 
 def test_eye_protrusion_labels_only_on_left_profile():

@@ -391,8 +391,8 @@ if angle < -90: angle = 180 + angle
 ```
 
 **Classification Thresholds:**
-- **menton nervioso** (receding chin): angle ≤ -4.5 degrees
-- **menton biloso/linfatico** (neutral chin): -4.5 < angle ≤ 5.5 degrees
+- **menton nervioso** (receding chin): angle ≤ -0.5 degrees
+- **menton biloso/linfatico** (neutral chin): -0.5 < angle ≤ 5.5 degrees
 - **menton sanguineo** (protruding chin): angle > 5.5 degrees
 
 #### 5.4 Ear Implantation Angular Analysis
@@ -534,8 +534,8 @@ ear_proportion = ear_length / reference_distance
 ```
 
 **Classifications:**
-- **oreja larga** (long ear): proportion > 0.4325 (ear exceeds 43.25% of facial height)
-- **oreja normal** (normal ear): 0.38 ≤ proportion ≤ 0.4325 (ear is 38-43.25% of facial height)
+- **oreja larga** (long ear): proportion > 0.5 (ear exceeds 50% of facial height)
+- **oreja normal** (normal ear): 0.38 ≤ proportion ≤ 0.5 (ear is 38-50% of facial height)
 - **oreja corta** (short ear): proportion < 0.38 (ear less than 38% of facial height)
 
 #### 6.3 Ear Lobe Length (Points 3 to 5)
@@ -616,7 +616,7 @@ This section provides a quick reference table of all measurements, their point d
 | **Inferior Third** | 18-10 | Divide by reference distance | N/A | tercio inferior (proportional measurement) |
 | **Mandibular Width** | 3-9 | Divide by inferior third | ≥ 0.775<br>0.35-0.775<br>< 0.35<br>Point 9 missing | Mandibula Sanguinea<br>Mandibula Bilosa<br>Mandibula Nerviosa<br>Mandibula Linfatica |
 | **Ear Width** | 2-6 | None | N/A | Used as baseline for tragus-antitragus proportion |
-| **Ear Length** | 4-5 | Divide by reference distance | > 0.4325<br>0.38-0.4325<br>< 0.38 | oreja larga<br>oreja normal<br>oreja corta |
+| **Ear Length** | 4-5 | Divide by reference distance | > 0.5<br>0.38-0.5<br>< 0.38 | oreja larga<br>oreja normal<br>oreja corta |
 | **Ear Lobe Length** | 3-5 | Divide by ear length (4-5) | > 0.31<br>0.23-0.31<br>< 0.23 | lobulo grande<br>lobulo normal<br>lobulo chico |
 | **Tragus-Antitragus** | 7-8 | Divide by ear width (2-6) | ≥ 0.255<br>0.22-0.255<br>< 0.22 | grande<br>normal<br>corta |
 | **Nasal Triangulation** | 26-17 | Divide by nose reference (18-30) | > 0.27<br>≤ 0.27 | triangulacion de fosa<br>sin triangulacion de fosa |
@@ -628,7 +628,7 @@ This section provides a quick reference table of all measurements, their point d
 | **Nasal Tip Angle** | 18-17 | 24-18 (perpendicular) | -90° to +90° | ≥ 26°<br>4° to 26°<br>< 4° | punta de nariz hacia arriba<br>punta de nariz promedio<br>punta hacia abajo |
 | **Nasal Dorsum Slope** | 19-17 | N/A (slope calculation) | N/A | N/A | Provides slope angle for nasal bridge assessment |
 | **Forehead Angle** | 24-33 | 24-18 | 0° to 90° | > 22°<br>≤ 22° | frente inclinada hacia atras<br>frente vertical |
-| **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -4.5°<br>-4.5° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
+| **Chin Angle** | 18-11 | 24-18 | -90° to +90° | ≤ -0.5°<br>-0.5° to 5.5°<br>> 5.5° | menton nervioso<br>menton biloso/linfatico<br>menton sanguineo |
 | **Superior Implantation** | 22-4 | 24-18 (perpendicular) | 0° to 360° | 10° to 170°<br>> 170° or < 10° | implantacion alta<br>implantacion estandard |
 | **Inferior Implantation** | 18-3 | 24-18 (perpendicular) | 0° to 360° | ≥ 170° or ≤ 10°<br>10° < angle < 170° | implantacion baja<br>implantacion estandard |
 | **Mandible Intersection** | 3-9 vs 24-18 | 24-18 | 0° to 90° | < 20°<br>≥ 20° | normal mandible angle<br>forward mandible angle |

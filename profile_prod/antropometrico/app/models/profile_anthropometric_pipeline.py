@@ -369,9 +369,9 @@ class ProfileAnthropometricPipeline:
             print(f"Ear length proportion: {ear_length_proportion:.3f}")
             
             # Classify ear length
-            if ear_length_proportion > 0.4325:
+            if ear_length_proportion > 0.5:
                 ear_length_label = "oreja larga"
-            elif 0.38 <= ear_length_proportion <= 0.4325:
+            elif 0.38 <= ear_length_proportion <= 0.5:
                 ear_length_label = "oreja normal"
             else:  # <= 0.38
                 ear_length_label = "oreja corta"
@@ -646,9 +646,9 @@ class ProfileAnthropometricPipeline:
             print(f"Chin angle (18-11): {angle_degrees:.2f} degrees")
             
             # Classify chin using the exact logic from your original code
-            if angle_degrees <= -4.5:
+            if angle_degrees <= -0.5:
                 chin_label = 'menton nervioso'
-            elif -4.5 < angle_degrees <= 5.5:
+            elif -0.5 < angle_degrees <= 5.5:
                 chin_label = 'menton biloso/linfatico'
             else:  # > 5.5
                 chin_label = 'menton sanguineo'
