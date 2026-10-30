@@ -938,18 +938,18 @@ class AnthropometricAnalyzer:
 
     def _classify_eye_angle(self, angle):
         """Classify eye angle based on degrees"""
-        if -5 <= angle <= 5:
+        if -5.5 <= angle <= 5.5:
             return 'angulo normal'
-        elif angle > 5:
+        elif angle > 5.5:
             return 'angulo hacia arriba'
-        else:  # angle < -5
+        else:  # angle < -5.5
             return 'angulo hacia abajo'
 
     def _classify_eye_size(self, percentage):
         """Classify eye size based on eye-to-face proportion percentage"""
-        if percentage < 0.74:
+        if percentage < 0.7:
             return 'ojo pequeño'
-        elif 0.74 <= percentage <= 0.85:
+        elif 0.7 <= percentage <= 0.85:
             return 'ojo mediano'
         else:  # percentage > 0.85
             return 'ojo grande'
